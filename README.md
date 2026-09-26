@@ -13,15 +13,21 @@
   <a href="https://github.com/aiden-guan/pigeonbox/releases"><img src="https://img.shields.io/github/v/release/aiden-guan/pigeonbox?color=blue&label=version" alt="GitHub Release"></a>
   <a href="https://github.com/aiden-guan/pigeonbox/actions/workflows/ci.yml"><img src="https://github.com/aiden-guan/pigeonbox/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
-  <a href="#getting-started"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="Node.js 20+"></a>
+  <a href="#-install"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="Node.js 20+"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/aiden-guan/pigeonbox/releases">Releases</a> ·
+  <a href="#-install"><img src="https://img.shields.io/badge/Install-Local_(free)-2563eb?style=for-the-badge" alt="Install PigeonBox Local"></a>
+  <a href="#option-a--let-your-ai-agent-install-it"><img src="https://img.shields.io/badge/Install_with-your_AI_agent-7c3aed?style=for-the-badge" alt="Install with your AI agent"></a>
+  <a href="https://github.com/aiden-guan/pigeonbox/releases/latest"><img src="https://img.shields.io/badge/Download-latest_release-111827?style=for-the-badge" alt="Download latest release"></a>
+</p>
+
+<p align="center">
+  <a href="#-install">Install</a> ·
   <a href="#core-capabilities">Capabilities</a> ·
+  <a href="#local-vs-cloud">Local vs. Cloud</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="#engineering-deep-dives">Engineering Deep Dives</a> ·
-  <a href="#getting-started">Quick Start</a> ·
   <a href="docs/architecture.md">Technical Docs</a>
 </p>
 
@@ -30,6 +36,44 @@
 <p align="center">
   <img src="assets/readme/hero.png" width="100%" alt="PigeonBox toolbar popup, side panel triage, and floating thread card in Gmail">
 </p>
+
+---
+
+## 📦 Install
+
+PigeonBox Local is free, needs no account or API key, and takes about five minutes. Pick one:
+
+### Option A — Let your AI agent install it
+
+Paste this into Claude Code, Codex, Cursor, or any coding agent with terminal access:
+
+```text
+Install PigeonBox Local for me by following https://raw.githubusercontent.com/aiden-guan/pigeonbox/main/INSTALL.md
+```
+
+The agent checks prerequisites, clones and builds the extension, then walks you through the one step Chrome requires you to do yourself (clicking **Load unpacked**). The instructions it follows are in [INSTALL.md](INSTALL.md).
+
+### Option B — One command
+
+Requires [Node.js](https://nodejs.org) 20+ and Chrome (or Edge/Brave) 116+.
+
+```bash
+git clone https://github.com/aiden-guan/pigeonbox.git && cd pigeonbox && npm run setup -- --open
+```
+
+`setup` installs dependencies, generates a local `.env`, builds everything, and opens `chrome://extensions`.
+
+### Option C — Download a prebuilt release
+
+No Node needed: grab `PigeonBox-vX.Y.Z.zip` from the [latest release](https://github.com/aiden-guan/pigeonbox/releases/latest) and unzip it into its own folder.
+
+### Then, in Chrome (all options)
+
+1. Go to `chrome://extensions` and turn on **Developer mode** (top right).
+2. Click **Load unpacked** and select `apps/extension/dist` (or the unzipped release folder).
+3. Open [Gmail](https://mail.google.com), click the PigeonBox toolbar icon, and choose **On this computer**.
+
+More detail: [docs/local-setup.md](docs/local-setup.md).
 
 ---
 
@@ -195,33 +239,8 @@ flowchart TD
 
 ---
 
-## Getting Started
+## Development
 
-### Prerequisites
-- [Node.js](https://nodejs.org) 20.0.0 or higher
-- Google Chrome (or Chromium-based browser)
-
-### Quick Start
-
-1. **Clone and run the automated setup**:
-   ```bash
-   git clone https://github.com/aiden-guan/pigeonbox.git
-   cd pigeonbox
-   npm run setup -- --open
-   ```
-
-   The `setup` script validates your environment, installs workspace dependencies, creates a safe local `.env` with a generated personal token, builds all packages, and opens `chrome://extensions` alongside the output directory.
-
-2. **Load the extension in Chrome**:
-   - Navigate to `chrome://extensions`.
-   - Enable **Developer mode** in the top-right corner.
-   - Click **Load unpacked** and select `apps/extension/dist`.
-
-3. **Open Gmail**:
-   - Navigate to [https://mail.google.com](https://mail.google.com).
-   - Click the PigeonBox icon in the extension toolbar or side panel to configure your preferred execution mode (Local on-device, Ollama, BYOK, or PigeonBox Cloud).
-
-### Development & Verification
 
 ```bash
 # Rebuild extension on file changes
