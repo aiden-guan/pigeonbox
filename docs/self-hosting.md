@@ -9,7 +9,7 @@ PigeonBox's inbox features and local AI run in your browser. Open/click tracking
 | Cloudflare Worker without Supabase | Memory per Worker isolate (not durable) | Cloudflare | Testing only |
 | `npm run tracker` on this computer | Memory by default; only reachable from this machine | None | [local-setup.md](local-setup.md) — development only |
 
-Supabase is the durable database for the Cloudflare Worker option; it does not provide the public tracking HTTP endpoint by itself. Choose Convex for a single-provider setup, or Cloudflare Worker + Supabase for a separate endpoint and database.
+The guided installer defaults to Convex for a single-provider setup. Supabase is the durable database for the Cloudflare Worker option; it does not provide the public tracking HTTP endpoint by itself. Choose Cloudflare Worker + Supabase when you specifically want a separate endpoint and database.
 
 Every self-hosted tracker is **single-owner**: one `PERSONAL_API_TOKEN` protects its management API. Pixel (`/open/:id`) and click (`/c/:id`) routes are public by design. Tracking IDs are random and carry no mailbox data.
 

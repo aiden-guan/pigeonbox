@@ -8,7 +8,7 @@
 
 ---
 
-**Agent:** you are installing PigeonBox, an open-source (MIT) Chrome extension that adds on-device email triage, summaries, drafts, and optional open/click tracking to Gmail. The extension and on-device AI can run locally. Email tracking is a separate service: a localhost tracker is only for development on this computer and cannot receive opens from another person's mail client. Follow these steps in order, report progress briefly, and ask the user before creating cloud resources or setting provider secrets.
+**Agent:** you are installing PigeonBox, an open-source (MIT) Chrome extension that adds on-device email triage, summaries, drafts, and optional open/click tracking to Gmail. The extension and on-device AI can run locally. Recipient tracking needs a public tracker because a localhost service cannot receive requests from another person's mail client. Follow these steps in order and report progress briefly. The default tracker is a Convex deployment in the user's own account. Ask for explicit approval before signing in or creating/updating cloud resources.
 
 ## 1. Check prerequisites
 
@@ -27,37 +27,47 @@ cd ~/pigeonbox
 
 If the folder already exists and is a PigeonBox clone, run `git pull` instead.
 
-## 3. Run the automated setup
+## 3. Install PigeonBox and ask about the default tracker
+
+First explain that Convex provides a public HTTPS tracker and durable storage in the user's own account, and that it stores tracking records and open/click events, including subject/sender/recipient metadata but not message bodies or drafts. Ask whether they approve creating/updating those cloud resources and setting or replacing the production token. Wait for their answer.
+
+If approved, run:
 
 ```bash
-npm run setup -- --open
+npm run setup -- --tracking --open --yes
 ```
 
-This checks Node, installs dependencies, creates a gitignored `.env` with a generated local token, builds every package, verifies the built `manifest.json`, and opens `chrome://extensions` plus the build folder. It is safe to re-run. It takes a few minutes on first run.
+The `--yes` flag records the approval already given in chat. Keep this command attached to an interactive terminal so the user can complete Convex sign-in and any project-selection prompts. The setup checks Node, installs dependencies, creates a gitignored `.env` with a generated personal tracker token, builds the extension, then signs in to Convex and provisions the tracker.
+
+If running the setup directly in an interactive terminal without `--yes`, it asks for the same approval before cloud changes. Do not use `--yes` unless the user has explicitly approved.
+
+After approval, setup creates or uses a project in the user's Convex account, configures a cloud development deployment, deploys the tracker to production, sets the tracker token as a production secret, checks the public `/health` endpoint, pre-fills the URL and token into the local extension build, rebuilds, and opens `chrome://extensions` plus the build folder. Convex account limits and terms apply.
+
+If declined, or if the user wants a local-only install, run `npm run setup -- --open` instead. The user's inbox features and on-device AI work; recipient tracking needs a public deployment. If they approve a tracker later, run `npm run setup:tracker -- --open --yes`; omit `--yes` when running directly in an interactive terminal so the script can ask.
 
 Success means `apps/extension/dist/manifest.json` exists. If setup fails, show the user the last ~30 lines of output and consult `docs/local-setup.md` before retrying.
 
-## 4. Offer public tracker setup
+## 4. Use another tracker provider only when requested
 
-Lead with public tracker setup as the recommended next step for recipient open/click tracking. Ask which service the user prefers and guide them through the matching guide. If they only want local inbox features and on-device AI, they can skip tracking:
+Convex is the default because it provides the public endpoint and durable database in one service. Do not ask the user to choose among providers unless they request an alternative. If they specifically want a different provider, use:
 
-- **Convex** — one hosted service with a durable database: [docs/convex-self-hosting.md](docs/convex-self-hosting.md).
-- **Cloudflare Worker + Supabase** — Cloudflare serves the public HTTPS tracking endpoint; Supabase Postgres stores events durably: [docs/self-hosting.md](docs/self-hosting.md).
+- **Cloudflare Worker + Supabase** — Cloudflare serves the public HTTPS tracking endpoint and Supabase Postgres stores events durably: [docs/self-hosting.md](docs/self-hosting.md).
 
-Supabase by itself is not the tracking endpoint; it is the database used by the Cloudflare Worker option. A Cloudflare Worker without Supabase has a public URL but uses volatile memory, so it is for testing only. The `npm run tracker` server at `127.0.0.1` is also for local testing: other devices and mail clients cannot reach your computer at that address.
+If the user asked for Cloudflare + Supabase before installation, use `npm run setup -- --open` in step 3, then follow that guide. If they decline Convex because they prefer Cloudflare + Supabase, continue from that guide without rerunning the Convex setup.
 
-The generated personal API token is in the gitignored `.env` and `.local/tracker.txt`. Keep it private: do not print it in chat, commit it, or send it to PigeonBox. Enter it only into the user's chosen tracker provider and the extension's **Settings → Email tracking**. Follow the provider guide to confirm its public `/health` endpoint is healthy before connecting it.
+Supabase by itself is not the tracking endpoint. A Cloudflare Worker without Supabase has a public URL but uses volatile memory, so it is for testing only. The `npm run tracker` server at `127.0.0.1` is also only for local testing: another device's mail client cannot reach the user's computer at that address.
 
-If the user does not want tracking, continue with the local extension setup; inbox features do not depend on a tracking service.
+The generated personal API token stays in gitignored local files and is passed to Convex from a private local env file. The configured tracker URL/token are embedded only in this machine's ignored development build; release builds strip `tracker-config.json`. Never print the token or read out `.env`, `.local/tracker.txt`, or `tracker-config.json` in chat or logs. For a manual Cloudflare setup, the user enters their token into their provider and **Settings → Email tracking**.
 
-## 5. Hand off the one manual Chrome step
+## 5. Hand off the manual Chrome steps
 
 Chrome does not allow programs to install unpacked extensions, so the user must do this themselves. Do **not** try to automate `chrome://extensions`. Tell the user exactly this, substituting the absolute path:
 
-> Almost done — three clicks in Chrome:
+> Almost done — finish these steps in Chrome:
 > 1. In the `chrome://extensions` tab that just opened, turn on **Developer mode** (top right).
 > 2. Click **Load unpacked** and choose `<ABSOLUTE PATH>/apps/extension/dist`.
-> 3. Open https://mail.google.com and click the PigeonBox icon in the toolbar. Pick **On this computer** when asked how PigeonBox should run.
+> 3. Open https://mail.google.com and click the PigeonBox icon in the toolbar. Pick **On this computer** when asked how PigeonBox should run; that choice controls AI and is separate from tracking.
+> 4. At Email tracking, choose **Connect tracker in Settings**. If Convex setup succeeded, the URL and token are already filled in. Click **Save** and approve Chrome's request to access the tracker; confirm the status says **Tracker healthy**. If setup was skipped, you can skip tracking here and configure it later.
 
 ## 6. Other optional setup
 
@@ -67,7 +77,8 @@ Chrome does not allow programs to install unpacked extensions, so the user must 
 
 ## Rules
 
-- Never reveal email content or tokens from `.env` and `.local/` in chat, Git, logs, or to PigeonBox. Do not transfer whole local config files. If the user approves a tracker deployment, have them enter the token directly into that provider's secret settings and the extension's local Settings form.
+- Never reveal email content or tokens from `.env` and `.local/` in chat, Git, logs, or to PigeonBox. Do not transfer whole local config files. The setup script passes the generated token to Convex from a private local file; do not print it or send it to the user in chat.
+- Do not run the public tracker setup without the user's explicit approval. If they approved in chat, pass `--yes`; otherwise let the interactive setup prompt them. If they decline, leave the local extension setup complete and explain how to run `npm run setup:tracker -- --open` later (or add `--yes` after they approve in chat).
 - Never modify the user's Chrome profile or settings directly.
 - Do not sign the user up for PigeonBox Cloud; on-device AI should remain the default.
 - "On this computer" selects local AI behavior; it does not configure email tracking.
