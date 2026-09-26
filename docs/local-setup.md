@@ -47,6 +47,7 @@ Email content only leaves the device if you choose a remote provider.
 
 ```bash
 npm run dev          # rebuilds apps/extension/dist on change; click Reload on chrome://extensions
+npm run dev:reload   # or: popup → "Reload extension" rebuilds first, then reloads
 npm test             # Vitest (jsdom + fake-indexeddb)
 npm run typecheck
 npm run lint
@@ -54,6 +55,8 @@ npm run verify       # everything CI runs, including the release ZIP check
 ```
 
 `npm run dev` never starts Convex, a tracker, or any Cloud service.
+
+`npm run dev:reload` starts a small helper on `127.0.0.1:5199` that only accepts requests from Chrome extensions. While it runs, the popup's **Reload extension** button rebuilds `apps/extension/dist` from your current source before restarting the extension; a failed build leaves the running extension alone. Without the helper the button does a plain reload. Release builds never contact it.
 
 ## Optional: recipient open and click tracking
 

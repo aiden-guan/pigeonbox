@@ -9,6 +9,7 @@ Node.js 20+ (see `.nvmrc`).
 ```bash
 npm run setup
 npm run dev          # rebuild on change, then Reload on chrome://extensions
+npm run dev:reload   # or: popup → "Reload extension" rebuilds, then reloads
 npm run verify       # what CI runs
 ```
 

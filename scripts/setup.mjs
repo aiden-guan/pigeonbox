@@ -173,6 +173,7 @@ Then open Gmail. Settings → "How should PigeonBox run?" picks on-device AI, Ol
 Categories work with AI off.
 
 Develop:   npm run dev   (then Reload on chrome://extensions)
+           or npm run dev:reload, then use "Reload extension" in the popup to rebuild + reload
 Check:     npm run verify
 Tracking:  deploy Convex or Cloudflare Worker + Supabase to receive recipient opens; see docs/self-hosting.md
            Local development only: npm run tracker at 127.0.0.1:8787 (memory by default)

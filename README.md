@@ -250,6 +250,9 @@ flowchart TD
 # Rebuild extension on file changes
 npm run dev
 
+# Or: let the popup's "Reload extension" button rebuild before reloading
+npm run dev:reload
+
 # Run Vitest test suite across all packages (35 test files)
 npm test
 
