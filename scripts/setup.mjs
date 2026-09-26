@@ -1,21 +1,24 @@
 #!/usr/bin/env node
 /**
  * First-run setup after cloning PigeonBox.
- *   npm run setup            install, create local dev config, build, verify the manifest
- *   npm run setup -- --open  also open the built folder and chrome://extensions
+ *   npm run setup                              install, create local config, build and verify
+ *   npm run setup -- --tracking --open         also offer the recommended Convex tracker
+ *   npm run setup:tracker -- --open            offer the tracker after setup
  *
- * Needs no PigeonBox account, Cloud backend, Supabase, Stripe, Convex,
- * Cloudflare account or AI key.
+ * Base setup needs no PigeonBox account, Cloud backend, Supabase, Stripe,
+ * Convex, Cloudflare account or AI key. --tracking offers Convex setup.
  */
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateManifest } from './lib/extension-package.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const openAfter = process.argv.includes('--open');
+const setupTracking = process.argv.includes('--tracking');
+const trackerApproved = process.argv.includes('--yes');
 const PLACEHOLDER_TOKEN = 'generate-a-long-random-token';
 
 function fail(message) {
@@ -70,7 +73,7 @@ const envPath = join(root, '.env');
 const examplePath = join(root, '.env.example');
 if (!existsSync(envPath)) {
   if (!existsSync(examplePath)) fail('Missing .env.example');
-  writeFileSync(envPath, readFileSync(examplePath, 'utf8'));
+  writeFileSync(envPath, readFileSync(examplePath, 'utf8'), { mode: 0o600 });
   console.log('Created .env from .env.example');
 }
 
@@ -90,7 +93,7 @@ if (!isReal(env.PERSONAL_API_TOKEN, [PLACEHOLDER_TOKEN])) {
   } else {
     envText += `\nPERSONAL_API_TOKEN=${token}\n`;
   }
-  writeFileSync(envPath, envText);
+  writeFileSync(envPath, envText, { mode: 0o600 });
   env = parseEnv(envText);
   console.log(
     existingDev?.PERSONAL_API_TOKEN === token
@@ -98,6 +101,7 @@ if (!isReal(env.PERSONAL_API_TOKEN, [PLACEHOLDER_TOKEN])) {
       : 'Generated a personal API token in .env',
   );
 }
+chmodSync(envPath, 0o600);
 
 if (!existsSync(devVarsPath)) {
   const supabaseUrl = isReal(env.SUPABASE_URL, ['YOUR_PROJECT']) ? env.SUPABASE_URL : '';
@@ -114,9 +118,10 @@ if (!existsSync(devVarsPath)) {
   lines.push(supabaseUrl ? `SUPABASE_URL=${supabaseUrl}` : '# SUPABASE_URL=');
   lines.push(supabaseKey ? `SUPABASE_SERVICE_ROLE_KEY=${supabaseKey}` : '# SUPABASE_SERVICE_ROLE_KEY=');
   lines.push('');
-  writeFileSync(devVarsPath, lines.join('\n'));
+  writeFileSync(devVarsPath, lines.join('\n'), { mode: 0o600 });
   console.log('Created workers/tracker/.dev.vars for the local tracker');
 }
+chmodSync(devVarsPath, 0o600);
 
 const devVars = parseEnv(readFileSync(devVarsPath, 'utf8'));
 const token = devVars.PERSONAL_API_TOKEN || env.PERSONAL_API_TOKEN;
@@ -126,20 +131,26 @@ mkdirSync(localDir, { recursive: true });
 const trackerCard = [
   'PigeonBox email tracking setup',
   '',
-  'For recipient opens, deploy a public tracker you own:',
-  '  Convex:                 docs/convex-self-hosting.md',
-  '  Cloudflare Worker + DB: docs/self-hosting.md',
+  'Recommended public tracker: Convex (one provider, durable storage).',
+  '  npm run setup:tracker -- --open',
+  '  Or during first install: npm run setup -- --tracking --open',
+  '  Setup requires your approval before creating or updating a Convex deployment.',
   '',
-  'Personal API token for your deployment:',
+  'Alternative: Cloudflare Worker + Supabase — docs/self-hosting.md',
+  '',
+  'Personal API token for your own tracker (keep private):',
   `  ${token}`,
   '',
-  'After deployment, enter its public URL and this token in Settings → Email tracking.',
+  'Convex setup pre-fills this local extension build. Open Settings → Email tracking and click Save to grant Chrome access.',
+  'For Cloudflare + Supabase, enter that deployment URL and this token in Settings → Email tracking.',
   '',
   'Local development only: npm run tracker at 127.0.0.1:8787 (memory storage by default).',
-  'External mail clients cannot reach your computer at this local address.',
+  'A recipient mail client cannot reach your computer at this local address.',
   '',
 ].join('\n');
-writeFileSync(join(localDir, 'tracker.txt'), trackerCard);
+const trackerCardPath = join(localDir, 'tracker.txt');
+writeFileSync(trackerCardPath, trackerCard, { mode: 0o600 });
+chmodSync(trackerCardPath, 0o600);
 
 console.log('\nBuilding the extension…\n');
 if (run('npm', ['run', 'build']) !== 0) {
@@ -175,11 +186,18 @@ Categories work with AI off.
 Develop:   npm run dev   (then Reload on chrome://extensions)
            or npm run dev:reload, then use "Reload extension" in the popup to rebuild + reload
 Check:     npm run verify
-Tracking:  deploy Convex or Cloudflare Worker + Supabase to receive recipient opens; see docs/self-hosting.md
+Tracking:  recommended Convex setup: npm run setup:tracker -- --open (asks before cloud changes)
+           Cloudflare Worker + Supabase: docs/self-hosting.md
            Local development only: npm run tracker at 127.0.0.1:8787 (memory by default)
 `);
 
-if (openAfter) {
+if (setupTracking) {
+  const args = [join(root, 'scripts', 'setup-convex-tracker.mjs')];
+  if (openAfter) args.push('--open');
+  if (trackerApproved) args.push('--yes');
+  const status = run(process.execPath, args);
+  if (status !== 0) process.exit(status);
+} else if (openAfter) {
   const status = run(process.execPath, [join(root, 'scripts', 'open.mjs')]);
   if (status !== 0) process.exit(status);
 }

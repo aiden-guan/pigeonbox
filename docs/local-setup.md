@@ -1,21 +1,25 @@
 # Local setup
 
-PigeonBox's on-device AI and inbox features need only Node.js 20+ and Chrome (or Edge/Brave) 116+. They do **not** need a PigeonBox account, PigeonBox Cloud, Supabase, Stripe, Convex, a Cloudflare account, Docker, or an AI key. Email tracking is separate and optional; tracking recipient opens requires a public tracker deployment.
+PigeonBox's on-device AI and inbox features need only Node.js 20+ and Chrome (or Edge/Brave) 116+. They do **not** need a PigeonBox account, PigeonBox Cloud, Supabase, Stripe, Convex, a Cloudflare account, Docker, or an AI key. Recipient tracking is separate and optional. The guided install offers to set up a public Convex tracker in your own account; tracking recipient opens cannot use a localhost server.
 
 ## First run
 
 ```bash
 git clone https://github.com/aiden-guan/pigeonbox.git
 cd pigeonbox
-npm run setup -- --open
+npm run setup -- --tracking --open
 ```
+
+The tracker setup requires approval before it signs in to Convex or creates/updates cloud resources. Direct interactive runs ask in the terminal; an agent that already received approval uses `--yes`. If approved, it deploys the tracker, confirms `/health`, pre-fills the local extension build, and rebuilds it. To add the tracker later, run `npm run setup:tracker -- --open`.
+
+For a local-only install, use `npm run setup -- --open`; you can add tracking later.
 
 `setup`:
 
 1. checks your Node.js version,
 2. runs `npm ci` if dependencies are missing,
 3. creates a gitignored `.env` from `.env.example` with a generated tracker token, and `workers/tracker/.dev.vars`,
-4. writes `.local/tracker.txt` (tracker setup notes and a generated personal API token),
+4. writes `.local/tracker.txt` (private tracker setup notes and a generated personal API token),
 5. builds everything and checks the built `manifest.json`,
 6. with `--open`, opens the build folder and `chrome://extensions`.
 
@@ -58,11 +62,13 @@ npm run verify       # everything CI runs, including the release ZIP check
 
 `npm run dev:reload` starts a small helper on `127.0.0.1:5199` that only accepts requests from Chrome extensions. While it runs, the popup's **Reload extension** button rebuilds `apps/extension/dist` from your current source before restarting the extension; a failed build leaves the running extension alone. Without the helper the button does a plain reload. Release builds never contact it.
 
-## Optional: recipient open and click tracking
+## Recipient open and click tracking
 
-To record opens when a recipient's mail client loads the tracking pixel, connect a public HTTPS tracker that you own. Choose [Convex](convex-self-hosting.md) or [Cloudflare Worker + Supabase](self-hosting.md). The setup agent can guide you through either deployment.
+To record opens when a recipient's mail client loads the tracking pixel, PigeonBox needs a public HTTPS tracker that you own. The guided install defaults to [Convex](convex-self-hosting.md), which provides both the public endpoint and durable database. If you skipped tracking during setup, run `npm run setup:tracker -- --open`.
 
-In **Settings → Email tracking**, enter the deployed tracker URL and your personal API token, save, and confirm the status says **Tracker healthy**. Tracking events are metadata; message bodies are not sent to the tracker.
+After Convex setup, the extension's local Settings page is prefilled. Click **Save**, approve Chrome's request to access the tracker, and confirm the status says **Tracker healthy**. The tracker stores tracking records and open/click events, including subject/sender/recipient metadata; it does not store message bodies or drafts.
+
+If you prefer [Cloudflare Worker + Supabase](self-hosting.md), follow that deployment guide, then enter the public URL and personal API token in **Settings → Email tracking**. Supabase alone is not the HTTP tracker.
 
 ## Local tracker development
 

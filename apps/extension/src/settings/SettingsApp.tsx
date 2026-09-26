@@ -279,7 +279,7 @@ export function SettingsApp() {
           </p>
         ) : (
           <p className="gi-muted text-xs">
-            For recipient opens, use a public tracker you own: Convex or Cloudflare Worker + Supabase. <code>npm run tracker</code> is for local development and cannot receive opens from other devices.
+            For recipient opens, use a public tracker you own. The guided install defaults to Convex and pre-fills these fields; click Save to grant Chrome access. Cloudflare Worker + Supabase is the alternative. <code>npm run tracker</code> is only local development and cannot receive opens from other devices.
           </p>
         )}
         <Field label="Tracker base URL">

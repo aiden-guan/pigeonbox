@@ -45,17 +45,17 @@ Paste this into Claude Code, Codex, Cursor, or any coding agent with terminal ac
 Install PigeonBox for me by following https://raw.githubusercontent.com/aiden-guan/pigeonbox/main/INSTALL.md
 ```
 
-The agent checks prerequisites, clones and builds the extension, offers to guide you through setting up your own public tracker, then walks you through the one step Chrome requires you to do yourself (clicking **Load unpacked**). The instructions it follows are in [INSTALL.md](INSTALL.md).
+The agent checks prerequisites, clones and builds the extension, then offers the recommended Convex tracker setup in your own account. If you approve, it deploys the tracker and pre-fills this local extension build. You still click **Load unpacked** in Chrome and **Save** in tracker Settings to grant Chrome access. The instructions it follows are in [INSTALL.md](INSTALL.md).
 
 ### Option B — One command
 
 Requires [Node.js](https://nodejs.org) 20+ and Chrome (or Edge/Brave) 116+.
 
 ```bash
-git clone https://github.com/aiden-guan/pigeonbox.git && cd pigeonbox && npm run setup -- --open
+git clone https://github.com/aiden-guan/pigeonbox.git && cd pigeonbox && npm run setup -- --tracking --open
 ```
 
-`setup` installs dependencies, generates a local `.env`, builds everything, and opens `chrome://extensions`.
+`setup` installs dependencies, generates a local `.env`, builds everything, and asks before creating or updating a public Convex tracker in your account. If approved, it deploys and health-checks the tracker, pre-fills this local extension build, rebuilds, and opens `chrome://extensions`. If skipped, inbox and on-device AI features still work. To set up tracking later, run `npm run setup:tracker -- --open`.
 
 ### Option C — Download a prebuilt release
 
@@ -69,7 +69,7 @@ No Node needed: grab `PigeonBox-vX.Y.Z.zip` from the [latest release](https://gi
 
 More detail: [docs/local-setup.md](docs/local-setup.md).
 
-**Tracking is separate from local AI.** To count opens when a recipient opens your email on another device, use a public tracker you own: Convex or Cloudflare Worker + Supabase. The localhost tracker is only for development on your computer. See [self-hosting options](docs/self-hosting.md).
+**Tracking is separate from local AI.** To count opens when a recipient opens your email on another device, use a public tracker you own. The guided install defaults to Convex, which provides the endpoint and durable database in one service. Cloudflare Worker + Supabase is the alternative. The localhost tracker is only for development on your computer. See [self-hosting options](docs/self-hosting.md).
 
 ### Updates
 
@@ -264,7 +264,7 @@ PigeonBox email tracking is optional and completely self-hostable. Mail triage, 
 
 | Option | Command / Reference | Use Case |
 | :--- | :--- | :--- |
-| **Convex** | [docs/convex-self-hosting.md](docs/convex-self-hosting.md) | Public endpoint with durable storage in one provider. |
+| **Convex (default)** | [docs/convex-self-hosting.md](docs/convex-self-hosting.md) | Guided installer sets up a public endpoint with durable storage in one provider. |
 | **Cloudflare Worker + Supabase** | [docs/self-hosting.md](docs/self-hosting.md) | Public Cloudflare endpoint with durable Postgres storage. Supabase alone is not the HTTP tracker. |
 | **Local tracker** | `npm run tracker` | Development only. Reachable from this computer; uses memory by default. |
 
@@ -295,7 +295,7 @@ Configure tracking endpoints in the extension under **Settings → Email Trackin
 │   └── tracking/              # Protocol v3 email tracking engine and event classification
 ├── workers/
 │   └── tracker/               # Self-hostable Cloudflare Worker open/click tracking service
-├── convex/                    # Optional zero-config tracking backend on Convex
+├── convex/                    # Recommended one-provider tracking backend
 ├── docs/                      # Architectural specs, threat models, and self-hosting guides
 └── scripts/                   # Verification (verify.mjs), packaging, and hygiene checks
 ```

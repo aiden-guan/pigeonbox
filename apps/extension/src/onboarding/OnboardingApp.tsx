@@ -12,7 +12,15 @@ export function OnboardingApp() {
 
   function finish() {
     chrome.storage.local.set({ onboardingComplete: true });
-    chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
+    chrome.runtime.sendMessage({
+      type: 'SAVE_SETTINGS',
+      settings: {
+        voiceProfile: settings.voiceProfile,
+        aiMode: settings.aiMode,
+        aiProvider: settings.aiProvider,
+        aiModel: settings.aiModel,
+      },
+    });
     // Cloud needs sign-in and explicit consent, which happen in Settings; nothing switches to Cloud here.
     if (openCloudSetup) chrome.runtime.openOptionsPage();
     else chrome.tabs.create({ url: 'https://mail.google.com/' });
@@ -102,13 +110,16 @@ export function OnboardingApp() {
           {step === 3 ? (
             <>
               <h1 className="gi-display">Email tracking</h1>
-              <p className="gi-muted mt-3 text-[14px] leading-relaxed">Tracking is separate from local AI. To count recipient opens, use a public tracker you own: Convex or Cloudflare Worker + Supabase. A tracker on your computer only works for local testing.</p>
+              <p className="gi-muted mt-3 text-[14px] leading-relaxed">The guided install defaults to Convex and pre-fills this extension. Open Settings, click Save, and allow Chrome to reach the tracker. If you skipped that setup or installed a release build, deploy a public tracker first. A tracker on your computer only works for local testing.</p>
               <div className="mt-6 flex flex-col gap-2">
-                <Choice title="Configure now" detail="First deploy a tracker, then enter its URL and token in Settings." onClick={() => chrome.runtime.openOptionsPage()} />
+                <Choice title="Connect tracker in Settings" detail="If setup deployed Convex, the URL and token are ready. Click Save there to grant Chrome access." onClick={() => {
+                  chrome.runtime.openOptionsPage();
+                  setStep(4);
+                }} />
                 <Choice title="Skip for now" detail="You can turn tracking on after setup." onClick={() => setStep(4)} />
               </div>
               <p className="gi-muted mt-4 text-xs leading-relaxed">
-                Setup guides: <a className="underline" href="https://github.com/aiden-guan/pigeonbox/blob/main/docs/convex-self-hosting.md" target="_blank" rel="noreferrer">Convex</a> · <a className="underline" href="https://github.com/aiden-guan/pigeonbox/blob/main/docs/self-hosting.md" target="_blank" rel="noreferrer">Cloudflare Worker + Supabase</a>
+                Setup guides: <a className="underline" href="https://github.com/aiden-guan/pigeonbox/blob/main/docs/convex-self-hosting.md" target="_blank" rel="noreferrer">Convex (recommended)</a> · <a className="underline" href="https://github.com/aiden-guan/pigeonbox/blob/main/docs/self-hosting.md" target="_blank" rel="noreferrer">Cloudflare Worker + Supabase</a>
               </p>
             </>
           ) : null}
