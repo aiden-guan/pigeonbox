@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Extension updates**: Added opt-in GitHub release checks for Local and Cloud mode, with a one-click download for the latest stable release ZIP.
+
 ## [0.2.0] — 2026-09-25
 
 ### Summary
@@ -168,4 +173,3 @@ Implemented a durable sender self-open suppression architecture based on exact m
 - `npm run typecheck`: Passed with 0 TypeScript errors across all workspaces.
 - `npm run lint`: Passed with 0 errors across packages, apps, and workers.
 - `npm run build`: Production build verified for all workspaces (`@gi/shared`, `@gi/gmail`, `@gi/mailbox`, `@gi/ai`, `@gi/search`, `@gi/agent`, `@gi/tracking`, `@gi/extension`, `@gi/tracker`).
-

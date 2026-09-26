@@ -204,6 +204,8 @@ export type BridgeMessage = z.infer<typeof BridgeMessageSchema>;
 export const RuntimeMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('PING') }),
   z.object({ type: z.literal('GET_SETTINGS') }),
+  z.object({ type: z.literal('GET_UPDATE_STATUS') }),
+  z.object({ type: z.literal('CHECK_FOR_UPDATES') }),
   z.object({ type: z.literal('GET_PUBLIC_SETTINGS') }),
   z.object({
     type: z.literal('SAVE_SETTINGS'),
@@ -325,7 +327,7 @@ export type AiProcessingMode = 'disabled' | 'remote' | 'local';
 export type RunMode = 'local' | 'cloud';
 
 /** Bumped when stored settings need a migration step. */
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 3;
 
 export type ExtensionSettings = {
   settingsVersion: number;
@@ -342,6 +344,8 @@ export type ExtensionSettings = {
   trackingEnabled: boolean;
   trackOpens: boolean;
   trackLinks: boolean;
+  /** Release checks contact GitHub only after the user enables this option. */
+  automaticUpdateChecks: boolean;
   desktopNotifications: boolean;
   hideSuspectedSelfOpens: boolean;
   trackerBaseUrl: string;
@@ -424,6 +428,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   trackingEnabled: true,
   trackOpens: true,
   trackLinks: true,
+  automaticUpdateChecks: false,
   desktopNotifications: true,
   hideSuspectedSelfOpens: true,
   trackerBaseUrl: '',
@@ -485,6 +490,7 @@ export function migrateSettings(saved: unknown): ExtensionSettings {
     merged.cloudConsentAt = null;
     merged.cloudApiUrl = '';
   }
+  if (version < 3) merged.automaticUpdateChecks = false;
   if (merged.runMode !== 'local' && merged.runMode !== 'cloud') merged.runMode = 'local';
   // Cloud mode without recorded consent is not a valid state.
   if (merged.runMode === 'cloud' && !merged.cloudConsentAt) merged.runMode = 'local';

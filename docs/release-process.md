@@ -31,6 +31,8 @@ npm run check:versions
 
 6. Upload the same ZIP to the Chrome Web Store dashboard (manual, see [chrome-web-store.md](chrome-web-store.md)).
 
+The in-extension update checker lists GitHub releases, picks the highest non-draft, non-prerelease `vX.Y.Z` tag (other releases, like the launch film, are ignored) and looks for the matching `PigeonBox-vX.Y.Z.zip` asset. Keep that tag format and asset name unchanged. Checks are opt-in; sideloaded Chrome extensions still need to be reloaded by the user after downloading.
+
 ## Reproducibility
 
 `scripts/lib/zip.mjs` sorts entries, fixes timestamps to 1980-01-01 and writes no OS attributes. Given the same lockfile and Node.js version (`.nvmrc`), the ZIP is byte-identical. Users can check a download with:

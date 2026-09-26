@@ -73,6 +73,10 @@ No Node needed: grab `PigeonBox-vX.Y.Z.zip` from the [latest release](https://gi
 
 More detail: [docs/local-setup.md](docs/local-setup.md).
 
+### Updates
+
+Open **Settings → Updates** to check the latest GitHub release or opt in to a daily check. Automatic checks are off by default. The request sends no email or settings data to GitHub; GitHub can see your IP address. If a release is available, **Download** saves the ZIP. Unzip it and reload or load the extracted folder from `chrome://extensions` to apply it.
+
 ---
 
 ## Overview

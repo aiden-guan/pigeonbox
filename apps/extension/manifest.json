@@ -22,6 +22,7 @@
     "https://mail.google.com/*"
   ],
   "optional_host_permissions": [
+    "https://api.github.com/*",
     "https://*/*",
     "http://127.0.0.1/*",
     "http://localhost/*",

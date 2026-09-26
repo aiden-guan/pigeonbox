@@ -75,6 +75,7 @@ import { completeOnDevice, downloadOnDevice, warmOnDevice } from './on-device';
 import { effectiveSettings, resolveIntelligence } from './intelligence';
 import { clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, senderMaySend } from './messaging';
+import { checkLatestRelease, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
 import { EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl } from '../config';
 
 const db = getMailboxDb();
@@ -147,8 +148,12 @@ async function saveSettings(partial: Partial<ExtensionSettings>): Promise<Extens
   delete rest.runMode;
   delete rest.cloudConsentAt;
   delete rest.settingsVersion;
+  const previousAutomaticUpdateChecks = settings.automaticUpdateChecks;
   settings = migrateSettings({ ...settings, ...rest });
   await chrome.storage.local.set({ settings });
+  if (settings.automaticUpdateChecks !== previousAutomaticUpdateChecks) {
+    configureReleaseCheckAlarm(settings.automaticUpdateChecks);
+  }
   await publishContentSettings();
   rebuildAgent();
   return settings;
@@ -799,6 +804,10 @@ async function ensureNoReplyReminder(email: TrackedEmailSummary): Promise<void> 
 chrome.runtime.onInstalled.addListener(async (details) => {
   await loadSettings();
   rebuildAgent();
+  configureReleaseCheckAlarm(settings.automaticUpdateChecks);
+  if (details.reason !== 'install' && settings.automaticUpdateChecks) {
+    void checkLatestRelease().catch(() => undefined);
+  }
   if (details.reason === 'install') {
     const stored = await chrome.storage.local.get('onboardingComplete');
     if (!stored.onboardingComplete) {
@@ -810,9 +819,27 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   chrome.alarms.create('reminder_tick', { periodInMinutes: 15 });
 });
 
+chrome.runtime.onStartup.addListener(async () => {
+  await loadSettings();
+  configureReleaseCheckAlarm(settings.automaticUpdateChecks);
+  if (settings.automaticUpdateChecks) {
+    const status = await readReleaseUpdateStatus();
+    const lastCheckedAt = status?.checkedAt ? Date.parse(status.checkedAt) : 0;
+    const releaseIsStale =
+      !status ||
+      status.currentVersion !== chrome.runtime.getManifest().version ||
+      !Number.isFinite(lastCheckedAt) ||
+      Date.now() - lastCheckedAt >= 24 * 60 * 60 * 1000;
+    if (releaseIsStale) void checkLatestRelease().catch(() => undefined);
+  }
+});
+
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   await loadSettings();
   if (alarm.name === 'tracking_poll') await pollTracking();
+  if (alarm.name === RELEASE_CHECK_ALARM && settings.automaticUpdateChecks) {
+    await checkLatestRelease().catch(() => undefined);
+  }
   if (alarm.name === 'reminder_tick') {
     const due = await db.reminders.where('status').equals('pending').toArray();
     const now = Date.now();
@@ -1341,6 +1368,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Extension pages are trusted and edit secrets; anything else gets the public view.
         // (The options page opens in a tab, so `sender.tab` alone cannot tell them apart.)
         sendResponse({ settings: isExtensionPageSender(sender) ? settings : await contentSettings() });
+        break;
+      case 'GET_UPDATE_STATUS':
+        sendResponse({ updateStatus: await readReleaseUpdateStatus() });
+        break;
+      case 'CHECK_FOR_UPDATES':
+        sendResponse({ updateStatus: await checkLatestRelease() });
         break;
       case 'SAVE_SETTINGS':
         sendResponse({ settings: await saveSettings(msg.settings as Partial<ExtensionSettings>) });

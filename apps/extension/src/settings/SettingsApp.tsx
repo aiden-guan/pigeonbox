@@ -7,6 +7,7 @@ import { ProfileFields } from '../setup/ProfileFields';
 import { RunModePanel } from '../setup/RunModePanel';
 import { Orb } from '../ui/Orb';
 import { useProductState } from '../ui/product-state';
+import { RELEASE_CHECK_PERMISSION, type ReleaseUpdateStatus } from '../background/release-updates';
 
 const CATEGORIES: ThreadCategory[] = ['RESPOND', 'WAITING', 'FYI', 'NOTIFICATIONS', 'PROMOTIONS', 'NEWS'];
 
@@ -18,8 +19,77 @@ export function SettingsApp() {
   const [diag, setDiag] = useState<Record<string, unknown> | null>(null);
   const [rules, setRules] = useState('');
   const [trackerHealth, setTrackerHealth] = useState<TrackerHealthStatus | null>(null);
+  const [releaseStatus, setReleaseStatus] = useState<ReleaseUpdateStatus | null>(null);
+  const [checkingRelease, setCheckingRelease] = useState(false);
+  const [releaseNotice, setReleaseNotice] = useState<string | null>(null);
   const product = useProductState();
   const cloudMode = product.state.runMode === 'cloud';
+
+  const checkForUpdates = useCallback(async (permissionAlreadyGranted = false) => {
+    setCheckingRelease(true);
+    setReleaseNotice(null);
+    try {
+      const granted = permissionAlreadyGranted || await new Promise<boolean>((resolve) => {
+        if (typeof chrome === 'undefined' || !chrome.permissions?.request) {
+          resolve(false);
+          return;
+        }
+        chrome.permissions.request({ origins: [RELEASE_CHECK_PERMISSION] }, resolve);
+      });
+      if (!granted) {
+        setReleaseNotice('GitHub access was not granted, so PigeonBox did not check for updates.');
+        return;
+      }
+
+      const response = await new Promise<{ updateStatus?: ReleaseUpdateStatus } | undefined>((resolve) => {
+        chrome.runtime.sendMessage({ type: 'CHECK_FOR_UPDATES' }, (result) => resolve(result));
+      });
+      if (!response?.updateStatus) {
+        setReleaseNotice('The update check could not be completed. Try again.');
+        return;
+      }
+      setReleaseStatus(response.updateStatus);
+    } catch {
+      setReleaseNotice('The update check could not be completed. Try again.');
+    } finally {
+      setCheckingRelease(false);
+    }
+  }, []);
+
+  const setAutomaticUpdateChecks = useCallback(async (enabled: boolean) => {
+    if (enabled) {
+      const granted = await new Promise<boolean>((resolve) => {
+        if (typeof chrome === 'undefined' || !chrome.permissions?.request) {
+          resolve(false);
+          return;
+        }
+        chrome.permissions.request({ origins: [RELEASE_CHECK_PERMISSION] }, resolve);
+      });
+      if (!granted) {
+        setReleaseNotice('GitHub access was not granted. Automatic update checks remain off.');
+        return;
+      }
+    }
+
+    const response = await new Promise<{ settings?: ExtensionSettings } | undefined>((resolve) => {
+      chrome.runtime.sendMessage(
+        { type: 'SAVE_SETTINGS', settings: { automaticUpdateChecks: enabled } },
+        (result) => resolve(result),
+      );
+    });
+    if (!response?.settings) {
+      setReleaseNotice('The update preference could not be saved. Try again.');
+      return;
+    }
+    setSettings(response.settings);
+    setSaved(true);
+    setReleaseNotice(null);
+    if (enabled) {
+      await checkForUpdates(true);
+    } else if (chrome.permissions?.remove) {
+      chrome.permissions.remove({ origins: [RELEASE_CHECK_PERMISSION] });
+    }
+  }, [checkForUpdates]);
 
   const checkTracker = useCallback((current: ExtensionSettings) => {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
@@ -38,6 +108,15 @@ export function SettingsApp() {
 
   useEffect(() => {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
+    chrome.runtime.sendMessage({ type: 'GET_UPDATE_STATUS' }, (res?: { updateStatus?: ReleaseUpdateStatus | null }) => {
+      if (res?.updateStatus) setReleaseStatus(res.updateStatus);
+    });
+    const updateListener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName === 'local' && changes.pigeonboxReleaseUpdateStatus?.newValue) {
+        setReleaseStatus(changes.pigeonboxReleaseUpdateStatus.newValue as ReleaseUpdateStatus);
+      }
+    };
+    chrome.storage?.onChanged?.addListener(updateListener);
     chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, async (res?: { settings?: ExtensionSettings }) => {
       if (res?.settings) {
         let next = { ...DEFAULT_SETTINGS, ...res.settings };
@@ -66,6 +145,7 @@ export function SettingsApp() {
         checkTracker(next);
       }
     });
+    return () => chrome.storage?.onChanged?.removeListener(updateListener);
   }, [checkTracker]);
 
   function update<K extends keyof ExtensionSettings>(key: K, value: ExtensionSettings[K]) {
@@ -131,6 +211,43 @@ export function SettingsApp() {
         <Toggle label="AI Inbox" checked={(cloudMode || settings.aiMode !== 'disabled') && settings.autoClassify} onChange={(on) => update('autoClassify', on)} />
         <Toggle label="Email tracking" checked={settings.trackingEnabled} onChange={(on) => update('trackingEnabled', on)} />
         <Toggle label="Desktop alerts" checked={settings.desktopNotifications} onChange={(on) => update('desktopNotifications', on)} />
+      </Section>
+
+      <Section title="Updates">
+        <p className="gi-muted text-xs">
+          Update checks work in Local and Cloud. The request sends no email or settings data to GitHub; GitHub can see your IP address.
+        </p>
+        <Toggle
+          label="Check GitHub automatically (once a day)"
+          checked={settings.automaticUpdateChecks}
+          onChange={(on) => void setAutomaticUpdateChecks(on)}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="gi-btn gi-btn-ghost"
+            disabled={checkingRelease}
+            onClick={() => void checkForUpdates()}
+          >
+            {checkingRelease ? 'Checking…' : 'Check for updates'}
+          </button>
+          {releaseStatus?.state === 'available' && releaseStatus.downloadUrl ? (
+            <a className="gi-btn" href={releaseStatus.downloadUrl} target="_blank" rel="noreferrer">
+              Download v{releaseStatus.latestVersion}
+            </a>
+          ) : null}
+        </div>
+        <p className="gi-muted text-xs" role="status" aria-live="polite">
+          {releaseNotice || describeReleaseStatus(releaseStatus)}
+        </p>
+        {releaseStatus?.releaseUrl ? (
+          <a className="gi-text-btn text-xs" href={releaseStatus.releaseUrl} target="_blank" rel="noreferrer">
+            View release notes ↗
+          </a>
+        ) : null}
+        <p className="gi-muted text-xs">
+          The release ZIP downloads in one click. To apply it, unzip the release and reload PigeonBox on <code>chrome://extensions</code>. Chrome does not let a locally installed extension install itself.
+        </p>
       </Section>
 
       <Section title="Agent">
@@ -287,6 +404,17 @@ export function SettingsApp() {
       </div>
     </div>
   );
+}
+
+function describeReleaseStatus(status: ReleaseUpdateStatus | null): string {
+  if (!status) return 'No update check has run.';
+  if (status.state === 'current') {
+    return `PigeonBox v${status.currentVersion} is up to date. Latest release: v${status.latestVersion}.`;
+  }
+  if (status.state === 'available') {
+    return `PigeonBox v${status.latestVersion} is available. Installed version: v${status.currentVersion}.`;
+  }
+  return status.message || 'Could not check for updates.';
 }
 
 function Section(props: { title: string; children: ReactNode; id?: string }) {
