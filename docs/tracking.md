@@ -2,6 +2,8 @@
 
 Tracking is optional and independent of AI. It never sees mailbox bodies.
 
+For recipient opens from another device, use a public HTTPS tracker you own, such as Convex or Cloudflare Worker + Supabase. `npm run tracker` listens on this computer only and is for local development.
+
 ## How it works
 
 1. In a Gmail compose window, the content script asks the service worker to create a tracked email. The worker calls the tracker's `POST /api/emails` and gets a random `trk_…` ID, a pixel URL and rewritten link URLs.
@@ -24,7 +26,7 @@ The logic lives in `packages/tracking/src/lifecycle.ts` (client), `workers/track
 
 | Backend | Where | Auth |
 |---|---|---|
-| `npm run tracker` | This computer, memory | Personal token |
+| `npm run tracker` | This computer, memory by default | Personal token |
 | Cloudflare Worker + Supabase | Your accounts | Personal token |
 | Convex | Your Convex deployment | Personal token |
 | PigeonBox Cloud tracker | PigeonBox | Cloud access token; records scoped to your account |

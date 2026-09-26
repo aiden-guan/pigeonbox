@@ -121,22 +121,22 @@ if (!existsSync(devVarsPath)) {
 const devVars = parseEnv(readFileSync(devVarsPath, 'utf8'));
 const token = devVars.PERSONAL_API_TOKEN || env.PERSONAL_API_TOKEN;
 if (!token) fail('No PERSONAL_API_TOKEN in .env or workers/tracker/.dev.vars');
-const usingSupabase =
-  isReal(devVars.SUPABASE_URL, ['YOUR_PROJECT']) &&
-  isReal(devVars.SUPABASE_SERVICE_ROLE_KEY, ['your-service-role-key']);
-
 const localDir = join(root, '.local');
 mkdirSync(localDir, { recursive: true });
 const trackerCard = [
-  'Tracker (optional)',
+  'PigeonBox email tracking setup',
   '',
-  'Start:   npm run tracker',
-  'URL:     http://127.0.0.1:8787',
-  `Token:   ${token}`,
-  `Store:   ${usingSupabase ? 'Supabase (kept after you stop the tracker)' : 'memory (cleared when you stop the tracker)'}`,
+  'For recipient opens, deploy a public tracker you own:',
+  '  Convex:                 docs/convex-self-hosting.md',
+  '  Cloudflare Worker + DB: docs/self-hosting.md',
   '',
-  'Extension → Settings → Tracking → paste the URL and token → Save settings.',
-  'Skip this if you only want inbox categories, summaries, and Ask Inbox.',
+  'Personal API token for your deployment:',
+  `  ${token}`,
+  '',
+  'After deployment, enter its public URL and this token in Settings → Email tracking.',
+  '',
+  'Local development only: npm run tracker at 127.0.0.1:8787 (memory storage by default).',
+  'External mail clients cannot reach your computer at this local address.',
   '',
 ].join('\n');
 writeFileSync(join(localDir, 'tracker.txt'), trackerCard);
@@ -174,8 +174,8 @@ Categories work with AI off.
 
 Develop:   npm run dev   (then Reload on chrome://extensions)
 Check:     npm run verify
-Tracking:  npm run tracker, then paste .local/tracker.txt into Settings → Email tracking
-           ${usingSupabase ? 'This machine stores tracking events in Supabase.' : 'Events stay in memory until you stop it. No account needed.'}
+Tracking:  deploy Convex or Cloudflare Worker + Supabase to receive recipient opens; see docs/self-hosting.md
+           Local development only: npm run tracker at 127.0.0.1:8787 (memory by default)
 `);
 
 if (openAfter) {

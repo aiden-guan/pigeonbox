@@ -102,11 +102,14 @@ export function OnboardingApp() {
           {step === 3 ? (
             <>
               <h1 className="gi-display">Email tracking</h1>
-              <p className="gi-muted mt-3 text-[14px] leading-relaxed">Tracking requires a public tracking endpoint.</p>
+              <p className="gi-muted mt-3 text-[14px] leading-relaxed">Tracking is separate from local AI. To count recipient opens, use a public tracker you own: Convex or Cloudflare Worker + Supabase. A tracker on your computer only works for local testing.</p>
               <div className="mt-6 flex flex-col gap-2">
-                <Choice title="Configure now" detail="Open Settings and paste your tracker URL." onClick={() => chrome.runtime.openOptionsPage()} />
+                <Choice title="Configure now" detail="First deploy a tracker, then enter its URL and token in Settings." onClick={() => chrome.runtime.openOptionsPage()} />
                 <Choice title="Skip for now" detail="You can turn tracking on after setup." onClick={() => setStep(4)} />
               </div>
+              <p className="gi-muted mt-4 text-xs leading-relaxed">
+                Setup guides: <a className="underline" href="https://github.com/aiden-guan/pigeonbox/blob/main/docs/convex-self-hosting.md" target="_blank" rel="noreferrer">Convex</a> · <a className="underline" href="https://github.com/aiden-guan/pigeonbox/blob/main/docs/self-hosting.md" target="_blank" rel="noreferrer">Cloudflare Worker + Supabase</a>
+              </p>
             </>
           ) : null}
           {step === 4 ? (

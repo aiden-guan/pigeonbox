@@ -1,15 +1,15 @@
 # Self-hosting
 
-PigeonBox Local runs entirely in your browser. The only server component you might want is an **open/click tracker**, because a tracking pixel must be fetched from a public URL. All of this is optional.
+PigeonBox's inbox features and local AI run in your browser. Open/click tracking is optional and uses a separate service. To count a recipient open, the tracking pixel in the email must point to a public HTTPS endpoint that their mail client can reach. A `127.0.0.1` tracker is reachable only from the computer running it.
 
 | Option | Persistence | Accounts needed | Guide |
 |---|---|---|---|
-| `npm run tracker` on this computer | Memory (lost on stop); only reachable from this machine | None | [local-setup.md](local-setup.md) |
-| Cloudflare Worker + Supabase | Postgres | Cloudflare, Supabase | Below |
-| Cloudflare Worker, no Supabase | Memory per Worker isolate (not durable) | Cloudflare | Testing only |
-| Convex | Convex database | Convex | [convex-self-hosting.md](convex-self-hosting.md) |
+| **Convex** | Convex database | Convex | [convex-self-hosting.md](convex-self-hosting.md) |
+| **Cloudflare Worker + Supabase** | Supabase Postgres | Cloudflare, Supabase | Below |
+| Cloudflare Worker without Supabase | Memory per Worker isolate (not durable) | Cloudflare | Testing only |
+| `npm run tracker` on this computer | Memory by default; only reachable from this machine | None | [local-setup.md](local-setup.md) — development only |
 
-A tracker on `127.0.0.1` only records opens from your own machine. To see real recipient opens, deploy a public tracker.
+Supabase is the durable database for the Cloudflare Worker option; it does not provide the public tracking HTTP endpoint by itself. Choose Convex for a single-provider setup, or Cloudflare Worker + Supabase for a separate endpoint and database.
 
 Every self-hosted tracker is **single-owner**: one `PERSONAL_API_TOKEN` protects its management API. Pixel (`/open/:id`) and click (`/c/:id`) routes are public by design. Tracking IDs are random and carry no mailbox data.
 

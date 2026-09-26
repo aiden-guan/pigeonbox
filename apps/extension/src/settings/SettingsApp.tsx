@@ -279,7 +279,7 @@ export function SettingsApp() {
           </p>
         ) : (
           <p className="gi-muted text-xs">
-            Tracking is optional and self-hosted: run <code>npm run tracker</code>, deploy the Cloudflare Worker, or use your own Convex deployment.
+            For recipient opens, use a public tracker you own: Convex or Cloudflare Worker + Supabase. <code>npm run tracker</code> is for local development and cannot receive opens from other devices.
           </p>
         )}
         <Field label="Tracker base URL">
@@ -342,7 +342,7 @@ export function SettingsApp() {
             />
           </Field>
           <p className="gi-muted text-xs">
-            Self-hosting guides for the tracker and the optional Convex backend are in the PigeonBox repository under docs/.
+            Self-hosting guides for Convex and Cloudflare Worker + Supabase are in the PigeonBox repository under docs/.
           </p>
           <Field label="AI endpoint">
             <input className="gi-field" value={settings.aiEndpoint} onChange={(event) => update('aiEndpoint', event.target.value)} />

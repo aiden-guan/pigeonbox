@@ -39,17 +39,17 @@ https://github.com/user-attachments/assets/5a610f7c-1518-43c0-ad18-5039eca24e1d
 
 ## 📦 Install
 
-PigeonBox Local is free, needs no account or API key, and takes about five minutes. Pick one:
+PigeonBox's on-device inbox and AI features are free, need no PigeonBox account or API key, and take about five minutes to install. Email tracking is optional; recipient opens require a public tracker you own, which may require a Convex account or Cloudflare and Supabase accounts. Pick one install path:
 
 ### Option A — Let your AI agent install it
 
 Paste this into Claude Code, Codex, Cursor, or any coding agent with terminal access:
 
 ```text
-Install PigeonBox Local for me by following https://raw.githubusercontent.com/aiden-guan/pigeonbox/main/INSTALL.md
+Install PigeonBox for me by following https://raw.githubusercontent.com/aiden-guan/pigeonbox/main/INSTALL.md
 ```
 
-The agent checks prerequisites, clones and builds the extension, then walks you through the one step Chrome requires you to do yourself (clicking **Load unpacked**). The instructions it follows are in [INSTALL.md](INSTALL.md).
+The agent checks prerequisites, clones and builds the extension, offers to guide you through setting up your own public tracker, then walks you through the one step Chrome requires you to do yourself (clicking **Load unpacked**). The instructions it follows are in [INSTALL.md](INSTALL.md).
 
 ### Option B — One command
 
@@ -73,6 +73,8 @@ No Node needed: grab `PigeonBox-vX.Y.Z.zip` from the [latest release](https://gi
 
 More detail: [docs/local-setup.md](docs/local-setup.md).
 
+**Tracking is separate from local AI.** To count opens when a recipient opens your email on another device, use a public tracker you own: Convex or Cloudflare Worker + Supabase. The localhost tracker is only for development on your computer. See [self-hosting options](docs/self-hosting.md).
+
 ### Updates
 
 Open **Settings → Updates** to check the latest GitHub release or opt in to a daily check. Automatic checks are off by default. The request sends no email or settings data to GitHub; GitHub can see your IP address. If a release is available, **Download** saves the ZIP. Unzip it and reload or load the extracted folder from `chrome://extensions` to apply it.
@@ -93,16 +95,16 @@ PigeonBox provides two execution environments within a single extension package,
 
 | Feature / Dimension | On This Computer (Local) | PigeonBox Cloud |
 | :--- | :--- | :--- |
-| **Account Requirement** | None (100% anonymous) | PigeonBox account (OAuth + PKCE) |
+| **Account Requirement** | No PigeonBox account; a tracker provider account is needed only if you enable tracking | PigeonBox account (OAuth + PKCE) |
 | **Pricing** | Free, open-source (MIT) | Hosted subscription |
 | **Inference Engine** | WebGPU (Transformers.js), Gemini Nano, Ollama, or BYOK | Hosted cloud inference cluster |
 | **Email Content Boundary** | Remains on this machine (or configured local model) | Processed in-memory over TLS; never stored or logged |
 | **Search & Mailbox Index** | Local IndexedDB (`gi_mailbox_v1`) | Local IndexedDB (`gi_mailbox_v1`) |
-| **Open & Click Tracking** | Optional self-hosted (in-memory, Cloudflare, Convex) | Hosted managed tracker |
+| **Open & Click Tracking** | Optional self-hosted public tracker (Convex or Cloudflare Worker + Supabase) | Hosted managed tracker |
 | **Network Resilience** | Fully functional offline | Requires connectivity; switch to Local at any time |
 | **Fallback Guarantee** | Deterministic local evaluation | **Zero silent fallback** (never leaks payloads to third parties) |
 
-Local mode is a complete, self-contained product. Cloud mode provides managed convenience without sacrificing data boundaries. If Cloud connectivity is interrupted, PigeonBox surfaces an explicit error rather than silently rerouting mail to third-party endpoints.
+On-device mode provides inbox intelligence without a cloud service; tracking runs separately. Cloud mode provides managed convenience without sacrificing data boundaries. If Cloud connectivity is interrupted, PigeonBox surfaces an explicit error rather than silently rerouting mail to third-party endpoints.
 
 ---
 
@@ -259,13 +261,13 @@ npm run verify
 
 ## Self-Hosting
 
-PigeonBox email tracking is optional and completely self-hostable. Mail triage, summarization, drafting, and search do not require a tracking server.
+PigeonBox email tracking is optional and completely self-hostable. Mail triage, summarization, drafting, and search do not require a tracking server. For opens from another person's mail client, the tracker needs a public HTTPS URL; `127.0.0.1` only works on the computer running it.
 
 | Option | Command / Reference | Use Case |
 | :--- | :--- | :--- |
-| **Local In-Memory Tracker** | `npm run tracker` | Local testing on `http://127.0.0.1:8787`. Resets when stopped. |
-| **Cloudflare Worker + Supabase** | [docs/self-hosting.md](docs/self-hosting.md) | Production serverless tracker running on Cloudflare Workers. |
-| **Convex Tracker** | [docs/convex-self-hosting.md](docs/convex-self-hosting.md) | Zero-maintenance backend running on Convex. |
+| **Convex** | [docs/convex-self-hosting.md](docs/convex-self-hosting.md) | Public endpoint with durable storage in one provider. |
+| **Cloudflare Worker + Supabase** | [docs/self-hosting.md](docs/self-hosting.md) | Public Cloudflare endpoint with durable Postgres storage. Supabase alone is not the HTTP tracker. |
+| **Local tracker** | `npm run tracker` | Development only. Reachable from this computer; uses memory by default. |
 
 Configure tracking endpoints in the extension under **Settings → Email Tracking**.
 

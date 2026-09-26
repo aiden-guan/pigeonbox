@@ -1,6 +1,6 @@
 # Local setup
 
-PigeonBox Local needs only Node.js 20+ and Chrome (or Edge/Brave) 116+. It does **not** need a PigeonBox account, PigeonBox Cloud, Supabase, Stripe, Convex, a Cloudflare account, Docker, or an AI key.
+PigeonBox's on-device AI and inbox features need only Node.js 20+ and Chrome (or Edge/Brave) 116+. They do **not** need a PigeonBox account, PigeonBox Cloud, Supabase, Stripe, Convex, a Cloudflare account, Docker, or an AI key. Email tracking is separate and optional; tracking recipient opens requires a public tracker deployment.
 
 ## First run
 
@@ -15,7 +15,7 @@ npm run setup -- --open
 1. checks your Node.js version,
 2. runs `npm ci` if dependencies are missing,
 3. creates a gitignored `.env` from `.env.example` with a generated tracker token, and `workers/tracker/.dev.vars`,
-4. writes `.local/tracker.txt` (tracker URL and token to paste into Settings),
+4. writes `.local/tracker.txt` (tracker setup notes and a generated personal API token),
 5. builds everything and checks the built `manifest.json`,
 6. with `--open`, opens the build folder and `chrome://extensions`.
 
@@ -30,7 +30,7 @@ If you use several Chrome profiles, create a gitignored `.local/chrome.json` so 
 1. `chrome://extensions` → turn on **Developer mode**.
 2. **Load unpacked** → `apps/extension/dist` (the folder with `manifest.json`).
 3. Pin **PigeonBox** and open Gmail.
-4. The onboarding page asks how PigeonBox should run. Choose **On this computer**.
+4. The onboarding page asks how PigeonBox should run. Choose **On this computer** for local AI. This choice is separate from email tracking.
 
 ## Choose AI (Local)
 
@@ -55,13 +55,19 @@ npm run verify       # everything CI runs, including the release ZIP check
 
 `npm run dev` never starts Convex, a tracker, or any Cloud service.
 
-## Optional: tracking on this computer
+## Optional: recipient open and click tracking
+
+To record opens when a recipient's mail client loads the tracking pixel, connect a public HTTPS tracker that you own. Choose [Convex](convex-self-hosting.md) or [Cloudflare Worker + Supabase](self-hosting.md). The setup agent can guide you through either deployment.
+
+In **Settings → Email tracking**, enter the deployed tracker URL and your personal API token, save, and confirm the status says **Tracker healthy**. Tracking events are metadata; message bodies are not sent to the tracker.
+
+## Local tracker development
 
 ```bash
 npm run tracker
 ```
 
-Paste the URL and token from `.local/tracker.txt` into **Settings → Email tracking**, then **Save** (Chrome asks to allow `127.0.0.1:8787`). Events are kept in memory until you stop the tracker. See [tracking.md](tracking.md) and [tracking-debug.md](tracking-debug.md).
+This starts a server at `http://127.0.0.1:8787` (memory storage by default). A recipient's device cannot reach your computer's `127.0.0.1`, so use it only to test the tracker locally, not for recipient opens. See [tracking.md](tracking.md) and [tracking-debug.md](tracking-debug.md).
 
 ## Optional: developing against PigeonBox Cloud
 
