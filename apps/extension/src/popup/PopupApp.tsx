@@ -1,6 +1,7 @@
 import { Brand, Pigeon } from '../ui/Pigeon';
 import { useEffect, useState } from 'react';
-import { requestExtensionReload } from '../reload-extension';
+import { DEV_REBUILD_URL } from '../config';
+import { RebuildFailedError, requestExtensionReload } from '../reload-extension';
 import { Orb } from '../ui/Orb';
 import { useProductState } from '../ui/product-state';
 
@@ -13,6 +14,7 @@ type Diagnostics = {
 export function PopupApp() {
   const [diag, setDiag] = useState<Diagnostics | null>(null);
   const [reloading, setReloading] = useState(false);
+  const [reloadError, setReloadError] = useState<string | null>(null);
   const product = useProductState();
   const cloudMode = product.state.runMode === 'cloud';
   const cloudReady = product.state.cloud.status === 'ready';
@@ -72,11 +74,16 @@ export function PopupApp() {
               disabled={reloading}
               onClick={() => {
                 setReloading(true);
-                void requestExtensionReload(chrome).catch(() => setReloading(false));
+                setReloadError(null);
+                void requestExtensionReload(chrome, { devRebuildUrl: DEV_REBUILD_URL }).catch((error) => {
+                  setReloading(false);
+                  if (error instanceof RebuildFailedError) setReloadError('Build failed. See the dev:reload terminal.');
+                });
               }}
             >
-              {reloading ? <><Orb size={14} tone="bare" />Reloading…</> : 'Reload extension'}
+              {reloading ? <><Orb size={14} tone="bare" />{DEV_REBUILD_URL ? 'Rebuilding…' : 'Reloading…'}</> : 'Reload extension'}
             </button>
+            {reloadError ? <p className="gi-hint" role="alert">{reloadError}</p> : null}
           </div>
           <p className="gi-hint"><kbd>⌘ K</kbd> Quick commands in Gmail</p>
         </div>

@@ -74,6 +74,9 @@ const release = process.env.PIGEONBOX_RELEASE === '1';
 /** Release builds go to their own folder so the unpacked dev build in dist/ is left alone. */
 const outDir = process.env.PIGEONBOX_OUT_DIR || (release ? 'dist-release' : 'dist');
 if (release) process.env.VITE_PIGEONBOX_EXPERIMENTAL = 'false';
+/** Source builds call the local `npm run dev:reload` helper; release builds never do. */
+if (release) process.env.VITE_PIGEONBOX_DEV_REBUILD_URL = '';
+else process.env.VITE_PIGEONBOX_DEV_REBUILD_URL ??= 'http://127.0.0.1:5199';
 
 /** Files that must never ship even if they sit in public/ on a developer machine. */
 const RELEASE_EXCLUDED = ['tracker-config.json'];

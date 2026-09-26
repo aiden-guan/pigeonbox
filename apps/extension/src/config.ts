@@ -10,6 +10,12 @@ export const BUILD_CLOUD_TRACKER_URL = normalizeBaseUrl(import.meta.env.VITE_PIG
  */
 export const EXPERIMENTAL_FEATURES = import.meta.env.VITE_PIGEONBOX_EXPERIMENTAL !== 'false';
 
+/**
+ * Local `npm run dev:reload` helper that rebuilds dist/ before the popup's
+ * "Reload extension" restarts the extension. Blank in release builds.
+ */
+export const DEV_REBUILD_URL = import.meta.env.VITE_PIGEONBOX_DEV_REBUILD_URL ?? '';
+
 /** The Cloud API this install talks to: a developer override, else the build's URL. */
 export function cloudApiUrl(settings: { cloudApiUrl: string }): string | null {
   return normalizeBaseUrl(settings.cloudApiUrl || '') ?? (BUILD_CLOUD_API_URL || null);

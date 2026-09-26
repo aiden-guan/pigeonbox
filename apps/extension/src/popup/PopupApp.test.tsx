@@ -7,6 +7,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GMAIL_RELOAD_AFTER_RESTART_KEY } from '../reload-extension';
 import { PopupApp } from './PopupApp';
 
+vi.mock('../config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../config')>()),
+  DEV_REBUILD_URL: '',
+}));
+
 describe('extension menu reload', () => {
   let root: Root | null = null;
 

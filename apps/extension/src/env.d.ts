@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_PIGEONBOX_CLOUD_TRACKER_URL?: string;
   /** "false" hides experimental features (ChatGPT web sign-in). Release builds set it. */
   readonly VITE_PIGEONBOX_EXPERIMENTAL?: string;
+  /** Local dev-reload helper origin. Source builds default it; release builds leave it blank. */
+  readonly VITE_PIGEONBOX_DEV_REBUILD_URL?: string;
 }
 
 interface ImportMeta {
