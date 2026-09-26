@@ -5,6 +5,7 @@ import { cloudApiUrl, cloudTrackerUrl } from '../config';
 import { CloudSessionManager } from './cloud-session';
 
 const STATE_KEY = 'cloudState';
+type StoredCloudState = { apiBaseUrl: string; userId: string | null; state: CloudState };
 
 function extensionVersion(): string {
   try {
@@ -29,9 +30,16 @@ export function getCloudClient(settings: ExtensionSettings): PigeonBoxCloudClien
 }
 
 export async function readCloudState(settings: ExtensionSettings): Promise<CloudState> {
-  if (!cloudApiUrl(settings)) return { ...SIGNED_OUT_CLOUD, status: 'not_configured' };
-  const stored = (await chrome.storage.session.get(STATE_KEY))[STATE_KEY] as CloudState | undefined;
-  return stored ?? (await refreshCloudState(settings));
+  const base = cloudApiUrl(settings);
+  if (!base) return { ...SIGNED_OUT_CLOUD, status: 'not_configured' };
+  const user = await cloudSession.currentUser(base);
+  const stored = (await chrome.storage.session.get(STATE_KEY))[STATE_KEY] as StoredCloudState | undefined;
+  if (
+    stored?.apiBaseUrl === base &&
+    stored.userId === (user?.id ?? null) &&
+    (user || stored.state?.status === 'signed_out')
+  ) return stored.state;
+  return refreshCloudState(settings);
 }
 
 /**
@@ -65,7 +73,7 @@ export async function refreshCloudState(settings: ExtensionSettings): Promise<Cl
       };
     }
   }
-  await chrome.storage.session.set({ [STATE_KEY]: state });
+  await chrome.storage.session.set({ [STATE_KEY]: { apiBaseUrl: base, userId: user?.id ?? null, state } satisfies StoredCloudState });
   return state;
 }
 

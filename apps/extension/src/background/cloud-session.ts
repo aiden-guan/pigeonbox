@@ -102,7 +102,10 @@ export class CloudSessionManager {
     const responseUrl = await this.deps.launchAuthFlow(client.authorizeUrl({ redirectUri, codeChallenge: challenge, state }));
     if (!responseUrl) throw new CloudApiError({ code: 'signed_out', message: 'Sign-in was cancelled.' });
     const returned = new URL(responseUrl);
-    if (!responseUrl.startsWith(redirectUri)) throw new CloudApiError({ code: 'invalid_response', message: 'Sign-in returned to an unexpected address.' });
+    const expected = new URL(redirectUri);
+    if (returned.origin !== expected.origin || returned.pathname !== expected.pathname) {
+      throw new CloudApiError({ code: 'invalid_response', message: 'Sign-in returned to an unexpected address.' });
+    }
     if (returned.searchParams.get('state') !== state) throw new CloudApiError({ code: 'invalid_response', message: 'Sign-in could not be verified. Try again.' });
     const authError = returned.searchParams.get('error_description') || returned.searchParams.get('error');
     if (authError) throw new CloudApiError({ code: 'unauthenticated', message: `Sign-in failed: ${authError.slice(0, 200)}` });
