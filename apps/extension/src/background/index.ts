@@ -716,9 +716,12 @@ async function pollTracking(): Promise<void> {
     );
   }
   let events: Awaited<ReturnType<TrackingClient['getRecentEvents']>> = [];
+  let hasNotifiedBaseline = true;
+  let eventsLoaded = false;
   try {
-    await loadNotifiedEvents();
+    hasNotifiedBaseline = await loadNotifiedEvents();
     events = await client.getRecentEvents();
+    eventsLoaded = true;
     if (!sawRemote && events.length) {
       for (const email of applyRecentOpens([...byId.values()], events)) byId.set(email.trackingId, email);
     }
@@ -746,6 +749,14 @@ async function pollTracking(): Promise<void> {
   }
   if (sawRemote || local.length) await writeTrackedEmails([...byId.values()]);
   try {
+    if (!hasNotifiedBaseline) {
+      // First poll without a baseline: treat existing events as already seen
+      // instead of flooding the user with notifications for old opens.
+      if (!eventsLoaded) return;
+      for (const ev of events) notifiedEventIds.add(ev.id);
+      await saveNotifiedEvents();
+      return;
+    }
     const fresh = [...byId.values()];
     for (const ev of events) {
       if (!isNotifiableTrackingEvent(ev)) continue;
@@ -771,20 +782,28 @@ async function pollTracking(): Promise<void> {
   }
 }
 
-async function loadNotifiedEvents(): Promise<void> {
-  const stored = await chrome.storage.session.get('notifiedEventIds');
+// Persisted in storage.local (not session) so reloading the extension or
+// restarting Chrome does not re-notify for events already seen. Returns false
+// when there is no stored baseline yet, e.g. on first run.
+async function loadNotifiedEvents(): Promise<boolean> {
+  const stored = await chrome.storage.local.get('notifiedEventIds');
   const ids = stored.notifiedEventIds;
-  if (!Array.isArray(ids)) return;
+  if (!Array.isArray(ids)) return false;
   for (const id of ids) {
     if (typeof id === 'string') notifiedEventIds.add(id);
   }
+  return true;
+}
+
+async function saveNotifiedEvents(): Promise<void> {
+  const ids = [...notifiedEventIds].slice(-500);
+  await chrome.storage.local.set({ notifiedEventIds: ids });
 }
 
 async function markEventNotified(id: string): Promise<boolean> {
   if (notifiedEventIds.has(id)) return false;
   notifiedEventIds.add(id);
-  const ids = [...notifiedEventIds].slice(-200);
-  await chrome.storage.session.set({ notifiedEventIds: ids });
+  await saveNotifiedEvents();
   return true;
 }
 
