@@ -1,9 +1,6 @@
 # PigeonBox
 
-<p align="center">
-  <a href="assets/pigeonbox-launch.mp4"><img src="assets/launch-film-poster.jpg" width="100%" alt="Watch the PigeonBox launch film"></a><br>
-  <sub>▶ <a href="assets/pigeonbox-launch.mp4">Watch the launch film</a> (1:50)</sub>
-</p>
+https://github.com/user-attachments/assets/5a610f7c-1518-43c0-ad18-5039eca24e1d
 
 <p align="center">
   <strong>Private, local-first email intelligence for Gmail.</strong><br>
