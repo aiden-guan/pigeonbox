@@ -6,12 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
-## [Unreleased]
-
-### Added
-- **Extension updates**: Added opt-in GitHub release checks for Local and Cloud mode, with a one-click download for the latest stable release ZIP.
-
-## [0.2.0] — 2026-09-25
+## [0.2.0] — 2026-09-26
 
 ### Summary
 PigeonBox becomes one unified extension with two execution environments: **Local** (on this computer, 100% anonymous, no account required) and **PigeonBox Cloud** (hosted, subscription). Local remains a complete product with zero silent fallbacks, reinforced security boundaries, and automated monorepo release verification.
@@ -29,6 +24,7 @@ PigeonBox becomes one unified extension with two execution environments: **Local
 ### Detailed Changes
 
 #### Added
+- **Extension updates**: Added opt-in GitHub release checks for Local and Cloud mode (Settings → Updates), with a one-click download for the latest stable release ZIP. Checks are off by default and use an optional `api.github.com` permission.
 - **`@pigeonbox/api-contract`**: Added typed PigeonBox Cloud protocol (Zod schemas, route table, error codes, protocol versioning, capabilities), with a compile-time guard against drift from the local `AIProvider` types.
 - **`@pigeonbox/cloud-client`**: Added Cloud HTTP client, PKCE helpers, and a Cloud-backed `AIProvider`.
 - **`@pigeonbox/core`**: Added run mode (`local` | `cloud`) and a capability layer; UI checks capabilities instead of modes or plans.
