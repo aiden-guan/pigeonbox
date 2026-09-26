@@ -31,6 +31,11 @@ for i, tl in enumerate(tiles):
     sheet.paste(tl.convert('RGB'), ((i % 2) * 480, (i // 2) * 270))
 sheet.resize((1920, 1620), Image.NEAREST).save(out)
 f = Image.new('RGB', (640, 180))
-f.paste(Image.open(os.path.join(A, 's3_facade.png')).convert('RGB'), (0, 0))
+s3 = Image.open(os.path.join(A, 's3_facade.png')).convert('RGBA')
+snd = M['s3_sender']
+s3.alpha_composite(Image.open(os.path.join(A, 's3_sender.png')).crop((0, 0, snd['cw'], snd['ch'])), tuple(snd['at']))
+for layer in ('s3_front', 's3_mug'):
+    s3.alpha_composite(Image.open(os.path.join(A, f'{layer}.png')), tuple(snd['at']))
+f.paste(s3.convert('RGB'), (0, 0))
 f.paste(Image.open(os.path.join(A, 'r1_facade.png')).convert('RGB'), (320, 0))
 f.resize((1920, 540), Image.NEAREST).save(out.replace('.png', '_facades.png'))

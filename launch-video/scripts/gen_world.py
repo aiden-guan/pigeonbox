@@ -651,6 +651,20 @@ def shot_sender_room():
     save(person, 's1_person.png')
 
 
+STREAK = (255, 255, 255, 14)
+
+
+def glass_streaks(W0, H0, wx0, wy0, wy1):
+    """The diagonal reflection band on the facade windows, one mask per streak line."""
+    return [Mask(W0, H0).line([(wx0 + 20 + i, wy0), (wx0 - 10 + i, wy1)], 1).arr() & (np.arange(W0)[None, :] >= wx0) for i in range(40)]
+
+
+def glaze(cv: Canvas, masks):
+    """Lay the same glass streaks over a sprite's opaque pixels, so it sits behind the glass."""
+    for m in masks:
+        cv.fill(m & cv.alpha_mask(), STREAK)
+
+
 def facade_window_scene(prefix: str, face: str, interior_cb, seed: int):
     """Exterior close-up at scale 6 (320x180): brick facade, window, stone ledge."""
     W0, H0 = 320, 180
@@ -670,11 +684,8 @@ def facade_window_scene(prefix: str, face: str, interior_cb, seed: int):
     interior = interior_cb(wx1 - wx0, wy1 - wy0, rng, anchors)
     cv.a[wy0:wy1, wx0:wx1] = interior.a
     # glass reflection streaks
-    for i in range(0, 40):
-        x = wx0 + 20 + i
-        y0 = wy0 + i
-        if 0 <= i < 40:
-            cv.fill(Mask(W0, H0).line([(x, wy0), (x - 30, wy1)], 1).arr() & (np.arange(W0)[None, :] >= wx0), (255, 255, 255, 14))
+    for m in glass_streaks(W0, H0, wx0, wy0, wy1):
+        cv.fill(m, STREAK)
     # frame
     fc = '#efe4d0'
     cv.rect(wx0 - 4, wy0 - 4, wx1 + 3, wy0 - 1, fc)
@@ -711,20 +722,8 @@ def interior_sender(w, h, rng, anchors):
     cv.rect(128, 34, 146, 58, '#f4d9a8')
     cv.rect(128, 34, 146, 35, '#fff0cf')
     cv.rect(135, 58, 138, h - 27, '#2d2a28')
-    px_ = 50
-    # person behind the laptop, lit by it
-    body = Mask(w, h).ellipse(px_, h - 26, 37, 22).arr()
-    cv.fill(body, '#3d4a52')
-    cv.fill(body & ~shift(body, 0, 2), '#556570')
-    neck = Mask(w, h).rect(px_ - 5, h - 56, px_ + 5, h - 46).arr()
-    cv.fill(neck, '#a8765b')
-    head = Mask(w, h).ellipse(px_, h - 66, 12, 14).arr()
-    cv.fill(head, '#c28c6c')
-    hair = Mask(w, h).ellipse(px_, h - 74, 13, 9).arr() & (np.arange(h)[:, None] < h - 69)
-    cv.fill(hair, '#2a211d')
-    cv.fill(Mask(w, h).rect(px_ - 13, h - 76, px_ - 11, h - 62).arr(), '#2a211d')
-    cv.px(px_ - 5, h - 64, '#2a211d'); cv.px(px_ + 5, h - 64, '#2a211d')
-    cv.rect(px_ - 2, h - 57, px_ + 2, h - 57, '#9b6a52')
+    px_ = SENDER_X
+    # the person is drawn separately (sender_person) so he can move; see shot_sender_layers
     anchors['face'] = [px_, h - 64]
     # desk in front of the body
     cv.rect(0, h - 26, w, h, '#6b4a34')
@@ -734,6 +733,117 @@ def interior_sender(w, h, rng, anchors):
     cv.rect(px_ - 30, h - 52, px_ + 30, h - 51, '#e4ded4')
     cv.fill(Mask(w, h).ellipse(px_, h - 40, 3, 3).arr(), '#b2aca3')
     anchors['glow'] = [px_, h - 60]
+    return cv
+
+
+# ------------------------------------------------------------------ the sender, posable
+SENDER_X = 50
+HOODIE, HOODIE_L = '#3d4a52', '#556570'
+SKIN, SKIN_D, HAIR, LIP, MOUTH = '#c28c6c', '#a8765b', '#2a211d', '#9b6a52', '#4a2420'
+MUG, MUG_L, MUG_D, MUG_BAND = '#e9dcc4', '#fff3de', '#c9b99c', '#dda77a'
+# (pose name, face, arm). Faces: eyes + mouth; arms: where his right hand (screen left) and the mug are.
+SENDER_POSES = [
+    ('neutral', 'neutral', None),
+    ('blink', 'blink', None),
+    ('whistle', 'whistle', None),
+    ('whistle_bliss', 'bliss_o', None),
+    ('content', 'content', None),
+    ('reach', 'neutral', 'hold'),
+    ('reach_content', 'content', 'hold'),
+    ('lift', 'neutral', 'lift'),
+    ('sip', 'closed', 'sip'),
+    ('stretch', 'squeeze', 'stretch'),
+    ('yawn', 'yawn', 'stretch'),
+]
+
+
+def mug(cv: Canvas, x0, y0):
+    """Cream mug with a copper band, handle on the right. (x0, y0) is its top-left; 8x9 plus handle."""
+    cv.rect(x0, y0, x0 + 7, y0 + 8, MUG)
+    cv.rect(x0, y0, x0 + 7, y0, MUG_L)
+    cv.rect(x0 + 6, y0 + 1, x0 + 7, y0 + 8, MUG_D)
+    cv.rect(x0, y0 + 4, x0 + 7, y0 + 5, MUG_BAND)
+    for dx, dy in ((8, 2), (9, 2), (10, 3), (10, 4), (10, 5), (9, 6), (8, 6)):
+        cv.px(x0 + dx, y0 + dy, MUG_D)
+
+
+def sleeve(cv: Canvas, pts, width=6):
+    m = Mask(cv.w, cv.h).line(pts, width).arr()
+    for (x, y) in pts:
+        m |= Mask(cv.w, cv.h).ellipse(x, y, width / 2 - 0.5, width / 2 - 0.5).arr()
+    cv.fill(m, HOODIE)
+    cv.fill(m & ~shift(m, 0, 1), HOODIE_L)
+    return m
+
+
+def hand(cv: Canvas, x, y, r=2.5):
+    m = Mask(cv.w, cv.h).ellipse(x, y, r, r).arr()
+    cv.fill(m, SKIN)
+    cv.fill(m & ~shift(m, 0, -1), SKIN_D)
+
+
+def sender_person(w, h, face='neutral', arm=None) -> Canvas:
+    """The sender seen through his window, facing us over the laptop (which is drawn in front of him)."""
+    cv = Canvas(w, h)
+    px_ = SENDER_X
+    body = Mask(w, h).ellipse(px_, h - 26, 37, 22).arr()
+    cv.fill(body, HOODIE)
+    cv.fill(body & ~shift(body, 0, 2), HOODIE_L)
+    if arm == 'stretch':
+        # both arms up over his head, fists nearly touching; the laptop hides the shoulders
+        sleeve(cv, [(24, h - 36), (22, h - 66), (38, h - 84)])
+        sleeve(cv, [(76, h - 36), (78, h - 66), (62, h - 84)])
+    neck = Mask(w, h).rect(px_ - 5, h - 56, px_ + 5, h - 46).arr()
+    cv.fill(neck, SKIN_D)
+    head = Mask(w, h).ellipse(px_, h - 66, 12, 14).arr()
+    cv.fill(head, SKIN)
+    hair = Mask(w, h).ellipse(px_, h - 74, 13, 9).arr() & (np.arange(h)[:, None] < h - 69)
+    cv.fill(hair, HAIR)
+    cv.fill(Mask(w, h).rect(px_ - 13, h - 76, px_ - 11, h - 62).arr(), HAIR)
+    if arm == 'stretch':
+        hand(cv, 40, h - 86, 3)
+        hand(cv, 60, h - 86, 3)
+    # eyes
+    ey = h - 64
+    for ex, side in ((px_ - 5, -1), (px_ + 5, 1)):
+        if face in ('neutral', 'whistle'):
+            cv.px(ex, ey, HAIR)
+        elif face in ('blink', 'closed'):
+            cv.rect(ex - 1, ey, ex + 1, ey, HAIR)
+        elif face in ('content', 'bliss_o'):  # happy arches
+            cv.px(ex - 1, ey, HAIR); cv.px(ex, ey - 1, HAIR); cv.px(ex + 1, ey, HAIR)
+        elif face in ('squeeze', 'yawn'):  # > <
+            cv.px(ex - side, ey - 1, HAIR); cv.px(ex, ey, HAIR); cv.px(ex - side, ey + 1, HAIR)
+    # mouth
+    my = h - 57
+    if face in ('neutral', 'blink', 'closed'):
+        cv.rect(px_ - 2, my, px_ + 2, my, LIP)
+    elif face == 'content':
+        cv.rect(px_ - 2, my, px_ + 2, my, LIP)
+        cv.px(px_ - 3, my - 1, LIP); cv.px(px_ + 3, my - 1, LIP)
+    elif face in ('whistle', 'bliss_o'):  # puckered "o"
+        cv.rect(px_ - 1, my - 1, px_, my, MOUTH)
+        for x, y in ((px_ - 2, my - 1), (px_ - 2, my), (px_ + 1, my - 1), (px_ + 1, my), (px_ - 1, my - 2), (px_, my - 2), (px_ - 1, my + 1), (px_, my + 1)):
+            cv.px(x, y, LIP)
+    elif face == 'squeeze':
+        cv.rect(px_ - 2, my, px_ + 1, my, LIP)
+    elif face == 'yawn':
+        cv.fill(Mask(w, h).ellipse(px_, my + 1, 3, 4).arr(), MOUTH)
+        cv.rect(px_ - 2, my + 4, px_ + 2, my + 5, '#b8574f')
+    # his right hand (screen left) and the mug
+    if arm == 'hold':
+        mug(cv, 4, h - 35)
+        sleeve(cv, [(22, h - 24), (16, h - 29)], 5)
+        hand(cv, 14, h - 30)
+    elif arm == 'lift':
+        mug(cv, 7, h - 50)
+        sleeve(cv, [(20, h - 26), (18, h - 44)], 5)
+        hand(cv, 17, h - 45)
+    elif arm == 'sip':
+        # mug up at his lips, the arm rising from behind the laptop
+        mug(cv, px_ - 6, h - 61)
+        sleeve(cv, [(32, h - 46), (40, h - 56)], 5)
+        hand(cv, px_ - 7, h - 56)
     return cv
 
 
@@ -774,6 +884,53 @@ def interior_recipient(w, h, rng, anchors):
     cv.rect(106, h - 31, 109, h - 26, '#6f8f86')
     anchors['steam'] = [101, h - 36]
     return cv
+
+
+def shot_sender_layers():
+    """S3 as layers so the sender can act: him (one cell per pose), the desk and laptop in front of him,
+    his mug at rest, and the notes he whistles. All cells share the window interior's frame (`at`)."""
+    fac = MANIFEST['s3_facade']
+    wx0, wy0, wx1, wy1 = fac['anchors']['window']
+    W0, H0 = fac['w'], fac['h']
+    w, h = wx1 - wx0, wy1 - wy0
+    base = np.array(Image.open(os.path.join(OUT, 's3_facade.png')))[wy0:wy1, wx0:wx1]
+    streaks = [m[wy0:wy1, wx0:wx1] for m in glass_streaks(W0, H0, wx0, wy0, wy1)]
+    mull = (wx0 + wx1) // 2 - wx0
+    sheet = Canvas(w * len(SENDER_POSES), h)
+    for i, (_, face, arm) in enumerate(SENDER_POSES):
+        p = sender_person(w, h, face, arm)
+        p.a[:, mull - 1:mull + 2] = 0  # behind the mullion
+        glaze(p, streaks)
+        sheet.a[:, i * w:(i + 1) * w] = p.a
+    save(sheet, 's3_sender.png', cw=w, ch=h, at=[wx0, wy0], poses=[n for n, _, _ in SENDER_POSES],
+         mug={'rest': [8, h - 36], 'hold': [8, h - 36], 'lift': [11, h - 51], 'sip': [SENDER_X - 2, h - 62]})
+    # what sits in front of him: the desk and the laptop, lifted straight out of the facade
+    front = Canvas(w, h)
+    m = np.zeros((h, w), bool)
+    m[h - 26:, :] = True
+    m[h - 52:h - 26, SENDER_X - 30:SENDER_X + 31] = True
+    front.a[m] = base[m]
+    save(front, 's3_front.png', at=[wx0, wy0])
+    rest = Canvas(w, h)
+    mug(rest, 4, h - 35)
+    glaze(rest, streaks)
+    save(rest, 's3_mug.png', at=[wx0, wy0])
+    # whistled notes: a quaver and a pair of beamed quavers, cream with a dark outline
+    shapes = [
+        ['....#...', '....##..', '....#.#.', '....#..#', '....#..#', '....#...', '....#...', '.####...', '#####...', '.###....'],
+        ['.#######', '.#######', '.#.....#', '.#.....#', '.#.....#', '.#.....#', '.#.....#', '##....##', '##...###', '#....##.'],
+    ]
+    cw, ch = 10, 12
+    notes = Canvas(cw * len(shapes), ch)
+    for i, rows in enumerate(shapes):
+        mk = np.zeros((ch, notes.w), bool)
+        for y, row in enumerate(rows):
+            for x, c in enumerate(row):
+                if c == '#':
+                    mk[y + 1, i * cw + x + 1] = True
+        notes.fill(dilate(mk, True) & ~mk, '#3a2a22')
+        notes.fill(mk, '#fff3de')
+    save(notes, 'notes.png', cw=cw, ch=ch)
 
 
 # ================================================================== SPRITES
@@ -886,6 +1043,7 @@ def vehicles():
 if __name__ == '__main__':
     shot_sender_room()
     facade_window_scene('s3', '#a65a3f', interior_sender, 8)
+    shot_sender_layers()
     shot_rooftops()
     shot_street()
     shot_park()

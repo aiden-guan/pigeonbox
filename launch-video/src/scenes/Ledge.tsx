@@ -1,6 +1,7 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { Art, FilmFinish, FlyingPigeon, MascotPigeon, mascotCol } from "../components/Pixel";
+import { Sender } from "../components/Sender";
 import { Envelope, LightShafts, Sparkles } from "../components/World";
 import { at, ci, ease, M, qbez, useAbsFrame } from "../lib";
 
@@ -50,6 +51,7 @@ export const Ledge: React.FC = () => {
         }}
       >
         <Art name="s3_facade" scale={S} />
+        <Sender S={S} pose={f % 90 > 84 ? "blink" : "neutral"} />
         {/* the laptop light inside, brightening as the email leaves */}
         <div
           style={{
