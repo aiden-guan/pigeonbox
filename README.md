@@ -1,6 +1,6 @@
 # PigeonBox
 
-https://github.com/user-attachments/assets/5a610f7c-1518-43c0-ad18-5039eca24e1d
+https://github.com/user-attachments/assets/d334da3f-d4c5-453b-8cd5-c12ca366e33e
 
 <p align="center">
   <strong>Private, local-first email intelligence for Gmail.</strong><br>
