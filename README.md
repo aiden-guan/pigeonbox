@@ -31,10 +31,6 @@ https://github.com/user-attachments/assets/5a610f7c-1518-43c0-ad18-5039eca24e1d
 
 <br>
 
-<p align="center">
-  <img src="assets/readme/hero.png" width="100%" alt="PigeonBox toolbar popup, side panel triage, and floating thread card in Gmail">
-</p>
-
 ---
 
 ## 📦 Install
