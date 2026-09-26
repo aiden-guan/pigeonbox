@@ -7,7 +7,12 @@ import { ProfileFields } from '../setup/ProfileFields';
 import { RunModePanel } from '../setup/RunModePanel';
 import { Orb } from '../ui/Orb';
 import { useProductState } from '../ui/product-state';
-import { RELEASE_CHECK_PERMISSION, type ReleaseUpdateStatus } from '../background/release-updates';
+import {
+  checkLatestRelease,
+  readReleaseUpdateStatus,
+  RELEASE_CHECK_PERMISSION,
+  type ReleaseUpdateStatus,
+} from '../background/release-updates';
 
 const CATEGORIES: ThreadCategory[] = ['RESPOND', 'WAITING', 'FYI', 'NOTIFICATIONS', 'PROMOTIONS', 'NEWS'];
 
@@ -41,14 +46,9 @@ export function SettingsApp() {
         return;
       }
 
-      const response = await new Promise<{ updateStatus?: ReleaseUpdateStatus } | undefined>((resolve) => {
-        chrome.runtime.sendMessage({ type: 'CHECK_FOR_UPDATES' }, (result) => resolve(result));
-      });
-      if (!response?.updateStatus) {
-        setReleaseNotice('The update check could not be completed. Try again.');
-        return;
-      }
-      setReleaseStatus(response.updateStatus);
+      // Run the check here rather than in the service worker: extension pages hold the same
+      // host permission, and this keeps working when Chrome is still running an older worker.
+      setReleaseStatus(await checkLatestRelease());
     } catch {
       setReleaseNotice('The update check could not be completed. Try again.');
     } finally {
@@ -108,9 +108,9 @@ export function SettingsApp() {
 
   useEffect(() => {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
-    chrome.runtime.sendMessage({ type: 'GET_UPDATE_STATUS' }, (res?: { updateStatus?: ReleaseUpdateStatus | null }) => {
-      if (res?.updateStatus) setReleaseStatus(res.updateStatus);
-    });
+    void readReleaseUpdateStatus().then((status) => {
+      if (status) setReleaseStatus(status);
+    }).catch(() => undefined);
     const updateListener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
       if (areaName === 'local' && changes.pigeonboxReleaseUpdateStatus?.newValue) {
         setReleaseStatus(changes.pigeonboxReleaseUpdateStatus.newValue as ReleaseUpdateStatus);

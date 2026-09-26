@@ -204,8 +204,6 @@ export type BridgeMessage = z.infer<typeof BridgeMessageSchema>;
 export const RuntimeMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('PING') }),
   z.object({ type: z.literal('GET_SETTINGS') }),
-  z.object({ type: z.literal('GET_UPDATE_STATUS') }),
-  z.object({ type: z.literal('CHECK_FOR_UPDATES') }),
   z.object({ type: z.literal('GET_PUBLIC_SETTINGS') }),
   z.object({
     type: z.literal('SAVE_SETTINGS'),

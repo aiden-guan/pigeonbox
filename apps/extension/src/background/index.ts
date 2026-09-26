@@ -1369,12 +1369,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // (The options page opens in a tab, so `sender.tab` alone cannot tell them apart.)
         sendResponse({ settings: isExtensionPageSender(sender) ? settings : await contentSettings() });
         break;
-      case 'GET_UPDATE_STATUS':
-        sendResponse({ updateStatus: await readReleaseUpdateStatus() });
-        break;
-      case 'CHECK_FOR_UPDATES':
-        sendResponse({ updateStatus: await checkLatestRelease() });
-        break;
       case 'SAVE_SETTINGS':
         sendResponse({ settings: await saveSettings(msg.settings as Partial<ExtensionSettings>) });
         break;
