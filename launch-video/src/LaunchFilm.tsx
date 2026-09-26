@@ -6,7 +6,7 @@ import { Airplane } from "./scenes/Airplane";
 import { Compose } from "./scenes/Compose";
 import { Descent } from "./scenes/Descent";
 import { EndCard } from "./scenes/EndCard";
-import { DeskAsk, DeskSort, DeskThread, DeskWait } from "./scenes/Desk";
+import { DESK_CUES, DeskAsk, DeskSort, DeskThread, DeskWait } from "./scenes/Desk";
 import { HawkChase } from "./scenes/Hawk";
 import { High } from "./scenes/High";
 import { Homecoming } from "./scenes/Homecoming";
@@ -154,24 +154,43 @@ export const LaunchFilm: React.FC = () => {
         <Audio src={sfx("whoosh_long")} volume={0.45} />
       </Sequence>
 
-      {/* ---- at the desk: quiet clicks, nothing electronic */}
-      <Sequence name="Desk: open Oliver" from={SH.deskSort[0] + 180} durationInFrames={20}>
+      {/* ---- at the desk: he's in his own little world. Quiet clicks, nothing electronic. */}
+      <Sequence name="Desk: whistling" from={SH.deskSort[0]} durationInFrames={SH.deskSort[1] - SH.deskSort[0]}>
+        <Audio src={sfx("whistle")} volume={0.42} />
+      </Sequence>
+      <Sequence name="Desk: open Oliver" from={SH.deskSort[0] + DESK_CUES.sort.click} durationInFrames={20}>
         <Audio src={sfx("click")} volume={0.5} />
       </Sequence>
-      <Sequence name="Desk: draft reply" from={SH.deskThread[0] + 76} durationInFrames={20}>
+      <Sequence name="Desk: slurp" from={SH.deskThread[0] + DESK_CUES.thread.slurp} durationInFrames={30}>
+        <Audio src={sfx("slurp")} volume={0.5} />
+      </Sequence>
+      <Sequence name="Desk: mug down" from={SH.deskThread[0] + DESK_CUES.thread.clink} durationInFrames={24}>
+        <Audio src={sfx("clink")} volume={0.55} />
+      </Sequence>
+      <Sequence name="Desk: ahh" from={SH.deskThread[0] + DESK_CUES.thread.sigh} durationInFrames={45}>
+        <Audio src={sfx("sigh")} volume={0.5} />
+      </Sequence>
+      <Sequence name="Desk: draft reply" from={SH.deskThread[0] + DESK_CUES.thread.click} durationInFrames={20}>
         <Audio src={sfx("click")} volume={0.55} />
       </Sequence>
-      <Sequence name="Desk: pick question" from={SH.deskAsk[0] + 22} durationInFrames={20}>
+      <Sequence name="Desk: pick question" from={SH.deskAsk[0] + DESK_CUES.ask.pick} durationInFrames={20}>
         <Audio src={sfx("click")} volume={0.5} />
       </Sequence>
-      <Sequence name="Desk: ask" from={SH.deskAsk[0] + 38} durationInFrames={20}>
+      <Sequence name="Desk: ask" from={SH.deskAsk[0] + DESK_CUES.ask.ask} durationInFrames={20}>
         <Audio src={sfx("click")} volume={0.55} />
       </Sequence>
-      <Sequence name="Desk: open status" from={SH.deskWait[0] + 14} durationInFrames={20}>
+      <Sequence name="Desk: open status" from={SH.deskWait[0] + DESK_CUES.wait.open} durationInFrames={20}>
         <Audio src={sfx("click")} volume={0.5} />
       </Sequence>
-      <Sequence name="Desk: notify toggle" from={SH.deskWait[0] + 40} durationInFrames={20}>
+      <Sequence name="Desk: notify toggle" from={SH.deskWait[0] + DESK_CUES.wait.toggle} durationInFrames={20}>
         <Audio src={sfx("click")} volume={0.45} />
+      </Sequence>
+      {/* the yawn gets cut off by the storm */}
+      <Sequence name="Desk: chair creak" from={SH.deskWait[0] + DESK_CUES.wait.creak} durationInFrames={SH.deskWait[1] - SH.deskWait[0] - DESK_CUES.wait.creak}>
+        <Audio src={sfx("creak")} volume={0.4} />
+      </Sequence>
+      <Sequence name="Desk: yawn" from={SH.deskWait[0] + DESK_CUES.wait.yawn} durationInFrames={SH.deskWait[1] - SH.deskWait[0] - DESK_CUES.wait.yawn}>
+        <Audio src={sfx("yawn")} volume={0.55} />
       </Sequence>
 
       {/* ---- the chase: slam back in on every return, and each hazard */}
@@ -209,6 +228,9 @@ export const LaunchFilm: React.FC = () => {
       </Sequence>
 
       {/* ---- the recipient */}
+      <Sequence name="Touchdown" from={E.landing} durationInFrames={24}>
+        <Audio src={sfx("touchdown")} volume={0.55} />
+      </Sequence>
       <Sequence name="Coo" from={E.coo} durationInFrames={80}>
         <Audio src={sfx("coo")} volume={0.75} />
       </Sequence>
@@ -232,8 +254,17 @@ export const LaunchFilm: React.FC = () => {
       </Sequence>
 
       {/* ---- home again */}
-      <Sequence name="Wings: homecoming" from={E.homeLanding - 16} durationInFrames={70}>
-        <Audio src={sfx("takeoff")} volume={0.3} />
+      <Sequence name="Wings: homecoming" from={SH.homecoming[0]} durationInFrames={E.homeLanding - SH.homecoming[0] + 10}>
+        <Audio src={sfx("home_flaps")} volume={0.3} />
+      </Sequence>
+      <Sequence name="Touchdown: home" from={E.homeLanding} durationInFrames={24}>
+        <Audio src={sfx("touchdown")} volume={0.45} />
+      </Sequence>
+      <Sequence name="Wings: straggler" from={SH.endcard[0] + 8} durationInFrames={60}>
+        <Audio src={sfx("endcard_flaps")} volume={0.18} />
+      </Sequence>
+      <Sequence name="Touchdown: straggler" from={SH.endcard[0] + 58} durationInFrames={24}>
+        <Audio src={sfx("touchdown")} volume={0.25} />
       </Sequence>
       <Sequence name="Coo: home" from={E.homeLanding + 16} durationInFrames={80}>
         <Audio src={sfx("coo")} volume={0.55} />

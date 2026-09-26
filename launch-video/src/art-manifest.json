@@ -55,6 +55,69 @@
    "edge": 262
   }
  },
+ "s3_sender": {
+  "w": 1892,
+  "h": 120,
+  "cw": 172,
+  "ch": 120,
+  "at": [
+   34,
+   18
+  ],
+  "poses": [
+   "neutral",
+   "blink",
+   "whistle",
+   "whistle_bliss",
+   "content",
+   "reach",
+   "reach_content",
+   "lift",
+   "sip",
+   "stretch",
+   "yawn"
+  ],
+  "mug": {
+   "rest": [
+    8,
+    84
+   ],
+   "hold": [
+    8,
+    84
+   ],
+   "lift": [
+    11,
+    69
+   ],
+   "sip": [
+    48,
+    58
+   ]
+  }
+ },
+ "s3_front": {
+  "w": 172,
+  "h": 120,
+  "at": [
+   34,
+   18
+  ]
+ },
+ "s3_mug": {
+  "w": 172,
+  "h": 120,
+  "at": [
+   34,
+   18
+  ]
+ },
+ "notes": {
+  "w": 20,
+  "h": 12,
+  "cw": 10,
+  "ch": 12
+ },
  "j1_sky": {
   "w": 520,
   "h": 270,

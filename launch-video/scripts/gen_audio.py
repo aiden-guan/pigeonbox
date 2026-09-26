@@ -7,7 +7,8 @@ src/timeline.json's tempo map, so every beat lands on a whole frame:
   90 BPM (20 f/beat)  home again        frames 1952 – end
 
 Outputs (public/audio): score.wav plus one file per sound effect / ambience bed.
-Also writes src/typing.json so the on-screen typing matches the key clicks.
+Also writes src/typing.json so the on-screen typing matches the key clicks, and
+src/whistle.json so the notes floating out of the sender's window match his whistling.
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ import random
 
 import numpy as np
 from scipy.io import wavfile
-from scipy.signal import butter, fftconvolve, sosfilt
+from scipy.signal import butter, fftconvolve, lfilter, sosfilt
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'public', 'audio')
@@ -462,9 +463,10 @@ def section_b(bus, calm):
         if b in (1, 2, 7, 8, 19, 20):
             for i, m in enumerate(CHASE):
                 bus.add(pluck(m + 12, 0.28, 0.5), t0 + (8 + i) * s16, 0.5, 0.25, 0.35)
-    # the sender's theme on the desk, half-time
+    # the sender's theme on the desk, half-time (in the first cutaway he whistles it himself: sender_whistle)
     for f0, f1 in TL['calm']:
-        phrase(calm, THEME[:4], f0 + 6, 12, 'piano', 0.26, 12, 0.15, 0.6, stretch=2)
+        if f0 != SH['deskSort'][0]:
+            phrase(calm, THEME[:4], f0 + 6, 12, 'piano', 0.26, 12, 0.15, 0.6, stretch=2)
     phrase(bus, THEME, fb(29), 12, 'piano', 0.5, 24, 0.0, 0.6, stretch=1.5)
     phrase(bus, THEME, fb(29), 12, 'bell', 0.35, 12, 0.3, 0.6, stretch=1.5)
 
@@ -742,21 +744,50 @@ def flap_period(f):
     return fl['fast'] if fl['fastFrom'] <= f < fl['fastTo'] else fl['slow']
 
 
-def flight_flaps():
-    """Flaps locked to the sprite: fast in the chase, slow when calm, none while gliding."""
-    start, end = EV['takeoff'], EV['landing']
+def is_downstroke(f):
+    """FlyingPigeon shows frame 1 (wings sweeping down) from a quarter of the way through each wingbeat."""
+    p = flap_period(f)
+    return f % p == -(-p // 4)
+
+
+def wingbeats(name, start, end, glides=()):
+    """One flap per downstroke of the flight sprite between start and end (absolute frames),
+    silent while it glides (glide=true in the scene) and while we're at the desk."""
     s = (end - start) / FPS + 1
     bus = Bus(s)
-    f = start
     k = 0
-    while f < end:
-        at_desk = any(f0 <= f < f1 for f0, f1 in TL['calm'])
-        if not (EV['glideStart'] <= f < EV['glideEnd']) and not at_desk:
+    for f in range(start, end):
+        if any(g0 <= f < g1 for g0, g1 in glides) or any(f0 <= f < f1 for f0, f1 in TL['calm']):
+            continue
+        if is_downstroke(f):
             vel = 0.5 if flap_period(f) == TL['flap']['fast'] else 0.42
             bus.add(wing_flap(vel), (f - start) / FPS, 1.0, 0.1 * math.sin(k), 0.15)
-        f += flap_period(f)
-        k += 1
-    write('flight_flaps.wav', bus.render(0.8, 4000, 0.2), 0.6)
+            k += 1
+    write(name, bus.render(0.8, 4000, 0.2), 0.6)
+
+
+def flight_flaps():
+    # glides mirror the scenes: High (glideStart–glideEnd), Airplane (the jet pass, 34 f),
+    # Arrival (last 9 f before landing), Homecoming (last 11 f), EndCard (last 9 f)
+    wingbeats('flight_flaps.wav', EV['takeoff'], EV['landing'],
+              [(EV['glideStart'], EV['glideEnd']), (EV['jetPass'], EV['jetPass'] + 34), (EV['landing'] - 9, EV['landing'])])
+    wingbeats('home_flaps.wav', SH['homecoming'][0], EV['homeLanding'], [(EV['homeLanding'] - 11, EV['homeLanding'])])
+    end_land = SH['endcard'][0] + 58
+    wingbeats('endcard_flaps.wav', SH['endcard'][0] + 8, end_land, [(end_land - 9, end_land)])
+
+
+def touchdown():
+    """Landing on a ledge: two little feet on stone, then the wings folding away."""
+    s = 0.6
+    n = int(s * SR)
+    t = np.arange(n) / SR
+    bus = Bus(s + 0.5)
+    for d, a in ((0.0, 1.0), (0.035, 0.7)):
+        tap = lp(rng.standard_normal(n), 2200) * np.exp(-t / 0.005) + np.sin(2 * math.pi * 260 * t) * np.exp(-t / 0.012) * 0.8
+        bus.add(tap * a, d, 1.0, 0.15, 0.2)
+    rustle = bp(rng.standard_normal(n), 1400, 6500) * np.minimum(1, t / 0.02) * np.exp(-t / 0.09)
+    bus.add(rustle * 0.45, 0.03, 1.0, 0.1, 0.25)
+    write('touchdown.wav', bus.render(0.6, 4000, 0.25), 0.5)
 
 
 def whoosh(dur=0.9, name='whoosh.wav', lo=200, hi=5000, peak=0.6):
@@ -810,6 +841,171 @@ def typing():
         c[i:] += bp(rng.standard_normal(n - i), 2000, 8000) * np.exp(-t[: n - i] / 0.003) * a
         c[i:] += np.sin(2 * math.pi * 900 * t[: n - i]) * np.exp(-t[: n - i] / 0.004) * a * 0.3
     write('click.wav', c, 0.5)
+
+
+# ------------------------------------------------------------------ the sender, off in his own world
+def one_pole(x, seconds):
+    a = math.exp(-1 / (seconds * SR))
+    return lfilter([1 - a], [1, -a], x)
+
+
+def sender_whistle():
+    """He whistles the film's theme, half time, over the desk piano: a near-pure tone with
+    breath, little scoops into each note, slides between them and vibrato that blooms on long notes.
+    The file starts at the cutaway's first frame and stops dead on the cut back to the chase."""
+    start, end = SH['deskSort']
+    first = start + 6
+    notes = [(round(first + off * 24), m + 12, round(dur * 24)) for off, m, dur in THEME]
+    json.dump({'notes': notes}, open(os.path.join(ROOT, 'src', 'whistle.json'), 'w'))
+    s = (end - start) / FPS
+    n = int(s * SR)
+    t = np.arange(n) / SR
+    logf = np.full(n, math.log(mtof(notes[0][1])))
+    amp = np.zeros(n)
+    for a, m, d in notes:
+        i0 = int((a - start) / FPS * SR)
+        i1 = min(n, int((a - start + d) / FPS * SR))
+        if i0 >= n:
+            break
+        tt = t[i0:i1] - t[i0]
+        length = (i1 - i0) / SR
+        vib = 0.011 * np.sin(2 * math.pi * 5.4 * tt) * np.clip((tt - 0.18) / 0.35, 0, 1)
+        logf[i0:i1] = math.log(mtof(m)) - 0.045 * np.exp(-tt / 0.04) + vib
+        swell = 0.8 + 0.2 * np.clip(tt / 0.4, 0, 1) if d >= 36 else 0.92
+        amp[i0:i1] = np.minimum(1, tt / 0.022) * np.clip((length - tt) / 0.035, 0.12, 1) * swell
+        logf[i1:] = logf[i1 - 1]
+    freq = np.exp(one_pole(logf, 0.018))  # slide between notes
+    amp = one_pole(amp, 0.006)
+    ph = 2 * math.pi * np.cumsum(freq) / SR
+    tone = np.sin(ph) + 0.03 * np.sin(2 * ph)
+    airy = lp(rng.standard_normal(n), 260) * np.sin(ph) * 2.5  # noise hugging the pitch
+    breath = bp(rng.standard_normal(n), 1200, 6000) * 0.05
+    sig = (tone + airy * 0.18 + breath) * amp
+    sig[-int(0.012 * SR):] *= np.linspace(1, 0, int(0.012 * SR))
+    bus = Bus(s)
+    bus.add(sig, 0, 1.0, -0.15, 0.22)
+    out = bus.render(1.1, 5000, 0.35)
+    out[:, -int(0.012 * SR):] *= np.linspace(1, 0, int(0.012 * SR))
+    write('whistle.wav', out, 0.6)
+
+
+def voice(seconds, f0, formants, voiced=0.5, breathy=0.5, shimmer=0.03):
+    """Tiny formant voice: harmonics shaped by moving formant peaks, plus breath through the same peaks.
+    f0(t) and formants(t) -> [(freq, bandwidth, gain), ...] take time arrays."""
+    n = int(seconds * SR)
+    t = np.arange(n) / SR
+    fund = f0(t) * (1 + 0.004 * lp(rng.standard_normal(n), 30) * 10)
+    ph = 2 * math.pi * np.cumsum(fund) / SR
+    fs = formants(t)
+
+    def env_at(freq):
+        return sum(g / (1 + ((freq - F) / (bw / 2)) ** 2) for F, bw, g in fs)
+
+    sig = np.zeros(n)
+    for k in range(1, 48):
+        fk = fund * k
+        if np.min(fk) > 6000:
+            break
+        sig += np.sin(ph * k) * env_at(fk) / k ** 0.6 * (fk < 7000)
+    sig *= 1 + shimmer * lp(rng.standard_normal(n), 40) * 8
+    noise = rng.standard_normal(n)
+    air = sum(bp(noise, F * 0.8, F * 1.25) * g for F, _, g in ((np.mean(F), bw, np.mean(g)) for F, bw, g in fs))
+    return sig / 12 * voiced + air * breathy
+
+
+def slurp():
+    """A long, unhurried slurp from the mug: air pulled through hot coffee."""
+    s = 0.8
+    n = int(s * SR)
+    t = np.arange(n) / SR
+    noise = rng.standard_normal(n)
+    out = np.zeros(n)
+    chunk = 256
+    for i in range(0, n, chunk):
+        c = 700 + 1500 * (i / n) ** 0.8
+        seg = bp(noise[max(0, i - 2048):i + chunk], c * 0.7, c * 1.6)[-min(chunk, n - i):]
+        out[i:i + len(seg)] = seg
+    flutter = 0.55 + 0.45 * np.abs(lp(rng.standard_normal(n), 25) * 12).clip(0, 1)
+    env = np.interp(t / s, [0, 0.06, 0.2, 0.75, 1], [0, 0.9, 1, 0.8, 0])
+    sig = out * flutter * env
+    r = random.Random(12)
+    for _ in range(26):  # bubbles
+        m = int(0.03 * SR)
+        tt = np.arange(m) / SR
+        f = r.uniform(500, 1500) * (1 + 0.6 * tt / 0.03)
+        b = np.sin(2 * math.pi * np.cumsum(f) / SR) * np.exp(-tt / 0.007) * r.uniform(0.2, 0.5)
+        i = int(r.uniform(0.05, s - 0.1) * SR)
+        sig[i:i + m] += b[: n - i]
+    write('slurp.wav', sig, 0.5)
+
+
+def clink():
+    """The mug set back down: a soft wooden thunk with a little ceramic ring."""
+    n = int(0.5 * SR)
+    t = np.arange(n) / SR
+    thunk = np.sin(2 * math.pi * 170 * t) * np.exp(-t / 0.03) + lp(rng.standard_normal(n), 1400) * np.exp(-t / 0.008) * 0.6
+    ring = sum(a * np.sin(2 * math.pi * f * t) * np.exp(-t / d) for f, a, d in ((2380, 0.22, 0.09), (3930, 0.12, 0.06), (5610, 0.06, 0.04)))
+    bus = Bus(0.8)
+    bus.add(thunk + ring, 0, 1.0, -0.2, 0.25)
+    write('clink.wav', bus.render(0.6, 5000, 0.3), 0.5)
+
+
+def sigh():
+    """"Ahh." The satisfied breath out after the sip: mostly air, a little voice, falling."""
+    s = 1.0
+    sig = voice(
+        s,
+        lambda t: 150 - 45 * (t / s),
+        lambda t: [(760 - 120 * t / s, 130, 1.0), (1220 - 150 * t / s, 160, 0.55), (2550, 250, 0.2)],
+        voiced=0.55,
+        breathy=0.22,
+    )
+    t = np.arange(len(sig)) / SR
+    env = np.interp(t / s, [0, 0.1, 0.22, 0.6, 1], [0, 0.8, 1, 0.45, 0])
+    bus = Bus(s + 0.5)
+    bus.add(lp(sig * env, 4200), 0, 1.0, 0, 0.2)
+    write('sigh.wav', bus.render(0.9, 4000, 0.3), 0.5)
+
+
+def yawn():
+    """An enormous yawn, arms over his head: up into a strained "aaah", down into "ohh"."""
+    s = 1.5
+    sig = voice(
+        s,
+        lambda t: np.interp(t, [0, 0.3, 0.75, 1.1, s], [150, 235, 250, 150, 105]) * (1 + 0.02 * np.sin(2 * math.pi * 7 * t) * (np.abs(t - 0.6) < 0.25)),
+        lambda t: [
+            (np.interp(t, [0, 0.8, s], [820, 780, 480]), 140, 1.0),
+            (np.interp(t, [0, 0.8, s], [1300, 1200, 820]), 180, 0.5),
+            (2600, 260, 0.18),
+        ],
+        voiced=0.75,
+        breathy=0.18,
+    )
+    t = np.arange(len(sig)) / SR
+    env = np.interp(t / s, [0, 0.12, 0.3, 0.7, 0.9, 1], [0, 0.6, 1, 0.9, 0.35, 0])
+    bus = Bus(s + 0.5)
+    bus.add(lp(sig * env, 4200), 0, 1.0, 0.05, 0.2)
+    write('yawn.wav', bus.render(0.9, 4000, 0.3), 0.55)
+
+
+def creak():
+    """The desk chair as he leans back: stick-slip pulses speeding up, through a woody resonance."""
+    s = 0.7
+    n = int(s * SR)
+    pulses = np.zeros(n)
+    r = random.Random(5)
+    tt = 0.02
+    while tt < s - 0.05:
+        p = tt / s
+        pulses[int(tt * SR)] = r.uniform(0.6, 1.0) * math.sin(math.pi * p) ** 0.6
+        tt += 1 / (22 + 70 * p) * r.uniform(0.85, 1.15)
+    m = int(0.03 * SR)
+    k = np.arange(m) / SR
+    body = np.sin(2 * math.pi * 620 * k) * np.exp(-k / 0.008) + 0.6 * np.sin(2 * math.pi * 1350 * k) * np.exp(-k / 0.005)
+    sig = fftconvolve(pulses, body)[:n]
+    bus = Bus(s + 0.3)
+    bus.add(sig, 0, 1.0, 0.2, 0.2)
+    write('creak.wav', bus.render(0.6, 4000, 0.3), 0.45)
 
 
 def sparkle():
@@ -883,4 +1079,11 @@ if __name__ == '__main__':
     coo()
     ui_sounds()
     score()
+    sender_whistle()
+    slurp()
+    clink()
+    sigh()
+    yawn()
+    creak()
+    touchdown()
     print('ok')
