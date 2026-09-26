@@ -1,0 +1,154 @@
+{
+  "fps": 30,
+  "total": 3296,
+  "tempo": [
+    {
+      "from": 0,
+      "bpm": 90,
+      "framesPerBeat": 20
+    },
+    {
+      "from": 560,
+      "bpm": 150,
+      "framesPerBeat": 12
+    },
+    {
+      "from": 2096,
+      "bpm": 90,
+      "framesPerBeat": 20
+    }
+  ],
+  "shots": {
+    "room": [
+      0,
+      200
+    ],
+    "compose": [
+      200,
+      440
+    ],
+    "ledge": [
+      440,
+      608
+    ],
+    "rooftops": [
+      608,
+      704
+    ],
+    "deskSort": [
+      704,
+      896
+    ],
+    "street": [
+      896,
+      1040
+    ],
+    "deskThread": [
+      1040,
+      1184
+    ],
+    "airplane": [
+      1184,
+      1376
+    ],
+    "deskAsk": [
+      1376,
+      1472
+    ],
+    "hawk": [
+      1472,
+      1664
+    ],
+    "deskWait": [
+      1664,
+      1760
+    ],
+    "storm": [
+      1760,
+      1952
+    ],
+    "high": [
+      1952,
+      2096
+    ],
+    "descent": [
+      2096,
+      2256
+    ],
+    "arrival": [
+      2256,
+      2416
+    ],
+    "inbox": [
+      2416,
+      2556
+    ],
+    "seen": [
+      2556,
+      2676
+    ],
+    "payoff": [
+      2676,
+      2896
+    ],
+    "homecoming": [
+      2896,
+      3056
+    ],
+    "endcard": [
+      3056,
+      3296
+    ]
+  },
+  "calm": [
+    [
+      704,
+      896
+    ],
+    [
+      1040,
+      1184
+    ],
+    [
+      1376,
+      1472
+    ],
+    [
+      1664,
+      1760
+    ]
+  ],
+  "events": {
+    "typingStart": 226,
+    "sendClick": 420,
+    "sent": 428,
+    "envelopeOut": 470,
+    "envelopeIn": 530,
+    "takeoff": 560,
+    "tramBell": 968,
+    "jetPass": 1280,
+    "hawkStrike": 1568,
+    "hawkSecond": 1616,
+    "lightning1": 1808,
+    "lightning2": 1856,
+    "lightning3": 1904,
+    "breakthrough": 1952,
+    "glideStart": 1984,
+    "glideEnd": 2056,
+    "landing": 2296,
+    "coo": 2320,
+    "mailArrives": 2440,
+    "openClick": 2514,
+    "opened": 2576,
+    "rowOpened": 2706,
+    "cardPop": 2736,
+    "homeLanding": 2976,
+    "logo": 3136
+  },
+  "flap": {
+    "slow": 10,
+    "fast": 6,
+    "fastFrom": 560,
+    "fastTo": 2096
+  }
+}
