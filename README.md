@@ -1,7 +1,8 @@
 # PigeonBox
 
 <p align="center">
-  <img src="apps/extension/public/icons/icon128.png" width="96" height="96" alt="PigeonBox mascot icon">
+  <a href="assets/pigeonbox-launch.mp4"><img src="assets/launch-film-poster.jpg" width="100%" alt="Watch the PigeonBox launch film"></a><br>
+  <sub>▶ <a href="assets/pigeonbox-launch.mp4">Watch the launch film</a> (1:50)</sub>
 </p>
 
 <p align="center">
