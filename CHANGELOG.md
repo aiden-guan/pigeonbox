@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.3.0] — 2026-09-26
+
+### Added
+- **Ask Inbox understands the question before searching**: it reads direction (sent or received), time windows ("yesterday", "last week", "past 3 days"), counts ("last 5 emails") and intent. It answers list questions, "what needs a reply" and "who hasn't replied" straight from the local index, with no model call.
+- **Draft an email from Ask Inbox**: "draft an email to Sam saying I'll be late" finds Sam's address in your mail, writes the draft with your recent threads as context and opens it in a Gmail compose window. PigeonBox never sends it.
+- **Waiting view** in the side panel: mail you sent that has had no reply, with open status and a timeline of every open and click that counts.
+- **`npm run dev:reload:install`** (macOS): keeps the dev reload helper running in the background as a LaunchAgent.
+
+### Fixed
+- **"What do I need to reply to?" no longer lists threads you already answered.** Each candidate is re-checked when you ask, and only threads where someone else clearly wrote last are shown. Your own sent threads, calendar invitations, no-reply and notification senders, and mailing-list mail that doesn't name you are left out.
+- **Classification uses the newest message's sender, not the Gmail folder.** A thread opened from the Inbox where you replied last is no longer tagged "Respond".
+- **PigeonBox recognizes you across accounts and aliases.** It remembers every Gmail account it has seen you signed in with, and also recognizes Gmail's "me" label and your full name, so replies from a school or work address count as yours.
+- Lexical search ignores filler words and short prefixes that used to match nearly every thread.
+
+### Changed
+- The Ask Inbox model now sees a status line on each thread saying who wrote last. On-device models also get today's date and who "you" are.
+- Ask Inbox loads the search index once per question instead of twice.
+
 ## [0.2.0] — 2026-09-26
 
 ### Summary

@@ -1,6 +1,6 @@
 {
   "name": "pigeonbox",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "PigeonBox: AI-powered Gmail intelligence that can run on your machine. Chrome extension, local AI, BYOK, Ollama, open tracking. No Gmail API.",
   "license": "MIT",
@@ -14,6 +14,9 @@
     "setup:tracker": "node scripts/setup-convex-tracker.mjs",
     "dev": "npm run dev -w @pigeonbox/extension",
     "dev:reload": "node scripts/dev-reload.mjs",
+    "dev:reload:install": "node scripts/dev-reload-service.mjs install",
+    "dev:reload:uninstall": "node scripts/dev-reload-service.mjs uninstall",
+    "dev:reload:status": "node scripts/dev-reload-service.mjs status",
     "build": "npm run build -w @pigeonbox/shared && npm run build -w @pigeonbox/api-contract && npm run build -w @pigeonbox/gmail && npm run build -w @pigeonbox/mailbox && npm run build -w @pigeonbox/ai && npm run build -w @pigeonbox/cloud-client && npm run build -w @pigeonbox/core && npm run build -w @pigeonbox/search && npm run build -w @pigeonbox/agent && npm run build -w @pigeonbox/tracking && npm run build -w @pigeonbox/extension && npm run build -w @pigeonbox/tracker",
     "test": "vitest run",
     "test:watch": "vitest",
