@@ -50,7 +50,7 @@ jobs:
         run: node scripts/package-extension.mjs --out "$RUNNER_TEMP/package"
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pigeonbox-extension-${{ github.sha }}
           path: ${{ runner.temp }}/package/
