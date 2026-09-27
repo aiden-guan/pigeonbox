@@ -585,6 +585,70 @@ export type DerivedTrackingStats = {
   possibleOpenCount: number;
 };
 
+/** An OPEN event that counts toward `openCount`, before the 800 ms duplicate window. */
+function countsAsRecipientOpen(evt: TrackingEventLike): boolean {
+  const isSelf = Boolean(evt.suspected_self_open || evt.suspectedSelfOpen || evt.classification === 'SELF_LIKELY');
+  const ua = evt.userAgent || evt.user_agent;
+  const detectedSource = ua ? detectOpenRequestSource(ua) : null;
+  const isDetectedNonCount =
+    detectedSource === 'google_image_proxy' ||
+    detectedSource === 'headless' ||
+    detectedSource === 'scanner' ||
+    detectedSource === 'unknown';
+  const isDetectedMachine = detectedSource === 'headless' || detectedSource === 'scanner';
+  return (
+    !isSelf &&
+    !isDetectedMachine &&
+    evt.classification !== 'MACHINE_LIKELY' &&
+    evt.classification !== 'UNKNOWN' &&
+    (evt.classification === 'RECIPIENT_LIKELY' ||
+      evt.classification === 'PROXY_LIKELY' ||
+      (!evt.classification && !isDetectedNonCount))
+  );
+}
+
+/** A CLICK event that counts toward `clickCount`. */
+function countsAsRecipientClick(evt: TrackingEventLike): boolean {
+  const isSelf = Boolean(evt.suspected_self_open || evt.suspectedSelfOpen || evt.classification === 'SELF_LIKELY');
+  const ua = evt.userAgent || evt.user_agent;
+  const detectedSource = ua ? detectOpenRequestSource(ua) : null;
+  const isMachine = evt.classification === 'MACHINE_LIKELY' || detectedSource === 'headless' || detectedSource === 'scanner';
+  const isExplicitNonRecipient = isSelf || isMachine || evt.classification === 'UNKNOWN';
+  return evt.classification === 'RECIPIENT_LIKELY' || (!evt.classification && !isExplicitNonRecipient);
+}
+
+export type TrackingTimelineEntry = {
+  type: 'OPEN' | 'CLICK';
+  timestamp: string;
+  /** Link destination, for clicks. */
+  destination?: string;
+  /** Opens through Gmail's image proxy cannot say which device opened the message. */
+  viaProxy?: boolean;
+};
+
+/**
+ * Every open and click that counts, oldest first. Uses the same rules as
+ * deriveTrackingStats, so the timeline length matches the email's counters.
+ */
+export function deriveTrackingTimeline(events: Array<TrackingEventLike & { destination?: string | null }>): TrackingTimelineEntry[] {
+  const sorted = [...events].sort((a, b) => (a.timestamp > b.timestamp ? 1 : a.timestamp < b.timestamp ? -1 : 0));
+  const timeline: TrackingTimelineEntry[] = [];
+  let lastValidOpenMs = 0;
+  for (const evt of sorted) {
+    if (evt.type === 'OPEN' && countsAsRecipientOpen(evt)) {
+      const evtMs = Date.parse(evt.timestamp);
+      if (lastValidOpenMs && Number.isFinite(evtMs) && evtMs >= lastValidOpenMs && evtMs - lastValidOpenMs < 800) continue;
+      lastValidOpenMs = evtMs;
+      const ua = evt.userAgent || evt.user_agent;
+      const viaProxy = evt.classification === 'PROXY_LIKELY' || (ua ? detectOpenRequestSource(ua) === 'google_image_proxy' : false);
+      timeline.push({ type: 'OPEN', timestamp: evt.timestamp, ...(viaProxy ? { viaProxy } : {}) });
+    } else if (evt.type === 'CLICK' && countsAsRecipientClick(evt)) {
+      timeline.push({ type: 'CLICK', timestamp: evt.timestamp, ...(evt.destination ? { destination: evt.destination } : {}) });
+    }
+  }
+  return timeline;
+}
+
 export function deriveTrackingStats(events: TrackingEventLike[]): DerivedTrackingStats {
   const sorted = [...events].sort((a, b) => (a.timestamp > b.timestamp ? 1 : a.timestamp < b.timestamp ? -1 : 0));
   let openCount = 0;
@@ -606,20 +670,7 @@ export function deriveTrackingStats(events: TrackingEventLike[]): DerivedTrackin
       const isSelf = Boolean(evt.suspected_self_open || evt.suspectedSelfOpen || evt.classification === 'SELF_LIKELY');
       const ua = evt.userAgent || evt.user_agent;
       const detectedSource = ua ? detectOpenRequestSource(ua) : null;
-      const isDetectedNonCount =
-        detectedSource === 'google_image_proxy' ||
-        detectedSource === 'headless' ||
-        detectedSource === 'scanner' ||
-        detectedSource === 'unknown';
-      const isDetectedMachine = detectedSource === 'headless' || detectedSource === 'scanner';
-      const isCountable =
-        !isSelf &&
-        !isDetectedMachine &&
-        evt.classification !== 'MACHINE_LIKELY' &&
-        evt.classification !== 'UNKNOWN' &&
-        (evt.classification === 'RECIPIENT_LIKELY' ||
-          evt.classification === 'PROXY_LIKELY' ||
-          (!evt.classification && !isDetectedNonCount));
+      const isCountable = countsAsRecipientOpen(evt);
 
       const evtMs = Date.parse(evt.timestamp);
 
@@ -640,17 +691,7 @@ export function deriveTrackingStats(events: TrackingEventLike[]): DerivedTrackin
         }
       }
     } else if (evt.type === 'CLICK') {
-      const isSelf = Boolean(evt.suspected_self_open || evt.suspectedSelfOpen || evt.classification === 'SELF_LIKELY');
-      const ua = evt.userAgent || evt.user_agent;
-      const detectedSource = ua ? detectOpenRequestSource(ua) : null;
-      const isMachine = evt.classification === 'MACHINE_LIKELY' || detectedSource === 'headless' || detectedSource === 'scanner';
-      const isExplicitNonRecipient = isSelf || isMachine || evt.classification === 'UNKNOWN';
-
-      const isRecipientClick =
-        evt.classification === 'RECIPIENT_LIKELY' ||
-        (!evt.classification && !isExplicitNonRecipient);
-
-      if (isRecipientClick) {
+      if (countsAsRecipientClick(evt)) {
         clickCount += 1;
         if (!firstClickedAt) firstClickedAt = evt.timestamp;
         lastClickedAt = evt.timestamp;

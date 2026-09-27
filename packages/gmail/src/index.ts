@@ -176,6 +176,11 @@ export class CompositeGmailAdapter implements GmailAdapter {
   async insertComposeBody(text: string, target?: import('./types.js').ComposeHandle | { threadId?: string }) {
     return this.primary.insertComposeBody(text, target);
   }
+  /** Only InboxSDK can open and fill a compose window reliably; callers fall back to Gmail's compose URL. */
+  async openNewDraft(draft: import('./types.js').NewDraft) {
+    if (this.active === 'inboxsdk') return this.inboxSdk.openNewDraft(draft);
+    return { success: false, capability: 'openNewDraft', action: 'openNewDraft', reason: 'InboxSDK is not loaded', verified: false };
+  }
   async navigateToSearch(query: string) {
     return this.primary.navigateToSearch(query);
   }

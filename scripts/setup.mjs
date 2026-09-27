@@ -185,6 +185,7 @@ Categories work with AI off.
 
 Develop:   npm run dev   (then Reload on chrome://extensions)
            or npm run dev:reload, then use "Reload extension" in the popup to rebuild + reload
+           (macOS: npm run dev:reload:install keeps that helper running in the background)
 Check:     npm run verify
 Tracking:  recommended Convex setup: npm run setup:tracker -- --open (asks before cloud changes)
            Cloudflare Worker + Supabase: docs/self-hosting.md

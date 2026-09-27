@@ -595,6 +595,32 @@ body.gi-popup .gi-app {
 .gi-onboarding { padding:32px; border:1px solid #f4f0e81c; border-radius:28px; background:linear-gradient(150deg,#f4f0e808,#f4f0e802); box-shadow:0 32px 80px #0002; }
 .gi-welcome-pigeon { display:flex; justify-content:center; padding:34px 0 22px; }
 .gi-onboarding .gi-display { font-size:38px; }
+/* Waiting: tracked mail and when it was opened. */
+.gi-filter { display:flex; gap:6px; padding:0 16px 6px; }
+.gi-filter-btn { display:inline-flex; align-items:center; gap:6px; border:0; border-radius:999px; padding:5px 10px; background:transparent; box-shadow:inset 0 0 0 1px #f4f0e81a; color:var(--gi-mist); font:inherit; font-size:11px; cursor:pointer; transition:background 160ms ease, color 160ms ease, transform 140ms var(--ease-out); }
+.gi-filter-btn span { font-variant-numeric:tabular-nums; opacity:.7; }
+.gi-filter-btn[data-active='true'] { color:var(--gi-pearl); background:rgba(221,167,122,.14); box-shadow:inset 0 0 0 1px rgba(221,167,122,.35); }
+.gi-filter-btn:active { transform:scale(0.97); }
+.gi-open-state { display:inline-flex; align-items:center; gap:6px; color:var(--gi-mist); font-size:11px; font-weight:500; white-space:nowrap; }
+.gi-open-state i { width:7px; height:7px; border-radius:999px; box-shadow:inset 0 0 0 1.5px #aba99e99; }
+.gi-open-state[data-opened='true'] { color:#edbb93; }
+.gi-open-state[data-opened='true'] i { background:var(--gi-accent); box-shadow:0 0 0 3px rgba(221,167,122,.16); }
+.gi-chevron { color:var(--gi-mist); font-size:15px; line-height:1; transition:transform 180ms var(--ease-out); }
+.gi-chevron[data-open='true'] { transform:rotate(90deg); }
+.gi-mail:disabled { cursor:default; }
+.gi-timeline-wrap { padding:2px 16px 16px 16px; }
+.gi-timeline { position:relative; margin:0; padding:0 0 0 18px; list-style:none; }
+.gi-timeline::before { content:''; position:absolute; left:3px; top:7px; bottom:7px; width:1px; background:#f4f0e81f; }
+.gi-timeline li { position:relative; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:1px; padding:5px 0; font-size:12px; }
+.gi-timeline li::before { content:''; position:absolute; left:-18px; top:10px; width:7px; height:7px; border-radius:999px; background:var(--gi-void); box-shadow:inset 0 0 0 1.5px #aba99e; }
+.gi-timeline li[data-kind='open']::before { background:var(--gi-accent); box-shadow:none; }
+.gi-timeline li[data-kind='click']::before { background:#f0d7a4; box-shadow:none; }
+.gi-tl-label { color:var(--gi-pearl); font-weight:500; }
+.gi-timeline time { color:#cfc9bc; font-variant-numeric:tabular-nums; text-align:right; }
+.gi-tl-note { grid-column:1 / -1; color:var(--gi-mist); font-size:11px; }
+.gi-tl-note:empty { display:none; }
+@media (hover: hover) and (pointer: fine) { .gi-filter-btn:hover { color:var(--gi-pearl); } }
+@media (prefers-reduced-motion: reduce) { .gi-chevron, .gi-filter-btn { transition:none; } }
 @media (max-width:380px) { .gi-brand-lockup { font-size:14px; gap:5px; } .gi-brand-sub { font-size:9px; } .gi-seg { padding:7px 10px; } .gi-onboarding { padding:20px; } }
 @media (prefers-reduced-transparency:reduce) { .gi-shell,.gi-core,.gi-card,.gi-onboarding { background:#292923; backdrop-filter:none; } }
 
@@ -689,3 +715,13 @@ body.gi-popup { border-radius: 22px; overflow: hidden; }
 .gi-chip > span[aria-hidden] { font-weight: 700; }
 .gi-chip.is-pro { background: rgba(142, 205, 160, 0.1); color: #b8e6c4; }
 .gi-chip.is-con { background: rgba(240, 160, 130, 0.1); color: #f2c0a8; }
+/* Ask: the question you sent, and a draft written for you. */
+.gi-asked { margin-bottom:14px; padding:10px 12px; border-radius:12px; background:#f4f0e80a; color:var(--gi-mist); font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+.gi-draft { margin-top:14px; border-radius:14px; background:linear-gradient(150deg,#f4f0e80c,#f4f0e803); box-shadow:inset 0 0 0 1px #f4f0e81a; overflow:hidden; }
+.gi-draft dl { display:grid; gap:6px; padding:12px 14px; border-bottom:1px solid #f4f0e812; font-size:12px; }
+.gi-draft dl > div { display:flex; gap:10px; min-width:0; }
+.gi-draft dt { flex:none; width:52px; color:var(--gi-mist); }
+.gi-draft dd { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.gi-draft-body { padding:12px 14px; white-space:pre-wrap; font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
+.gi-draft-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 14px 12px; font-size:11px; line-height:1.5; }
+.gi-draft-foot .gi-btn { flex:none; padding:7px 11px; font-size:12px; }

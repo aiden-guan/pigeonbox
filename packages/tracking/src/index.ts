@@ -757,7 +757,7 @@ function sentStamp(email: TrackedEmailSummary): string {
   return email.sentAt || email.createdAt || '';
 }
 
-function isDeliveredTrackedEmail(email: TrackedEmailSummary): boolean {
+export function isDeliveredTrackedEmail(email: TrackedEmailSummary): boolean {
   if (email.status === 'CANCELLED' || email.status === 'FAILED' || email.status === 'PENDING') return false;
   if (email.status === 'SENT') return true;
   return Boolean(email.sentAt);
@@ -811,6 +811,7 @@ export {
   classifyOpenEvent,
   decideTrackedOpen,
   deriveTrackingStats,
+  deriveTrackingTimeline,
   detectOpenRequestSource,
   isCountableOpenEvent,
   formatTrackingReport,
@@ -855,6 +856,7 @@ export type {
   TrackingPixelEventDiagnostic,
   TrackingSelfViewDiagnostic,
   TrackingSendReport,
+  TrackingTimelineEntry,
 } from './lifecycle.js';
 export {
   decodeBounded,

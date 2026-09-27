@@ -10,6 +10,7 @@ Node.js 20+ (see `.nvmrc`).
 npm run setup
 npm run dev          # rebuild on change, then Reload on chrome://extensions
 npm run dev:reload   # or: popup → "Reload extension" rebuilds, then reloads
+npm run dev:reload:install  # macOS: keep that helper running in the background
 npm run verify       # what CI runs
 ```
 

@@ -106,5 +106,7 @@ async function openInbox(): Promise<void> {
   if (tab?.windowId != null) {
     await chrome.runtime.sendMessage({ type: 'FOCUS_SIDEPANEL', mode: 'inbox' });
     await chrome.sidePanel.open({ windowId: tab.windowId });
+    // The side panel takes over from here; the popup would just sit on top of it.
+    window.close();
   }
 }

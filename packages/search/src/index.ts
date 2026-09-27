@@ -1,4 +1,7 @@
 import MiniSearch from 'minisearch';
+import { isSearchableTerm } from './ask-query.js';
+
+export * from './ask-query.js';
 
 export type SearchDoc = {
   id: string;
@@ -47,7 +50,16 @@ export class LexicalSearchIndex {
     this.mini = new MiniSearch({
       fields: ['subject', 'text', 'senders', 'recipients', 'labels'],
       storeFields: ['threadId', 'subject', 'timestamp', 'fingerprint', 'quality'],
-      searchOptions: { boost: { subject: 3, senders: 2, recipients: 1.5 }, fuzzy: 0.15 },
+      searchOptions: {
+        boost: { subject: 3, senders: 2, recipients: 1.5 },
+        // Filler words ("what", "have", "i") and short prefixes used to match nearly every thread.
+        processTerm: (term) => {
+          const lower = term.toLowerCase();
+          return isSearchableTerm(lower) ? lower : null;
+        },
+        prefix: (term) => term.length >= 3,
+        fuzzy: (term) => (term.length >= 5 ? 0.15 : false),
+      },
     });
   }
 
@@ -73,7 +85,7 @@ export class LexicalSearchIndex {
 
   search(query: string, limit = 20): SearchHit[] {
     if (!query.trim()) return [];
-    const results = this.mini.search(query, { prefix: true });
+    const results = this.mini.search(query);
     return results.slice(0, limit).map((r) => {
       const quality = r.quality as SearchHit['quality'];
       const stub = quality === 'ROW_STUB';

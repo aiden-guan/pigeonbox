@@ -14,6 +14,7 @@ import {
 import {
   decideTrackedOpen,
   deriveTrackingStats,
+  deriveTrackingTimeline,
   PAGE_RELOAD_PROXY_WINDOW_MS,
   planPageReloadProxy,
   selectSenderProxyClaim,
@@ -265,6 +266,28 @@ describe('open decision order', () => {
     expect(deriveTrackingStats(events).openCount).toBe(2);
     expect(convexStats(events).openCount).toBe(2);
     expect(workerStats(events).openCount).toBe(2);
+  });
+
+  it('lists the time of every counted open and click, matching the counters', () => {
+    const events = [
+      { type: 'OPEN', timestamp: '2026-09-24T12:01:00.000Z', classification: 'SELF_LIKELY', suspected_self_open: true, user_agent: proxyUa },
+      { type: 'OPEN', timestamp: '2026-09-24T12:02:00.000Z', classification: 'PROXY_LIKELY', user_agent: proxyUa },
+      // A duplicate render inside the 800 ms window is the same open.
+      { type: 'OPEN', timestamp: '2026-09-24T12:02:00.400Z', classification: 'PROXY_LIKELY', user_agent: proxyUa },
+      { type: 'OPEN', timestamp: '2026-09-24T12:03:00.000Z', classification: 'MACHINE_LIKELY', user_agent: scannerUa },
+      { type: 'CLICK', timestamp: '2026-09-24T12:05:00.000Z', classification: 'RECIPIENT_LIKELY', user_agent: browserUa, destination: 'https://example.com/doc' },
+      { type: 'CLICK', timestamp: '2026-09-24T12:05:30.000Z', classification: 'SELF_LIKELY', user_agent: browserUa },
+      { type: 'OPEN', timestamp: '2026-09-25T08:04:00.000Z', classification: 'RECIPIENT_LIKELY', user_agent: browserUa },
+    ];
+    const timeline = deriveTrackingTimeline(events);
+    expect(timeline).toEqual([
+      { type: 'OPEN', timestamp: '2026-09-24T12:02:00.000Z', viaProxy: true },
+      { type: 'CLICK', timestamp: '2026-09-24T12:05:00.000Z', destination: 'https://example.com/doc' },
+      { type: 'OPEN', timestamp: '2026-09-25T08:04:00.000Z' },
+    ]);
+    const stats = workerStats(events);
+    expect(timeline.filter((entry) => entry.type === 'OPEN')).toHaveLength(stats.openCount);
+    expect(timeline.filter((entry) => entry.type === 'CLICK')).toHaveLength(stats.clickCount);
   });
 
   it('does not use the claim TTL to suppress every later Google proxy', () => {

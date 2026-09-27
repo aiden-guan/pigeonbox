@@ -60,6 +60,10 @@ export class MailboxIngestor {
   }> {
     const quality = inferQuality(thread);
     const existing = await this.db.threads.get(thread.threadId);
+    if (existing && thread.route === 'sent' && !existing.seenInSent) {
+      await this.db.threads.update(thread.threadId, { seenInSent: true });
+      existing.seenInSent = true;
+    }
     if (existing?.quality === 'THREAD_COMPLETE' && quality !== 'THREAD_COMPLETE') {
       return {
         changed: false,
@@ -98,6 +102,7 @@ export class MailboxIngestor {
       messageCount: thread.messageCount || messages.length,
       snippet: thread.snippet,
       route: thread.route,
+      seenInSent: thread.route === 'sent' || existing?.seenInSent || undefined,
       quality,
       source: thread.source,
       manualCategory: existing?.manualCategory,
