@@ -22,6 +22,8 @@ export function cloudErrorMessage(error: unknown): { message: string; action: Cl
     case 'rate_limited':
     case 'provider_rate_limited':
       return { message: 'PigeonBox Cloud is busy. Try again in a moment.', action: 'retry' };
+    case 'aborted':
+      return { message: 'Cancelled.', action: null };
     case 'unsupported_protocol':
     case 'invalid_response':
       return { message: 'This version of PigeonBox is out of date for PigeonBox Cloud. Update the extension.', action: 'update_extension' };

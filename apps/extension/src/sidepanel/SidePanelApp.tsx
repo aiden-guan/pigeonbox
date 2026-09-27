@@ -4,6 +4,7 @@ import type { ExtensionSettings } from '@pigeonbox/shared';
 import { DEFAULT_SETTINGS } from '@pigeonbox/shared';
 import { Orb } from '../ui/Orb';
 import { relative, stamp, WaitingView } from './WaitingView';
+import { CloudView } from './CloudView';
 
 type SplitCategory =
   | 'PRIORITY'
@@ -61,7 +62,9 @@ const CATEGORIES: Array<[SplitCategory, string]> = [
 ];
 
 export function SidePanelApp() {
-  const [mode, setMode] = useState<'inbox' | 'ask'>('inbox');
+  const [mode, setMode] = useState<'inbox' | 'ask' | 'cloud'>('inbox');
+  const [cloudAvailable, setCloudAvailable] = useState(false);
+  const [approvalCount, setApprovalCount] = useState(0);
   const [category, setCategory] = useState<SplitCategory>('RESPOND');
   const [threads, setThreads] = useState<SplitThread[]>([]);
   const [coverage, setCoverage] = useState('');
@@ -84,11 +87,20 @@ export function SidePanelApp() {
     chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, (res?: { settings?: ExtensionSettings }) => {
       if (res?.settings) setSettings({ ...DEFAULT_SETTINGS, ...res.settings });
     });
+    // Cloud intelligence (approvals, Focus Queue, Ask Pigeon) only exists in Cloud mode with Google connected.
+    chrome.runtime.sendMessage({ type: 'CLOUD_INTEL_STATE' }, (state?: { available?: boolean }) => {
+      setCloudAvailable(Boolean(state?.available));
+      if (state?.available) {
+        chrome.runtime.sendMessage({ type: 'CLOUD_CALL', route: 'approvals', body: { status: 'pending', limit: 1 } }, (res?: { ok?: boolean; data?: { pending?: number } }) => {
+          if (res?.ok) setApprovalCount(res.data?.pending ?? 0);
+        });
+      }
+    });
     chrome.runtime.sendMessage({ type: 'RUN_DIAGNOSTICS' }, (diag?: { coverage?: string }) => {
       if (diag?.coverage) setCoverage(diag.coverage);
     });
     chrome.storage.session.get('panelState', (stored) => {
-      const state = stored.panelState as { mode?: 'inbox' | 'ask'; splitCategory?: SplitCategory } | undefined;
+      const state = stored.panelState as { mode?: 'inbox' | 'ask' | 'cloud'; splitCategory?: SplitCategory } | undefined;
       if (state?.mode) setMode(state.mode);
       if (state?.splitCategory) {
         setCategory(state.splitCategory);
@@ -98,7 +110,7 @@ export function SidePanelApp() {
     const onChanged = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
       if (area !== 'session') return;
       if (changes.panelState?.newValue) {
-        const state = changes.panelState.newValue as { mode?: 'inbox' | 'ask'; splitCategory?: SplitCategory };
+        const state = changes.panelState.newValue as { mode?: 'inbox' | 'ask' | 'cloud'; splitCategory?: SplitCategory };
         if (state.mode) setMode(state.mode);
         if (state.splitCategory) {
           setCategory(state.splitCategory);
@@ -151,6 +163,11 @@ export function SidePanelApp() {
             <Tab active={mode === 'inbox'} onClick={() => setMode('inbox')}>
               Inbox
             </Tab>
+            {cloudAvailable ? (
+              <Tab active={mode === 'cloud'} onClick={() => setMode('cloud')}>
+                {approvalCount ? `Cloud · ${approvalCount}` : 'Cloud'}
+              </Tab>
+            ) : null}
             <Tab
               active={mode === 'ask'}
               onClick={() => {
@@ -162,14 +179,18 @@ export function SidePanelApp() {
             </Tab>
           </div>
         </div>
-        <div className="gi-panel-heading"><div><div className="gi-kicker">{mode === 'ask' ? 'A second pair of eyes' : 'A little focus goes a long way'}</div><h1>{mode === 'ask' ? 'Ask your inbox' : label}</h1></div><Pigeon state={loading ? 'indexing' : result?.error ? 'error' : 'idle'} size={78} /></div>
-        {mode === 'inbox' ? (
+        <div className="gi-panel-heading"><div><div className="gi-kicker">{mode === 'ask' ? 'A second pair of eyes' : mode === 'cloud' ? 'Working while you’re away' : 'A little focus goes a long way'}</div><h1>{mode === 'ask' ? 'Ask your inbox' : mode === 'cloud' ? 'PigeonBox Cloud' : label}</h1></div><Pigeon state={loading ? 'indexing' : result?.error ? 'error' : 'idle'} size={78} /></div>
+        {mode === 'cloud' ? (
+          <p className="gi-muted mt-1 text-[12px]">{approvalCount ? `${approvalCount} waiting for your approval` : 'Nothing waiting for approval'}</p>
+        ) : mode === 'inbox' ? (
           <p className="gi-muted mt-1 text-[12px]">{category === 'WAITING' && waitingCount ? waitingCount : threads.length === 1 ? '1 thread' : `${threads.length} threads`}</p>
         ) : (
           <p className="gi-muted mt-1 text-[12px]">Mail already on this computer</p>
         )}
       </header>
-      {mode === 'inbox' ? (
+      {mode === 'cloud' ? (
+        <CloudView onOpenThread={(id) => void openThread(id)} onApprovalCount={setApprovalCount} />
+      ) : mode === 'inbox' ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <nav className="gi-rail" aria-label="Splits">
             {CATEGORIES.map(([id, name]) => (

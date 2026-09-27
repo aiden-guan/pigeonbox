@@ -19,7 +19,7 @@ import {
  * (no API URL in this build), `signed_out`.
  */
 export class CloudApiError extends Error {
-  readonly code: CloudErrorCode | 'network' | 'timeout' | 'invalid_response' | 'signed_out';
+  readonly code: CloudErrorCode | 'network' | 'timeout' | 'aborted' | 'invalid_response' | 'signed_out';
   readonly status: number;
   readonly retryable: boolean;
   readonly requestId?: string;
@@ -60,6 +60,21 @@ export type CloudClientOptions = {
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+
+export type CallOptions = { signal?: AbortSignal; timeoutMs?: number };
+
+/** Abort when either signal aborts. Uses AbortSignal.any where available. */
+function combineSignals(a: AbortSignal | undefined, b: AbortSignal): AbortSignal {
+  if (!a) return b;
+  const any = (AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal }).any;
+  if (any) return any([a, b]);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (a.aborted || b.aborted) controller.abort();
+  a.addEventListener('abort', abort, { once: true });
+  b.addEventListener('abort', abort, { once: true });
+  return controller.signal;
+}
 
 export function normalizeBaseUrl(value: string): string | null {
   const trimmed = value.trim().replace(/\/+$/, '');
@@ -136,8 +151,12 @@ export class PigeonBoxCloudClient {
     return this.call('billingPortal', {});
   }
 
-  /** Typed call for any contract route. Request and response are validated. */
-  async call<N extends RouteName>(name: N, body?: RouteRequest<N>): Promise<RouteResponse<N>> {
+  /**
+   * Typed call for any contract route. Request and response are validated.
+   * `signal` cancels the request (e.g. when a Gmail thread closes); `timeoutMs`
+   * overrides the client default for latency-sensitive UI calls.
+   */
+  async call<N extends RouteName>(name: N, body?: RouteRequest<N>, options: CallOptions = {}): Promise<RouteResponse<N>> {
     const route = ROUTES[name];
     let payload: unknown;
     if ('request' in route) {
@@ -154,16 +173,16 @@ export class PigeonBoxCloudClient {
       if (!token) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Sign in to PigeonBox Cloud first.' });
     }
 
-    let response = await this.send(route.method, route.path, payload, token);
+    let response = await this.send(route.method, route.path, payload, token, options);
     if (response.status === 401 && route.auth === 'user' && this.tokens) {
       const refreshed = await this.tokens.refresh();
       if (!refreshed) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Your PigeonBox Cloud session ended. Sign in again.' });
-      response = await this.send(route.method, route.path, payload, refreshed);
+      response = await this.send(route.method, route.path, payload, refreshed, options);
     }
     return this.readResponse(response, route.response) as Promise<RouteResponse<N>>;
   }
 
-  private async send(method: string, path: string, payload: unknown, token: string | null): Promise<Response> {
+  private async send(method: string, path: string, payload: unknown, token: string | null, options: CallOptions = {}): Promise<Response> {
     const headers: Record<string, string> = {
       Accept: 'application/json',
       [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
@@ -176,12 +195,15 @@ export class PigeonBoxCloudClient {
         method,
         headers,
         body: payload === undefined ? undefined : JSON.stringify(payload),
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: combineSignals(options.signal, AbortSignal.timeout(options.timeoutMs ?? this.timeoutMs)),
         credentials: 'omit',
         redirect: 'error',
       });
     } catch (error) {
       const name = (error as { name?: string })?.name;
+      if (options.signal?.aborted) {
+        throw new CloudApiError({ code: 'aborted', retryable: false, message: 'The request was cancelled.' });
+      }
       if (name === 'TimeoutError' || name === 'AbortError') {
         throw new CloudApiError({ code: 'timeout', retryable: true, message: 'PigeonBox Cloud did not respond in time.' });
       }

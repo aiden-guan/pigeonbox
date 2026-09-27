@@ -19,7 +19,9 @@ describe('sender trust', () => {
     expect(senderMaySend(gmail, 'REQUEST_SUMMARY')).toBe(true);
     expect(senderMaySend(gmail, 'CREATE_TRACKED_EMAIL')).toBe(true);
     expect(senderMaySend(gmail, 'inboxsdk__injectPageWorld')).toBe(true);
-    for (const type of ['SAVE_SETTINGS', 'CLOUD_SIGN_IN', 'SET_RUN_MODE', 'CLEAR_INDEX', 'ENQUEUE_ACTION', 'CHATGPT_LOGIN', 'LOCAL_MODEL_DOWNLOAD', 'GET_PRODUCT_STATE']) {
+    // Cloud thread state is readable from Gmail; deciding, connecting and calling other routes are not.
+    expect(senderMaySend(gmail, 'CLOUD_THREAD_INTEL')).toBe(true);
+    for (const type of ['SAVE_SETTINGS', 'CLOUD_SIGN_IN', 'SET_RUN_MODE', 'CLEAR_INDEX', 'ENQUEUE_ACTION', 'CHATGPT_LOGIN', 'LOCAL_MODEL_DOWNLOAD', 'GET_PRODUCT_STATE', 'CLOUD_CALL', 'CLOUD_OPEN', 'CLOUD_INTEL_STATE']) {
       expect(senderMaySend(gmail, type)).toBe(false);
     }
   });

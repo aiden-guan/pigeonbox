@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_HEADER, PROTOCOL_VERSION } from '@pigeonbox/api-contract';
-import { CloudApiError, PigeonBoxCloudClient, cloudErrorMessage, createCloudAIProvider, createPkcePair, normalizeBaseUrl, pkceChallenge } from './index';
+import { CloudApiError, InflightCache, PigeonBoxCloudClient, cloudErrorMessage, createCloudAIProvider, createPkcePair, normalizeBaseUrl, pkceChallenge } from './index';
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
@@ -195,5 +195,32 @@ describe('pkce', () => {
     expect(pair.verifier.length).toBeGreaterThanOrEqual(43);
     expect(pair.verifier.length).toBeLessThanOrEqual(128);
     expect(pair.challenge).toBe(await pkceChallenge(pair.verifier));
+  });
+});
+
+describe('cancellation and de-duplication', () => {
+  it('reports an aborted call as aborted, not as an outage', async () => {
+    const controller = new AbortController();
+    const fetchImpl = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+      })) as typeof fetch;
+    const client = new PigeonBoxCloudClient({ baseUrl: 'https://api.example.com', fetch: fetchImpl });
+    const pending = client.call('health', undefined, { signal: controller.signal });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'aborted' });
+  });
+
+  it('shares one request between concurrent readers and caches the result briefly', async () => {
+    let now = 0;
+    const cache = new InflightCache<number>(1_000, 10, () => now);
+    let calls = 0;
+    const load = () => new Promise<number>((resolve) => setTimeout(() => resolve(++calls), 5));
+    const [a, b] = await Promise.all([cache.get('k', load), cache.get('k', load)]);
+    expect([a, b, calls]).toEqual([1, 1, 1]);
+    expect(await cache.get('k', load)).toBe(1);
+    now = 2_000;
+    expect(cache.peek('k')).toBeUndefined();
+    expect(await cache.get('k', load)).toBe(2);
   });
 });

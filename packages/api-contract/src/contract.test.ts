@@ -71,7 +71,31 @@ describe('api contract', () => {
   it('keeps unknown capabilities on the wire but drops them when typed', () => {
     const parsed = CapabilitiesResponseSchema.parse({ plan: 'cloud', capabilities: ['cloud_ai', 'teleport'] });
     expect(knownCapabilities(parsed.capabilities)).toEqual(['cloud_ai']);
-    expect(KNOWN_CAPABILITIES).toContain('mcp');
+    expect(KNOWN_CAPABILITIES).toContain('cloud_mcp');
+  });
+
+  it('gates every Cloud intelligence route behind a known capability and a signed-in user', () => {
+    const known = new Set<string>(KNOWN_CAPABILITIES);
+    for (const [name, route] of Object.entries(ROUTES)) {
+      if (!('capability' in route)) continue;
+      expect(known.has(route.capability as string), name).toBe(true);
+      expect(route.auth, name).toBe('user');
+      expect(route.capability, name).not.toBe('local_ai');
+    }
+    expect(ROUTES.connectStart.capability).toBe('cloud_mail_sync');
+    expect(ROUTES.askPigeon.capability).toBe('cloud_semantic_search');
+  });
+
+  it('requires an idempotency key on every externally visible write', () => {
+    for (const name of ['draftPlace', 'approvalDecide', 'actionUndo', 'eventCreate', 'automationRun'] as const) {
+      const shape = (ROUTES[name].request as unknown as { shape: Record<string, unknown> }).shape;
+      expect(shape.idempotencyKey, name).toBeDefined();
+    }
+  });
+
+  it('keeps sending out of every route that could run without approval', () => {
+    const paths = Object.values(ROUTES).map((route) => route.path);
+    expect(paths.some((path) => /send/i.test(path))).toBe(false);
   });
 
   it('builds error bodies with fixed retryability', () => {

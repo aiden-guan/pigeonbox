@@ -7,8 +7,8 @@ The protocol between the extension and PigeonBox Cloud is defined once, in `pack
 - **HTTP + JSON**, TLS only (plain HTTP is accepted only for a server on `127.0.0.1`/`localhost` during development).
 - **Every request and response is validated** with Zod on both sides.
 - **The server derives identity** from the access token. Request bodies never carry a user ID.
-- **Mailbox content is processed, not stored.** AI routes carry email text; the server does not persist or log it.
-- **Content scripts never call Cloud.** The background worker makes every Cloud request.
+- **Mailbox content is processed, not stored.** AI routes carry email text; the server does not persist or log it. Always-on features (after a Google connection) store metadata and encrypted derived data; see [privacy-model.md](privacy-model.md).
+- **Content scripts never call Cloud.** The background worker makes every Cloud request. Gmail's content script may only ask the worker for read-only thread intelligence (`CLOUD_THREAD_INTEL`).
 
 ## Versioning and compatibility
 
@@ -41,6 +41,26 @@ The protocol between the extension and PigeonBox Cloud is defined once, in `pack
 | POST | `/v1/ai/rewrite` | user, metered | `{ input: RewriteInput }` → `string` |
 | POST | `/v1/ai/ask` | user, metered | `{ input: AskInput }` → `AskOutput` |
 | POST | `/v1/ai/embed` | user, metered | `{ texts[] }` → `number[][]` |
+
+### Always-on intelligence (additive, protocol 1)
+
+Available when the account has the matching capability (for example `cloud_mail_sync`, `cloud_auto_drafts`, `cloud_automations`). The full list, with request and response schemas, is `ROUTES` in `packages/api-contract/src/routes.ts`.
+
+| Area | Routes |
+|---|---|
+| Google connection | `/v1/connections`, `/v1/connections/google/start` (incremental features), `/update`, `/resync`, `/disconnect` |
+| Thread state and drafts | `/v1/threads/intel`, `/v1/threads/state`, `/v1/focus/queue`, `/v1/drafts/get|prepare|place|feedback`, `/v1/followups/list|update` |
+| Ask Pigeon | `/v1/ask` (answers with claims, sources and coverage) |
+| Calendar and briefings | `/v1/calendar/availability|propose|events/prepare|events/create|meeting-brief`, `/v1/briefings/list|get|generate` |
+| People and signals | `/v1/contacts/list|brief|update`, `/v1/contacts/radar`, `/v1/signals/thread` |
+| Rules | `/v1/views…` (Smart Views with Shadow Mode), `/v1/automations…` |
+| Approvals and audit | `/v1/approvals/list|decide`, `/v1/audit/list|undo` |
+| Team, snippets, documents | `/v1/workspaces`, `/v1/team/…`, `/v1/snippets…`, `/v1/documents…` |
+| Notifications | `/v1/notifications/list|ack` |
+
+Writes that change Gmail or the calendar take an `idempotencyKey`. Sending and invitations are never executed directly: they create an approval, and only the signed-in person can decide it (API tokens cannot).
+
+In the extension, extension pages reach these routes through the worker's `CLOUD_CALL` message, which accepts only an allowlist (no billing, account deletion or token management). The worker polls `/v1/notifications/list` every two minutes in Cloud mode and shows approvals, due follow-ups, mentions, assignments and sync problems as desktop notifications if the person enabled them.
 
 AI responses share one envelope: `{ result, usage: { inputTokens?, outputTokens?, totalTokens? }, model?, requestId? }`. Size limits are in `AI_LIMITS`.
 

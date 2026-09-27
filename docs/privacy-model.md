@@ -25,7 +25,22 @@ Hosted AI works as: extension → authenticated PigeonBox API → temporary infe
 - asks its AI gateway not to log payloads and not to cache mailbox prompts,
 - records usage for billing and limits without any email text.
 
-Persistent Cloud features that would store mailbox data (sync, cloud search, memory, attachments) do not exist yet. When they arrive they will be separate, explicitly disclosed opt-ins, not a side effect of using Cloud AI.
+## Always-on Cloud (optional Google connection)
+
+Using Cloud AI never stores mailbox data. PigeonBox Cloud's always-on features are a separate opt-in: the person connects a Google account in PigeonBox Cloud and chooses the permissions (read mail, create drafts, organize, read or write the calendar, send). Each can be added later with Google's incremental consent, or removed by disconnecting.
+
+With a connection, PigeonBox Cloud:
+
+- reads mail through the Gmail API to keep thread state, follow-ups and prepared drafts current, reacting to Gmail push notifications;
+- stores **metadata** (Gmail IDs, dates, senders and recipients, labels, subject lines) and **encrypted derived data** (summaries, commitments, drafts, notes, approval previews) with AES-256-GCM under per-purpose keys; it does not store message bodies;
+- keeps encrypted **message excerpts only with Fast Recall**, an opt-in with a retention the person chooses; turning it off deletes them;
+- keeps the Google refresh credential **encrypted on its servers**. It is never sent to the extension, the browser or the web app;
+- never sends email or invitations without the person approving that exact message in the approval queue;
+- treats email content as untrusted data: instructions inside an email are flagged and not followed, and drafts are checked so unsupported facts become placeholders.
+
+The extension only shows this state. In Cloud mode with a connection, the background worker fetches thread intelligence for the thread card; Gmail's content script can request that read-only view and nothing else. Approving, connecting and every other Cloud action happen in extension pages or the web app. Local mode never contacts PigeonBox Cloud, not even with thread IDs.
+
+Everything synced can be deleted from the web app (Privacy & data), per account by disconnecting, or entirely by deleting the Cloud account.
 
 ## Tracking
 

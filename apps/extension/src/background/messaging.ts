@@ -39,6 +39,8 @@ const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   'OPEN_SPLIT',
   'COMMAND',
   'GMAIL_EVENT',
+  // Read-only PigeonBox Cloud thread state for the thread card and chips. Decisions stay in extension pages.
+  'CLOUD_THREAD_INTEL',
   // InboxSDK's own content-script loader asks the worker to inject its page-world file.
   'inboxsdk__injectPageWorld',
 ]);
