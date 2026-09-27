@@ -725,3 +725,20 @@ body.gi-popup { border-radius: 22px; overflow: hidden; }
 .gi-draft-body { padding:12px 14px; white-space:pre-wrap; font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
 .gi-draft-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 14px 12px; font-size:11px; line-height:1.5; }
 .gi-draft-foot .gi-btn { flex:none; padding:7px 11px; font-size:12px; }
+
+/* PigeonBox Cloud in the side panel */
+.gi-approvals { display:grid; gap:12px; margin:0; padding:0; list-style:none; }
+.gi-approval { padding:12px 14px; border-radius:14px; background:linear-gradient(150deg,#f4f0e80c,#f4f0e803); box-shadow:inset 0 0 0 1px #f4f0e81a; }
+.gi-approval-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; font-size:13px; line-height:1.4; }
+.gi-approval-preview { display:grid; gap:4px; margin:10px 0 0; font-size:12px; }
+.gi-approval-preview > div { display:flex; gap:10px; min-width:0; }
+.gi-approval-preview dt { flex:none; width:52px; color:var(--gi-mist); }
+.gi-approval-preview dd { margin:0; min-width:0; overflow-wrap:anywhere; }
+.gi-approval-body { display:block; width:100%; margin-top:10px; resize:vertical; font-size:12px; line-height:1.55; white-space:pre-wrap; }
+.gi-warn { margin-top:8px; padding:7px 9px; border-radius:10px; background:#edbb931f; color:#edbb93; font-size:11px; line-height:1.45; }
+.gi-note { margin-bottom:10px; padding:7px 9px; border-radius:10px; background:#9fd0a51a; color:#b9e0bd; font-size:12px; }
+.gi-claims { display:grid; gap:10px; margin:0; padding:0; list-style:none; font-size:13px; line-height:1.55; }
+.gi-claims li { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 6px; }
+.gi-source { appearance:none; border:0; border-radius:999px; padding:1px 8px; background:#f4f0e814; color:#edbb93; font-size:11px; cursor:pointer; }
+.gi-source.is-static { cursor:default; color:var(--gi-mist); }
+.gi-source:focus-visible { outline:2px solid #edbb93; outline-offset:2px; }

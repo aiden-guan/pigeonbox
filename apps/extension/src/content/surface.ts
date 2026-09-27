@@ -183,6 +183,18 @@ ${orbCss}
 .gi-you { color: #aba99e; font-size: 11px; }
 .gi-section { margin-top: 16px; padding-top: 4px; border-top: 1px solid rgba(244,240,232,.08); }
 .gi-section-heading { margin-top: 12px; color: #b4afa1; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.gi-cloud-state { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 8px; }
+.gi-cloud-state strong { color: #faf5eb; font-size: 13px; font-weight: 600; }
+.gi-cloud-state span { color: #edbb93; font-size: 12px; }
+.gi-cloud-why { margin-top: 6px; color: #aba99e; font-size: 12px; line-height: 1.45; }
+.gi-cloud-warn { margin-top: 8px; padding: 7px 9px; border-radius: 10px; background: rgba(237,187,147,.12); color: #edbb93; font-size: 11px; line-height: 1.45; }
+.gi-cloud-draft { margin-top: 8px; padding: 10px; border-radius: 12px; background: rgba(244,240,232,.05); color: #e8e4da; font-size: 12px; line-height: 1.55; white-space: pre-wrap; user-select: text; }
+.gi-cloud-draft mark { background: rgba(237,187,147,.22); color: #f6d3b5; border-radius: 4px; padding: 0 2px; }
+.gi-cloud-sources { margin-top: 6px; color: #8f8c82; font-size: 11px; line-height: 1.4; }
+.gi-cloud-variants { display: flex; gap: 6px; margin-top: 8px; }
+.gi-cloud-variant { appearance: none; border: 1px solid rgba(244,240,232,.14); background: transparent; color: #c9c5b9; border-radius: 999px; padding: 4px 10px; font-size: 11px; cursor: pointer; }
+.gi-cloud-variant.is-on { background: #f4f0e8; color: #1b1a17; border-color: #f4f0e8; }
+.gi-cloud-variant:focus-visible { outline: 2px solid #edbb93; outline-offset: 2px; }
 .gi-sum { margin-top: 8px; color: #d2cfc5; font-size: 13px; line-height: 1.5; user-select: text; }
 .gi-sum.is-wait { color: #aba99e; }
 .gi-retry-row { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; color: #e8adb2; font-size: 11px; line-height: 1.4; }

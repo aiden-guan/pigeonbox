@@ -31,9 +31,19 @@ extension (public)
 - Gmail content scripts may send only the Gmail-integration messages they need (ingest, summaries, drafts, tracking lifecycle). Settings writes, Cloud sign-in, run-mode changes, index clearing, Gmail actions and model downloads are refused.
 - `chrome.storage.local` and `.session` are set to `TRUSTED_CONTEXTS`, so content scripts cannot read settings (BYOK key, tracker token) or the Cloud refresh token. The worker pushes public settings and tracked-email lists to Gmail tabs with messages instead.
 
+### Cloud intelligence in the extension
+
+`background/cloud-intel.ts` connects the extension to PigeonBox Cloud's always-on service. It is active only in Cloud mode, signed in, with `cloud_mail_sync`; Local mode never calls it.
+
+- `CLOUD_THREAD_INTEL` (the only new content-script message) returns read-only thread state for the thread card: state and next action, deadline, promises, follow-up stage and the prepared draft with its sources and placeholders. Results are batched and cached for 20 seconds (`InflightCache`), and the card renders local data first so Cloud latency never blocks it.
+- `CLOUD_CALL` (extension pages only) calls an allowlisted contract route: approvals, Focus Queue, Ask Pigeon, connections and preferences. Billing, account deletion and token management are not on the list.
+- A two-minute alarm polls Cloud notifications and shows approvals, due follow-ups, mentions, assignments and sync problems as desktop notifications when enabled.
+- The side panel's Cloud tab holds the approval queue (edit, approve, reject; approval is blocked while placeholders remain), the Cloud Focus Queue and Ask Pigeon with source chips. Settings shows the Google connection, which is made on Google's consent screen; credentials stay in Cloud.
+- In every mode, `content/placeholder-guard.ts` stops a message that still contains `[… NEEDED]` or `[CONFIRM …]` from sending unless the person confirms.
+
 ## Run mode and capabilities
 
-`@pigeonbox/core` defines `PigeonBoxMode = 'local' | 'cloud'` and a capability list (`local_ai`, `cloud_ai`, `ask_inbox`, `cloud_tracking`, and reserved future ones: `cloud_search`, `cloud_sync`, `calendar`, `attachments`, `background_agents`, `memory`, `automations`, `mcp`).
+`@pigeonbox/core` defines `PigeonBoxMode = 'local' | 'cloud'` and uses the capability list from `@pigeonbox/api-contract` (`local_ai`, `ask_inbox`, and Cloud capabilities such as `cloud_ai`, `cloud_tracking`, `cloud_mail_sync`, `cloud_auto_drafts`, `cloud_automations`, `cloud_calendar`, `cloud_semantic_search`, `cloud_relationships`, `cloud_documents`, `cloud_team`, `cloud_mcp`, `cloud_sequences`).
 
 - **Local capabilities** are computed on the device from settings. They never depend on Cloud state, so a Cloud outage, an expired subscription, or signing out cannot change what Local does.
 - **Cloud capabilities** come from `GET /v1/capabilities`, which the server derives from the account's entitlements. The client drops names it does not know.

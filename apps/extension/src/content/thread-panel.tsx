@@ -1,7 +1,9 @@
 import { Pigeon, type PigeonState } from '../ui/Pigeon';
 import { Orb } from '../ui/Orb';
 import { useState, type MouseEvent } from 'react';
+import type { ThreadIntel } from '@pigeonbox/api-contract';
 import { categoryLabel } from './chips';
+import { CloudCompanion } from './cloud-companion';
 
 export type IslandMode = 'docked' | 'open' | 'expanded';
 
@@ -49,6 +51,9 @@ export function ThreadIntelCard(props: {
   onDraft: () => void;
   onRemind: () => void;
   onRetrySummary?: () => void;
+  /** What PigeonBox Cloud knows about this thread, in Cloud mode with Google connected. */
+  cloud?: ThreadIntel | null;
+  onUseCloudDraft?: (body: string) => void;
 }) {
   const [uncontrolled, setUncontrolled] = useState<IslandMode>('open');
   const mode = props.mode ?? uncontrolled;
@@ -175,6 +180,7 @@ export function ThreadIntelCard(props: {
             <div className={props.tracking.opened ? 'gi-open-count is-open' : 'gi-open-count'}>{props.tracking.countLabel}</div>
           </div>
         ) : null}
+        {props.cloud ? <CloudCompanion intel={props.cloud} onUseDraft={(body) => props.onUseCloudDraft?.(body)} /> : null}
         <div className="gi-actions">
           {canDraft ? (
             <button

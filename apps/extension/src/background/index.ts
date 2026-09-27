@@ -72,6 +72,7 @@ import {
 import { completeOnDevice, downloadOnDevice, warmOnDevice } from './on-device';
 import { effectiveSettings, resolveIntelligence } from './intelligence';
 import { clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud';
+import { cloudIntelAvailable, forgetThreadIntel, NOTIFICATION_ALARM, pageCall, pollNotifications, threadIntel } from './cloud-intel';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, senderMaySend } from './messaging';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
 import { EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl } from '../config';
@@ -154,7 +155,19 @@ async function saveSettings(partial: Partial<ExtensionSettings>): Promise<Extens
   }
   await publishContentSettings();
   rebuildAgent();
+  if ('voiceProfile' in rest) void syncVoiceToCloud();
   return settings;
+}
+
+/**
+ * Background drafts in PigeonBox Cloud should sound like the drafts here, so
+ * the voice profile follows the extension's. Only in Cloud mode with sync on;
+ * failures are ignored and retried on the next save.
+ */
+async function syncVoiceToCloud(): Promise<void> {
+  const client = await cloudIntelClient().catch(() => null);
+  if (!client) return;
+  await client.call('preferencesUpdate', { preferences: { voice: settings.voiceProfile } }).catch(() => undefined);
 }
 
 function getAI() {
@@ -628,7 +641,7 @@ async function sendToTab(tabId: number, message: unknown, attempts = 8): Promise
   return { success: false, verified: false, reason: last };
 }
 
-async function openSidePanel(mode: 'inbox' | 'ask', splitCategory?: string): Promise<void> {
+async function openSidePanel(mode: 'inbox' | 'ask' | 'cloud', splitCategory?: string): Promise<void> {
   const stored = await chrome.storage.session.get('panelState');
   const current = (stored.panelState || {}) as { mode?: string; splitCategory?: string };
   await chrome.storage.session.set({
@@ -850,6 +863,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => undefined);
   chrome.alarms.create('tracking_poll', { periodInMinutes: 1 });
   chrome.alarms.create('reminder_tick', { periodInMinutes: 15 });
+  chrome.alarms.create(NOTIFICATION_ALARM, { periodInMinutes: 2 });
 });
 
 chrome.runtime.onStartup.addListener(async () => {
@@ -871,6 +885,7 @@ chrome.runtime.onStartup.addListener(async () => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   await loadSettings();
   if (alarm.name === 'tracking_poll') await pollTracking();
+  if (alarm.name === NOTIFICATION_ALARM) await pollCloudNotifications();
   if (alarm.name === RELEASE_CHECK_ALARM && (await releaseChecksWanted())) {
     await checkLatestRelease().catch(() => undefined);
   }
@@ -908,6 +923,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     try {
     await loadSettings();
     if (!agent) rebuildAgent();
+
+    const cloudResponse = await handleCloudIntelMessage(message, sender);
+    if (cloudResponse !== undefined) {
+      sendResponse(cloudResponse);
+      return;
+    }
 
     const productResponse = await handleProductMessage(message);
     if (productResponse !== undefined) {
@@ -1304,7 +1325,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       if (message?.type === 'FOCUS_SIDEPANEL') {
         try {
-          await openSidePanel(message.mode === 'inbox' ? 'inbox' : 'ask', message.category);
+          await openSidePanel(message.mode === 'inbox' ? 'inbox' : message.mode === 'cloud' ? 'cloud' : 'ask', message.category);
           sendResponse({ ok: true });
         } catch (error) {
           sendResponse({ ok: false, reason: String(error) });
@@ -1727,6 +1748,78 @@ async function productState() {
   };
 }
 
+/** The Cloud web app (served by the Cloud API's origin), for a section such as "approvals". */
+function cloudWebUrl(section = 'overview'): string | null {
+  const base = cloudApiUrl(settings);
+  return base ? `${new URL(base).origin}/app#${/^[a-z]{2,20}$/.test(section) ? section : 'overview'}` : null;
+}
+
+async function cloudIntelClient() {
+  const client = getCloudClient(settings);
+  if (!client) return null;
+  const state = await readCloudState(settings);
+  return cloudIntelAvailable(state, settings.runMode) ? client : null;
+}
+
+/**
+ * PigeonBox Cloud intelligence messages. Content scripts may only send
+ * CLOUD_THREAD_INTEL (read-only); the rest need an extension page (enforced by
+ * `senderMaySend`). Returns undefined for any other message.
+ */
+async function handleCloudIntelMessage(message: { type?: unknown; [key: string]: unknown }, sender: chrome.runtime.MessageSender): Promise<unknown> {
+  switch (message?.type) {
+    case 'CLOUD_THREAD_INTEL': {
+      const client = await cloudIntelClient();
+      if (!client) return { ok: true, available: false, threads: {} };
+      const ids = Array.isArray(message.threadIds) ? message.threadIds.filter((id): id is string => typeof id === 'string') : [];
+      const mailbox = typeof message.mailbox === 'string' && EMAIL_PATTERN.test(message.mailbox) ? message.mailbox : undefined;
+      try {
+        return { ok: true, available: true, threads: await threadIntel(client, ids, mailbox) };
+      } catch (error) {
+        return { ok: false, available: true, threads: {}, reason: cloudErrorMessage(error).message };
+      }
+    }
+    case 'CLOUD_INTEL_STATE': {
+      const state = await readCloudState(settings);
+      return { ok: true, available: cloudIntelAvailable(state, settings.runMode), capabilities: state.capabilities, webUrl: cloudWebUrl() };
+    }
+    case 'CLOUD_CALL': {
+      if (!isExtensionPageSender(sender)) return { ok: false, code: 'forbidden', reason: 'This request is only accepted from PigeonBox pages.' };
+      const client = await cloudIntelClient();
+      if (!client) return { ok: false, code: 'not_configured', reason: 'Turn on PigeonBox Cloud and connect Google to use this.' };
+      return pageCall(client, message.route, message.body);
+    }
+    case 'CLOUD_OPEN': {
+      if (!isExtensionPageSender(sender)) return { ok: false, code: 'forbidden' };
+      const url = cloudWebUrl(typeof message.section === 'string' ? message.section : 'overview');
+      if (!url) return { ok: false, reason: 'PigeonBox Cloud is not available in this build.' };
+      await chrome.tabs.create({ url });
+      return { ok: true };
+    }
+    default:
+      return undefined;
+  }
+}
+
+async function pollCloudNotifications(): Promise<void> {
+  const client = await cloudIntelClient().catch(() => null);
+  if (!client) return;
+  await pollNotifications(client, chrome.storage.local, (id, _kind, title, body) => {
+    void Promise.resolve(chrome.notifications.create(id, { type: 'basic', iconUrl: chrome.runtime.getURL('icons/icon128.png'), title, message: body })).catch(() => undefined);
+  }).catch(() => undefined);
+}
+
+chrome.notifications.onClicked.addListener((id) => {
+  const match = id.match(/^cloud_([a-z_]+)_/);
+  if (!match) return;
+  const section = match[1] === 'approval' ? 'approvals' : match[1] === 'mention' || match[1] === 'assignment' ? 'team' : match[1] === 'sync_problem' ? 'connections' : 'overview';
+  void loadSettings().then(() => {
+    const url = cloudWebUrl(section);
+    if (url) void chrome.tabs.create({ url });
+    chrome.notifications.clear(id);
+  });
+});
+
 /**
  * Run mode, Cloud account and billing messages. Returns undefined for any other
  * message. Only extension pages reach here (see `senderMaySend`).
@@ -1757,6 +1850,7 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       try {
         const user = await cloudSession.signIn(base);
         await refreshCloudState(settings);
+        void syncVoiceToCloud();
         await publishContentSettings();
         rebuildAgent();
         return { ok: true, user, state: await productState() };
@@ -1768,6 +1862,7 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       // Signing out never changes the run mode or any local data.
       await cloudSession.signOut();
       await clearCloudState();
+      forgetThreadIntel();
       await publishContentSettings();
       rebuildAgent();
       return { ok: true, state: await productState() };
@@ -1873,6 +1968,7 @@ void hardenExtensionStorage()
   .then(async () => {
     rebuildAgent();
     chrome.alarms.create('tracking_poll', { periodInMinutes: 1 });
+    chrome.alarms.create(NOTIFICATION_ALARM, { periodInMinutes: 2 });
     await refreshGmailTabsAfterRestart({
       storage: chrome.storage,
       tabs: {

@@ -33,8 +33,9 @@ import {
   type TrackedEmailSummary,
 } from '@pigeonbox/tracking';
 import { applyCategoryChip, rowsForThread } from './chips';
-import { VISIBLE_COMMANDS, isVisibleCommand, type CommandId } from './commands';
+import { isVisibleCommand, paletteCommands, type CommandId } from './commands';
 import { attachSdkComposeTracking, type ComposeTrackingSession } from './compose-tracking';
+import { attachPlaceholderGuard } from './placeholder-guard';
 import {
   buildSelfViewEventId,
   createMessageSelfViewHandler,
@@ -44,6 +45,7 @@ import {
 } from './message-self-view';
 import { installSentStatus, type SentStatusController } from './sent-status';
 import { SURFACE_CSS, ensureSurface, floatPanelRightPx, shadowMount } from './surface';
+import type { ThreadIntel } from '@pigeonbox/api-contract';
 import { ThreadIntelCard, type IslandMode, type ThreadIntelData } from './thread-panel';
 import { installFloatDrag, placeFloat, type FloatPos } from './float-drag';
 import { showBusyToast, showToast } from './toasts';
@@ -426,6 +428,7 @@ export function mountSdkUi(
     },
     onComposeView: (composeView) => {
       attachSdkComposeTracking(composeView as any, trackingDeps());
+      attachPlaceholderGuard(composeView as any);
     },
   };
 
@@ -505,6 +508,16 @@ async function refreshPanel(el: HTMLElement, threadId: string): Promise<void> {
   const host = el.id === 'gi-mount' ? ((el.getRootNode() as ShadowRoot).host as HTMLElement) : el;
   const mount = shadowMount(host);
   const intel = await getIntel(threadId);
+  // Cloud state never delays the card: render what we have, then again when Cloud answers.
+  const cloud = cloudIntel.get(threadId)?.value ?? null;
+  if (!cloudIntel.has(threadId) || Date.now() - cloudIntel.get(threadId)!.at > 20_000) {
+    cloudIntel.set(threadId, { value: cloud, at: Date.now() });
+    void getCloudIntel(threadId).then((value) => {
+      const before = JSON.stringify(cloud);
+      cloudIntel.set(threadId, { value, at: Date.now() });
+      if (JSON.stringify(value) !== before && currentThreadId === threadId) void refreshPanel(host, threadId);
+    });
+  }
   let root = panelRoots.get(mount);
   if (!root) {
     root = createRoot(mount);
@@ -540,6 +553,10 @@ async function refreshPanel(el: HTMLElement, threadId: string): Promise<void> {
       },
       onDraft: () => void draftReply(threadId),
       onRemind: () => void remind(threadId),
+      cloud,
+      onUseCloudDraft: (body: string) => void insertDraft(threadId, body).then((result) => {
+        if (!result.success) showToast('Could not open a reply here. Open the thread and try again.');
+      }),
       onRetrySummary: () => {
         showBusyToast('Retrying summary…');
         const opened = currentNormalizedThread?.threadId === threadId ? currentNormalizedThread : null;
@@ -675,6 +692,19 @@ async function waitForSummaryJob(threadId: string, jobId: string, preview: strin
   summaryNotes.set(threadId, { pending: false, reason: 'AI summary took too long. Retry to try again.', preview });
   await refreshThread(threadId);
 }
+
+const cloudIntel = new Map<string, { value: ThreadIntel | null; at: number }>();
+
+/** PigeonBox Cloud's view of the thread, when Cloud mode is on and Google is connected. Otherwise null. */
+async function getCloudIntel(threadId: string): Promise<ThreadIntel | null> {
+  const res = await send<{ available?: boolean; threads?: Record<string, ThreadIntel> }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [threadId], mailbox: mailboxOwner()?.email });
+  cloudAvailable = Boolean(res?.available);
+  return res?.available ? (res.threads?.[threadId] ?? null) : null;
+}
+
+/** Whether PigeonBox Cloud's always-on features are on (Cloud mode, Google connected). Learned from the worker. */
+let cloudAvailable = false;
+void send<{ available?: boolean }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [] }).then((res) => (cloudAvailable = Boolean(res?.available)));
 
 function getIntel(threadId: string): Promise<ThreadIntelData | undefined> {
   return send<ThreadIntelData>({ type: 'GET_THREAD_INTEL', threadId });
@@ -1030,7 +1060,7 @@ function openCommandPalette(): void {
   const render = (filter: string) => {
     list.replaceChildren();
     items = [];
-    const commands = VISIBLE_COMMANDS.filter((item) => item.label.toLowerCase().includes(filter.toLowerCase()));
+    const commands = paletteCommands(filter, cloudAvailable);
     if (active >= commands.length) active = 0;
     if (!commands.length) {
       const empty = document.createElement('div');
@@ -1101,6 +1131,11 @@ async function runCommand(id: string): Promise<void> {
   if (command === 'ask') {
     const res = await send<{ ok?: boolean; reason?: string }>({ type: 'FOCUS_SIDEPANEL', mode: 'ask' });
     if (!res?.ok) showToast(res?.reason || 'Could not open Ask Inbox.');
+    return;
+  }
+  if (command === 'cloud') {
+    const res = await send<{ ok?: boolean; reason?: string }>({ type: 'FOCUS_SIDEPANEL', mode: 'cloud' });
+    if (!res?.ok) showToast(res?.reason || 'Could not open PigeonBox Cloud.');
     return;
   }
   if (command === 'settings') {

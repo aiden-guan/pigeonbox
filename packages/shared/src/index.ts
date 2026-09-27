@@ -105,16 +105,14 @@ export type GmailCapabilities = {
   domFallbackAvailable: boolean;
 };
 
-export const PLACEHOLDER_PATTERN =
-  /\[(DATE|TIME|LINK|NAME|ATTACHMENT|AMOUNT)\]/gi;
-
-export function detectPlaceholders(text: string): string[] {
-  const found = new Set<string>();
-  for (const m of text.matchAll(PLACEHOLDER_PATTERN)) {
-    found.add(`[${m[1]!.toUpperCase()}]`);
-  }
-  return [...found];
-}
+export {
+  PLACEHOLDER_PATTERN,
+  detectPlaceholders,
+  findPlaceholders,
+  hasUnresolvedPlaceholders,
+  placeholderToken,
+} from './placeholders.js';
+export type { Placeholder, PlaceholderKind } from './placeholders.js';
 
 export function stripHtml(html: string): string {
   return html
@@ -548,3 +546,6 @@ export type {
   ThreadSnapshot,
   ThreadSnapshotMessage,
 } from './thread-snapshot.js';
+
+export * from './thread-state.js';
+export * from './business-time.js';
