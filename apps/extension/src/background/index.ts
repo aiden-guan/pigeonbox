@@ -73,7 +73,7 @@ import { completeOnDevice, downloadOnDevice, warmOnDevice } from './on-device';
 import { effectiveSettings, resolveIntelligence } from './intelligence';
 import { clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, senderMaySend } from './messaging';
-import { checkLatestRelease, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
+import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
 import { EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl } from '../config';
 
 const db = getMailboxDb();
@@ -150,7 +150,7 @@ async function saveSettings(partial: Partial<ExtensionSettings>): Promise<Extens
   settings = migrateSettings({ ...settings, ...rest });
   await chrome.storage.local.set({ settings });
   if (settings.automaticUpdateChecks !== previousAutomaticUpdateChecks) {
-    configureReleaseCheckAlarm(settings.automaticUpdateChecks);
+    configureReleaseCheckAlarm(await releaseChecksWanted());
   }
   await publishContentSettings();
   rebuildAgent();
@@ -828,11 +828,17 @@ async function ensureNoReplyReminder(email: TrackedEmailSummary): Promise<void> 
   });
 }
 
+/** Daily GitHub checks, for copies Chrome does not update itself. */
+async function releaseChecksWanted(): Promise<boolean> {
+  return settings.automaticUpdateChecks && !(await chromeManagesUpdates());
+}
+
 chrome.runtime.onInstalled.addListener(async (details) => {
   await loadSettings();
   rebuildAgent();
-  configureReleaseCheckAlarm(settings.automaticUpdateChecks);
-  if (details.reason !== 'install' && settings.automaticUpdateChecks) {
+  const checkReleases = await releaseChecksWanted();
+  configureReleaseCheckAlarm(checkReleases);
+  if (details.reason !== 'install' && checkReleases) {
     void checkLatestRelease().catch(() => undefined);
   }
   if (details.reason === 'install') {
@@ -848,8 +854,9 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 chrome.runtime.onStartup.addListener(async () => {
   await loadSettings();
-  configureReleaseCheckAlarm(settings.automaticUpdateChecks);
-  if (settings.automaticUpdateChecks) {
+  const checkReleases = await releaseChecksWanted();
+  configureReleaseCheckAlarm(checkReleases);
+  if (checkReleases) {
     const status = await readReleaseUpdateStatus();
     const lastCheckedAt = status?.checkedAt ? Date.parse(status.checkedAt) : 0;
     const releaseIsStale =
@@ -864,7 +871,7 @@ chrome.runtime.onStartup.addListener(async () => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   await loadSettings();
   if (alarm.name === 'tracking_poll') await pollTracking();
-  if (alarm.name === RELEASE_CHECK_ALARM && settings.automaticUpdateChecks) {
+  if (alarm.name === RELEASE_CHECK_ALARM && (await releaseChecksWanted())) {
     await checkLatestRelease().catch(() => undefined);
   }
   if (alarm.name === 'reminder_tick') {

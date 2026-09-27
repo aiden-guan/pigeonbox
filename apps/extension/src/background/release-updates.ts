@@ -163,6 +163,19 @@ export async function checkLatestRelease(): Promise<ReleaseUpdateStatus> {
   }
 }
 
+/**
+ * Chrome Web Store copies carry an update URL and Chrome keeps them current,
+ * so only unpacked copies need the GitHub check. getSelf needs no permission.
+ */
+export async function chromeManagesUpdates(): Promise<boolean> {
+  try {
+    const self = await chrome.management.getSelf();
+    return Boolean(self.updateUrl);
+  } catch {
+    return false;
+  }
+}
+
 export function configureReleaseCheckAlarm(enabled: boolean): void {
   if (enabled) {
     chrome.alarms.create(RELEASE_CHECK_ALARM, { delayInMinutes: 24 * 60, periodInMinutes: 24 * 60 });

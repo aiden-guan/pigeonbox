@@ -1,5 +1,6 @@
 import { Brand, Pigeon } from '../ui/Pigeon';
 import { useEffect, useState } from 'react';
+import { chromeManagesUpdates } from '../background/release-updates';
 import { DEV_REBUILD_URL } from '../config';
 import { RebuildFailedError, requestExtensionReload } from '../reload-extension';
 import { Orb } from '../ui/Orb';
@@ -15,12 +16,15 @@ export function PopupApp() {
   const [diag, setDiag] = useState<Diagnostics | null>(null);
   const [reloading, setReloading] = useState(false);
   const [reloadError, setReloadError] = useState<string | null>(null);
+  // Chrome Web Store copies update themselves; reloading only helps copies loaded from a folder.
+  const [storeInstall, setStoreInstall] = useState(false);
   const product = useProductState();
   const cloudMode = product.state.runMode === 'cloud';
   const cloudReady = product.state.cloud.status === 'ready';
 
   useEffect(() => {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
+    void chromeManagesUpdates().then(setStoreInstall);
     chrome.runtime.sendMessage({ type: 'RUN_DIAGNOSTICS' }, (response?: Diagnostics) => {
       if (response) setDiag(response);
     });
@@ -68,22 +72,26 @@ export function PopupApp() {
             <button type="button" className="gi-btn gi-btn-ghost gi-btn-block" onClick={() => chrome.runtime.openOptionsPage()}>
               Settings
             </button>
-            <button
-              type="button"
-              className="gi-btn gi-btn-ghost gi-btn-block"
-              disabled={reloading}
-              onClick={() => {
-                setReloading(true);
-                setReloadError(null);
-                void requestExtensionReload(chrome, { devRebuildUrl: DEV_REBUILD_URL }).catch((error) => {
-                  setReloading(false);
-                  if (error instanceof RebuildFailedError) setReloadError('Build failed. See the dev:reload terminal.');
-                });
-              }}
-            >
-              {reloading ? <><Orb size={14} tone="bare" />{DEV_REBUILD_URL ? 'Rebuilding…' : 'Reloading…'}</> : 'Reload extension'}
-            </button>
-            {reloadError ? <p className="gi-hint" role="alert">{reloadError}</p> : null}
+            {storeInstall ? null : (
+              <>
+                <button
+                  type="button"
+                  className="gi-btn gi-btn-ghost gi-btn-block"
+                  disabled={reloading}
+                  onClick={() => {
+                    setReloading(true);
+                    setReloadError(null);
+                    void requestExtensionReload(chrome, { devRebuildUrl: DEV_REBUILD_URL }).catch((error) => {
+                      setReloading(false);
+                      if (error instanceof RebuildFailedError) setReloadError('Build failed. See the dev:reload terminal.');
+                    });
+                  }}
+                >
+                  {reloading ? <><Orb size={14} tone="bare" />{DEV_REBUILD_URL ? 'Rebuilding…' : 'Reloading…'}</> : 'Reload extension'}
+                </button>
+                {reloadError ? <p className="gi-hint" role="alert">{reloadError}</p> : null}
+              </>
+            )}
           </div>
           <p className="gi-hint"><kbd>⌘ K</kbd> Quick commands in Gmail</p>
         </div>

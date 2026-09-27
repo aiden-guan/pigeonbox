@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.3.1] — 2026-09-26
+
+### Added
+- **Chrome Web Store readiness**: a public [privacy policy](PRIVACY.md), listing text and dashboard answers ([docs/store/listing.md](docs/store/listing.md)), and store screenshots and promo tiles generated from real UI (`apps/extension/scripts/make-store-assets.py`).
+- **Release automation for the store**: tagging a release uploads the same ZIP to the Chrome Web Store and submits it for review, once the store credentials are configured (`scripts/publish-chrome-web-store.mjs`).
+- Release builds include PigeonBox Cloud when the repository variables `PIGEONBOX_CLOUD_API_URL` and `PIGEONBOX_CLOUD_TRACKER_URL` are set.
+
+### Changed
+- Copies installed from the Chrome Web Store, which Chrome updates itself, no longer check GitHub for updates or show the popup's Reload button.
+
 ## [0.3.0] — 2026-09-26
 
 ### Added

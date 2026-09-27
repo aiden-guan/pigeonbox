@@ -9,6 +9,7 @@ import { Orb } from '../ui/Orb';
 import { useProductState } from '../ui/product-state';
 import {
   checkLatestRelease,
+  chromeManagesUpdates,
   readReleaseUpdateStatus,
   RELEASE_CHECK_PERMISSION,
   type ReleaseUpdateStatus,
@@ -27,6 +28,7 @@ export function SettingsApp() {
   const [releaseStatus, setReleaseStatus] = useState<ReleaseUpdateStatus | null>(null);
   const [checkingRelease, setCheckingRelease] = useState(false);
   const [releaseNotice, setReleaseNotice] = useState<string | null>(null);
+  const [storeInstall, setStoreInstall] = useState(false);
   const product = useProductState();
   const cloudMode = product.state.runMode === 'cloud';
 
@@ -108,6 +110,7 @@ export function SettingsApp() {
 
   useEffect(() => {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
+    void chromeManagesUpdates().then(setStoreInstall);
     void readReleaseUpdateStatus().then((status) => {
       if (status) setReleaseStatus(status);
     }).catch(() => undefined);
@@ -214,40 +217,48 @@ export function SettingsApp() {
       </Section>
 
       <Section title="Updates">
-        <p className="gi-muted text-xs">
-          Update checks work in Local and Cloud. The request sends no email or settings data to GitHub; GitHub can see your IP address.
-        </p>
-        <Toggle
-          label="Check GitHub automatically (once a day)"
-          checked={settings.automaticUpdateChecks}
-          onChange={(on) => void setAutomaticUpdateChecks(on)}
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="gi-btn gi-btn-ghost"
-            disabled={checkingRelease}
-            onClick={() => void checkForUpdates()}
-          >
-            {checkingRelease ? 'Checking…' : 'Check for updates'}
-          </button>
-          {releaseStatus?.state === 'available' && releaseStatus.downloadUrl ? (
-            <a className="gi-btn" href={releaseStatus.downloadUrl} target="_blank" rel="noreferrer">
-              Download v{releaseStatus.latestVersion}
-            </a>
-          ) : null}
-        </div>
-        <p className="gi-muted text-xs" role="status" aria-live="polite">
-          {releaseNotice || describeReleaseStatus(releaseStatus)}
-        </p>
-        {releaseStatus?.releaseUrl ? (
-          <a className="gi-text-btn text-xs" href={releaseStatus.releaseUrl} target="_blank" rel="noreferrer">
-            View release notes ↗
-          </a>
-        ) : null}
-        <p className="gi-muted text-xs">
-          The release ZIP downloads in one click. To apply it, unzip the release and reload PigeonBox on <code>chrome://extensions</code>. Chrome does not let a locally installed extension install itself.
-        </p>
+        {storeInstall ? (
+          <p className="gi-muted text-xs">
+            Chrome keeps PigeonBox up to date from the Chrome Web Store. You are on v{chrome.runtime.getManifest().version}.
+          </p>
+        ) : (
+          <>
+            <p className="gi-muted text-xs">
+              Update checks work in Local and Cloud. The request sends no email or settings data to GitHub; GitHub can see your IP address.
+            </p>
+            <Toggle
+              label="Check GitHub automatically (once a day)"
+              checked={settings.automaticUpdateChecks}
+              onChange={(on) => void setAutomaticUpdateChecks(on)}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="gi-btn gi-btn-ghost"
+                disabled={checkingRelease}
+                onClick={() => void checkForUpdates()}
+              >
+                {checkingRelease ? 'Checking…' : 'Check for updates'}
+              </button>
+              {releaseStatus?.state === 'available' && releaseStatus.downloadUrl ? (
+                <a className="gi-btn" href={releaseStatus.downloadUrl} target="_blank" rel="noreferrer">
+                  Download v{releaseStatus.latestVersion}
+                </a>
+              ) : null}
+            </div>
+            <p className="gi-muted text-xs" role="status" aria-live="polite">
+              {releaseNotice || describeReleaseStatus(releaseStatus)}
+            </p>
+            {releaseStatus?.releaseUrl ? (
+              <a className="gi-text-btn text-xs" href={releaseStatus.releaseUrl} target="_blank" rel="noreferrer">
+                View release notes ↗
+              </a>
+            ) : null}
+            <p className="gi-muted text-xs">
+              The release ZIP downloads in one click. To apply it, unzip the release and reload PigeonBox on <code>chrome://extensions</code>. Chrome does not let a locally installed extension install itself.
+            </p>
+          </>
+        )}
       </Section>
 
       <Section title="Agent">

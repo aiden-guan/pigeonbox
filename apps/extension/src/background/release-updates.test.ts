@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkLatestRelease, compareVersions, pickLatestStableRelease, RELEASE_STATUS_KEY } from './release-updates';
+import { checkLatestRelease, chromeManagesUpdates, compareVersions, pickLatestStableRelease, RELEASE_STATUS_KEY } from './release-updates';
 
 const DOWNLOADS = 'https://github.com/aiden-guan/pigeonbox/releases/download';
 
@@ -111,5 +111,28 @@ describe('checkLatestRelease', () => {
   it('reports an error when no extension release exists', async () => {
     respondWith([{ tag_name: 'launch-film-v1', assets: [] }]);
     expect(await checkLatestRelease()).toMatchObject({ state: 'error', message: 'No published PigeonBox release was found.' });
+  });
+});
+
+describe('chromeManagesUpdates', () => {
+  const withSelf = (getSelf: () => Promise<unknown>) => {
+    (globalThis as unknown as { chrome: { management?: unknown } }).chrome.management = { getSelf };
+  };
+
+  it('is true for a Chrome Web Store install, which has an update URL', async () => {
+    withSelf(async () => ({ installType: 'normal', updateUrl: 'https://clients2.google.com/service/update2/crx' }));
+    expect(await chromeManagesUpdates()).toBe(true);
+  });
+
+  it('is false for an unpacked copy', async () => {
+    withSelf(async () => ({ installType: 'development' }));
+    expect(await chromeManagesUpdates()).toBe(false);
+  });
+
+  it('is false when Chrome cannot say', async () => {
+    withSelf(async () => {
+      throw new Error('unavailable');
+    });
+    expect(await chromeManagesUpdates()).toBe(false);
   });
 });

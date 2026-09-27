@@ -27,11 +27,14 @@ npm run check:versions
    - runs a clean `npm ci` and `verify`,
    - builds the release package (`PIGEONBOX_RELEASE=1`),
    - rebuilds from scratch and fails if the ZIP's SHA-256 differs (reproducibility),
-   - creates the GitHub Release with `PigeonBox-v0.3.0.zip` and `PigeonBox-v0.3.0.sha256`.
+   - creates the GitHub Release with `PigeonBox-v0.3.0.zip` and `PigeonBox-v0.3.0.sha256`,
+   - uploads the same ZIP to the Chrome Web Store and submits it for review, once the store credentials are configured (see [chrome-web-store.md](chrome-web-store.md#release-automation)). Until then, upload it in the dashboard by hand.
 
-6. Upload the same ZIP to the Chrome Web Store dashboard (manual, see [chrome-web-store.md](chrome-web-store.md)).
+6. Store users get the update automatically after review. Users of the GitHub ZIP see it in Settings → Updates.
 
-The in-extension update checker lists GitHub releases, picks the highest non-draft, non-prerelease `vX.Y.Z` tag (other releases, like the launch film, are ignored) and looks for the matching `PigeonBox-vX.Y.Z.zip` asset. Keep that tag format and asset name unchanged. Checks are opt-in; sideloaded Chrome extensions still need to be reloaded by the user after downloading.
+Builds include PigeonBox Cloud only when the repository variables `PIGEONBOX_CLOUD_API_URL` and `PIGEONBOX_CLOUD_TRACKER_URL` are set.
+
+The in-extension update checker (unpacked installs only; the Chrome Web Store updates its own installs) lists GitHub releases, picks the highest non-draft, non-prerelease `vX.Y.Z` tag (other releases, like the launch film, are ignored) and looks for the matching `PigeonBox-vX.Y.Z.zip` asset. Keep that tag format and asset name unchanged. Checks are opt-in; sideloaded Chrome extensions still need to be reloaded by the user after downloading.
 
 ## Reproducibility
 
