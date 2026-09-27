@@ -24,7 +24,7 @@
     "dexie": "^4.0.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "zod": "^3.24.2"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.309",
