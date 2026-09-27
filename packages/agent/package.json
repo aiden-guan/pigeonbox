@@ -21,7 +21,7 @@
     "@pigeonbox/shared": "*"
   },
   "devDependencies": {
-    "typescript": "^5.8.2",
-    "vitest": "^3.0.9"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
   }
 }
