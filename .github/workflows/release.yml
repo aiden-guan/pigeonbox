@@ -17,7 +17,7 @@ jobs:
       VITE_PIGEONBOX_CLOUD_API_URL: ${{ vars.PIGEONBOX_CLOUD_API_URL }}
       VITE_PIGEONBOX_CLOUD_TRACKER_URL: ${{ vars.PIGEONBOX_CLOUD_TRACKER_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
