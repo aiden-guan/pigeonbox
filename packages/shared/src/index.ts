@@ -225,6 +225,14 @@ export const RuntimeMessageSchema = z.discriminatedUnion('type', [
     query: z.string().min(1).max(2000),
   }),
   z.object({
+    type: z.literal('OPEN_COMPOSE_DRAFT'),
+    draft: z.object({
+      to: z.array(z.object({ email: z.string().max(320), name: z.string().max(200).optional() })).max(20),
+      subject: z.string().max(500),
+      body: z.string().max(20_000),
+    }),
+  }),
+  z.object({
     type: z.literal('INDEX_INBOX'),
     mode: z.enum(['7d', '30d', '90d', '1y', 'custom', 'sent_sample']),
     customQuery: z.string().optional(),

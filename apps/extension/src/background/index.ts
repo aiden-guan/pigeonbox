@@ -19,13 +19,8 @@ import {
   type PromptOptions,
 } from '@pigeonbox/ai';
 import { selectGmailTab, WorkerTabController } from '@pigeonbox/gmail';
-import { filterSplitThreads, getMailboxDb, IndexJobRunner, MailboxIngestor, type IngestThread, type SplitView } from '@pigeonbox/mailbox';
-import {
-  AskInboxEngine,
-  formatCoverageWarning,
-  HybridRetriever,
-  LexicalSearchIndex,
-} from '@pigeonbox/search';
+import { filterSplitThreads, getMailboxDb, IndexJobRunner, MailboxIngestor, type IngestThread, type SearchDocumentRow, type SplitView } from '@pigeonbox/mailbox';
+import { formatCoverageWarning, LexicalSearchIndex } from '@pigeonbox/search';
 import {
   DEFAULT_SETTINGS,
   RuntimeMessageSchema,
@@ -43,6 +38,7 @@ import { cloudErrorMessage } from '@pigeonbox/cloud-client';
 import {
   TrackingClient,
   applyRecentOpens,
+  deriveTrackingTimeline,
   detectOpenRequestSource,
   formatSentTrackingBadge,
   formatTrackingReport,
@@ -61,6 +57,8 @@ import {
 } from '@pigeonbox/tracking';
 import { refreshGmailTabsAfterRestart } from '../reload-extension';
 import { patchTrackedEmail, readTrackedEmails, upsertTrackedEmail, writeTrackedEmails } from './tracked-mail';
+import { answerAskInbox, type AskDraft } from './ask-inbox';
+import { createOwnerMatcher, isPlaceholderAddress } from './owner';
 import {
   forceRefreshChatGpt,
   getChatGptPublicStatus,
@@ -259,9 +257,9 @@ function rebuildAgent(): void {
   });
 }
 
-async function rebuildSearchIndex(): Promise<void> {
+async function rebuildSearchIndex(docs?: SearchDocumentRow[]): Promise<void> {
   lexical.clear();
-  const docs = await db.search_documents.toArray();
+  docs ??= await db.search_documents.toArray();
   for (const d of docs) {
     lexical.upsert({
       id: d.id,
@@ -279,74 +277,77 @@ async function rebuildSearchIndex(): Promise<void> {
 }
 
 async function handleAskInbox(query: string) {
-  await rebuildSearchIndex();
-  const coverage = await ingestor.getCoverage();
-  const embeddings = await db.embeddings.toArray();
-  const embRecords = embeddings.map((e) => {
-    // embeddings table is by fingerprint; join loosely via search docs
-    return {
-      fingerprint: e.fingerprint,
-      threadId: e.fingerprint.slice(0, 16),
-      subject: '',
-      vector: e.vector,
-      timestamp: new Date(e.createdAt).toISOString(),
-    };
-  });
-  // Prefer search_documents for thread mapping
-  const docs = await db.search_documents.toArray();
-  const byFp = new Map(docs.map((d) => [d.fingerprint, d]));
-  const mapped = embeddings
-    .map((e) => {
-      const d = byFp.get(e.fingerprint);
-      if (!d) return null;
-      return {
-        fingerprint: e.fingerprint,
-        threadId: d.threadId,
-        subject: d.subject,
-        vector: e.vector,
-        timestamp: d.timestamp,
-      };
-    })
-    .filter(Boolean) as Array<{
-    fingerprint: string;
-    threadId: string;
-    subject: string;
-    vector: number[];
-    timestamp: string;
-  }>;
+  const [coverage, threads, messages, searchDocuments, tracked, owner, ownerAliases] = await Promise.all([
+    ingestor.getCoverage(),
+    db.threads.toArray(),
+    db.messages.toArray(),
+    db.search_documents.toArray(),
+    readTrackedEmails(),
+    readMailboxOwner(),
+    readOwnerAddresses(),
+  ]);
+  await rebuildSearchIndex(searchDocuments);
+  const ai = effectiveSettings(settings).aiMode === 'disabled' ? null : getAI();
+  try {
+    return await answerAskInbox({
+      query,
+      threads,
+      messages,
+      searchDocuments,
+      lexical,
+      owner,
+      ownerAliases,
+      tracked,
+      coverage,
+      answerWithModel: ai ? async (input) => (await ai.answerMailboxQuery(input)).result : null,
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error), coverageNote: formatCoverageWarning(coverage) };
+  }
+}
 
-  const retriever = new HybridRetriever(lexical, mapped.length ? mapped : embRecords);
-  const ai = getAI();
-  const engine = new AskInboxEngine(
-    retriever,
-    async () => coverage,
-    async ({ query: q, chunks, coverageNote }) => {
-      if (!ai || effectiveSettings(settings).aiMode === 'disabled') {
-        const lines = chunks.map((c) => `• ${c.subject} (${c.threadId})`).join('\n');
-        return {
-          answer: `Lexical matches (AI disabled):\n${lines}\n\n${coverageNote}`,
-          citations: chunks.map((c) => ({ threadId: c.threadId, subject: c.subject })),
-          incompleteIndex: coverage.state !== 'idle' || coverage.totalIndexedThreads === 0,
-        };
-      }
-      const contextChunks = [];
-      for (const c of chunks) {
-        const doc = await db.search_documents.get(c.threadId);
-        contextChunks.push({
-          threadId: c.threadId,
-          subject: c.subject,
-          text: (doc?.text || '').slice(0, 2000),
-        });
-      }
-      const { result } = await ai.answerMailboxQuery({
-        query: q,
-        contextChunks,
-        coverageNote,
-      });
-      return result;
-    },
-  );
-  return engine.ask(query);
+/**
+ * Opens an Ask Inbox draft in the user's Gmail tab (not the pinned worker tab).
+ * Falls back to Gmail's own compose page when the tab cannot open it.
+ */
+async function openComposeDraft(draft: AskDraft): Promise<{ opened: boolean; reason?: string }> {
+  const [focused] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const gmail = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
+  let tab =
+    (focused?.url?.startsWith('https://mail.google.com/') ? focused : undefined) ||
+    gmail.find((item) => item.active && !item.pinned) ||
+    gmail.find((item) => !item.pinned);
+  let fresh = false;
+  if (!tab?.id) {
+    tab = await chrome.tabs.create({ url: 'https://mail.google.com/mail/u/0/#inbox', active: true });
+    fresh = true;
+  }
+  if (tab.id == null) return { opened: false, reason: 'Could not open Gmail' };
+  await chrome.tabs.update(tab.id, { active: true });
+  if (tab.windowId != null) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
+  const res = (await sendToTab(tab.id, { type: 'OPEN_COMPOSE_DRAFT', draft }, fresh ? 40 : 8)) as { success?: boolean; reason?: string };
+  if (res?.success) return { opened: true };
+  const params = new URLSearchParams({ view: 'cm', fs: '1', tf: '1', to: draft.to.map((contact) => contact.email).join(','), su: draft.subject, body: draft.body });
+  await chrome.tabs.create({ url: `https://mail.google.com/mail/?${params.toString()}`, active: true, windowId: tab.windowId });
+  return { opened: true, reason: res?.reason };
+}
+
+/** The signed-in Gmail address, reported by the Gmail tab. */
+async function readMailboxOwner(): Promise<{ email: string; name?: string } | null> {
+  const stored = await chrome.storage.local.get('mailboxOwner');
+  return mailboxOwnerFrom(stored.mailboxOwner) ?? null;
+}
+
+/** Every Gmail account PigeonBox has seen signed in. The index is shared, so all of them are "you". */
+async function readOwnerAddresses(): Promise<string[]> {
+  const stored = await chrome.storage.local.get('mailboxOwnerAddresses');
+  return Array.isArray(stored.mailboxOwnerAddresses) ? stored.mailboxOwnerAddresses.filter((value): value is string => typeof value === 'string') : [];
+}
+
+async function rememberMailboxOwner(owner: { email: string; name?: string }): Promise<void> {
+  const known = await readOwnerAddresses();
+  const addresses = known.includes(owner.email) ? known : [owner.email, ...known].slice(0, 10);
+  await chrome.storage.local.set({ mailboxOwner: owner, mailboxOwnerAddresses: addresses });
 }
 
 type GmailRuntimeReport = {
@@ -643,6 +644,12 @@ async function openSidePanel(mode: 'inbox' | 'ask', splitCategory?: string): Pro
 async function classifyIngested(thread: IngestThread, fingerprint: string, quality: IngestThread['quality'], direction: string): Promise<void> {
   if (!agent) return;
   const latest = thread.messages?.[thread.messages.length - 1];
+  // The folder a thread was opened from says nothing about who wrote last. The newest message does.
+  const [owner, aliases] = await Promise.all([readMailboxOwner(), readOwnerAddresses()]);
+  const isOwner = createOwnerMatcher({ owner, aliases, contacts: (thread.messages || []).map((message) => message.sender) });
+  const latestKnown = latest && !isPlaceholderAddress(latest.sender?.email) ? latest.sender : undefined;
+  const userWroteLast = latestKnown ? isOwner(latestKnown) : direction === 'outbound' || /^\s*me\s*$/i.test(thread.latestSender?.name || '');
+  if (latestKnown) direction = userWroteLast ? 'outbound' : 'inbound';
   if (direction === 'inbound') await agent.resolveReminderOnInbound(thread.threadId);
   await agent.onNewMessage({
     threadId: thread.threadId,
@@ -652,6 +659,7 @@ async function classifyIngested(thread: IngestThread, fingerprint: string, quali
     bodyText: latest?.bodyText || '',
     latestSenderEmail: latest?.sender?.email || thread.latestSender?.email || 'unknown',
     direction: direction === 'outbound' ? 'outbound' : 'inbound',
+    userIsLatestMeaningfulSender: userWroteLast,
     quality: quality || 'ROW_STUB',
     messages: (thread.messages || []).map((message) => ({
       sender: message.sender.email,
@@ -919,6 +927,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       if (message?.type === 'REPORT_RUNTIME') {
         await chrome.storage.session.set({ gmailRuntime: message.runtime });
+        const owner = mailboxOwnerFrom(message.owner);
+        if (owner) await rememberMailboxOwner(owner);
         sendResponse({ ok: true });
         return;
       }
@@ -1237,6 +1247,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ emails: await readTrackedEmails() });
         return;
       }
+      if (message?.type === 'GET_TRACKING_TIMELINE') {
+        // Every counted open and click for one email, for the side panel's Waiting view.
+        const trackingId = String(message.trackingId || '');
+        const target = trackingId && settings.trackingEnabled ? await trackerTarget() : null;
+        if (!target) {
+          sendResponse({ error: trackingId ? 'Tracking is not set up.' : 'missing_tracking_id' });
+          return;
+        }
+        try {
+          const events = await new TrackingClient(target.baseUrl, target.token).getEvents(trackingId);
+          sendResponse({ timeline: deriveTrackingTimeline(events) });
+        } catch (error) {
+          sendResponse({ error: error instanceof Error ? error.message : String(error) });
+        }
+        return;
+      }
       if (message?.type === 'SET_NO_REPLY_NOTIFY') {
         const trackingId = String(message.trackingId || '');
         const enabled = Boolean(message.enabled);
@@ -1396,6 +1422,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       case 'ASK_INBOX':
         sendResponse(await handleAskInbox(msg.query));
+        break;
+      case 'OPEN_COMPOSE_DRAFT':
+        sendResponse(await openComposeDraft(msg.draft));
         break;
       case 'INDEX_INBOX': {
         const workerId = await workerTabs.ensureTab({ active: false, pinned: true });

@@ -10,6 +10,7 @@ import type {
   GmailAdapter,
   MailboxEvent,
   MailboxEventHandler,
+  NewDraft,
   VisibleThreadRow,
 } from './types.js';
 
@@ -524,6 +525,26 @@ export class InboxSdkAdapter implements GmailAdapter {
     }
     return this.fallback.insertComposeBody(text, targetHandle || target);
   }
+  /** Opens a fresh compose window and fills it in. Never sends. */
+  async openNewDraft(draft: NewDraft): Promise<GmailActionResult> {
+    const compose = this.sdk?.Compose;
+    if (!compose?.openNewComposeView) return fail('openNewDraft', 'InboxSDK compose is not available');
+    try {
+      const view = await compose.openNewComposeView();
+      if (!view) return fail('openNewDraft', 'Gmail did not open a compose window');
+      if (draft.to.length) view.setToRecipients?.(draft.to.map((contact) => contact.email));
+      if (draft.subject) view.setSubject?.(draft.subject);
+      if (draft.body) {
+        // setBodyText assigns textContent, which collapses every line break.
+        if (view.setBodyHTML) view.setBodyHTML(textToComposeHtml(draft.body));
+        else view.insertTextIntoBodyAtCursor?.(draft.body);
+      }
+      return { ...ok('openNewDraft'), verified: true, reason: 'Opened a new draft' };
+    } catch (error) {
+      return fail('openNewDraft', String(error));
+    }
+  }
+
   async navigateToSearch(query: string) {
     if (this.sdk?.Router?.goto) {
       try {
@@ -761,6 +782,9 @@ export type ComposeViewLike = ThreadIdView & {
   getElement?: () => HTMLElement;
   on?: (event: string, cb: () => void) => void;
   insertTextIntoBodyAtCursor?: (text: string) => void;
+  setToRecipients?: (emails: string[]) => void;
+  setSubject?: (subject: string) => void;
+  setBodyHTML?: (html: string) => void;
 };
 
 /** Plain text as Gmail compose markup: one div per line, an empty line as <div><br></div>. */

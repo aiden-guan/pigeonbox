@@ -61,6 +61,8 @@ export type ThreadRow = {
   messageCount: number;
   snippet: string;
   route: string;
+  /** Seen in Gmail's Sent folder at least once. `route` only keeps the latest view. */
+  seenInSent?: boolean;
   quality?: ThreadDataQuality;
   source?: ThreadDataSource;
   manualCategory?: ThreadCategory;

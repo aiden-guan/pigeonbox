@@ -19,6 +19,24 @@ const demoThreads = [
   { threadId:"sample-2", sender:"Oliver at Fieldwork", subject:"The samples are on their way", snippet:"Your material samples should arrive tomorrow morning.", timestamp:new Date(Date.now()-3600000).toISOString() },
   { threadId:"sample-3", sender:"Nina & Alex", subject:"Coffee next week?", snippet:"We’ll be in your neighborhood on Tuesday. Free at 10?", timestamp:new Date(Date.now()-7200000).toISOString() },
 ];
+const ago = (minutes:number)=>new Date(Date.now()-minutes*60000).toISOString();
+const demoTracked = [
+  { trackingId:"trk-1", status:"SENT", subject:"Updated screens for Friday", sender:"ada@example.com", recipients:["Maya Chen"], gmailThreadId:"sample-1", gmailMessageId:null, sentAt:ago(300), firstOpenedAt:ago(262), lastOpenedAt:ago(41), openCount:3, clickCount:1, notifyIfNoReply:false },
+  { trackingId:"trk-2", status:"SENT", subject:"Invoice #2041", sender:"ada@example.com", recipients:["billing@fieldwork.test"], gmailThreadId:"sample-2", gmailMessageId:null, sentAt:ago(1500), firstOpenedAt:null, lastOpenedAt:null, openCount:0, clickCount:0, notifyIfNoReply:true },
+  { trackingId:"trk-3", status:"SENT", subject:"Coffee Tuesday works", sender:"ada@example.com", recipients:["Nina","Alex"], gmailThreadId:"sample-3", gmailMessageId:null, sentAt:ago(4400), firstOpenedAt:ago(4380), lastOpenedAt:ago(4380), openCount:1, clickCount:0, notifyIfNoReply:false },
+];
+const demoTimeline = [
+  { type:"OPEN", timestamp:ago(262), viaProxy:true },
+  { type:"CLICK", timestamp:ago(258), destination:"https://www.figma.com/file/demo" },
+  { type:"OPEN", timestamp:ago(120) },
+  { type:"OPEN", timestamp:ago(41) },
+];
+const demoDraft = { answer:"Here's a draft to Maya Chen.", coverageNote:"Preview uses fictional messages.", citations:[], draft:{ to:[{ email:"maya@fieldwork.test", name:"Maya Chen" }], subject:"Friday screens", body:"Hi Maya,\n\nThanks for sending the updated screens. I'll go through them tonight and send notes before Friday.\n\nBest,\nAiden" } };
+const demoAsk = { answer:"Your 3 most recent sent emails.", coverageNote:"Preview uses fictional messages.", citations:[], items:[
+  { threadId:"sample-1", subject:"Updated screens for Friday", who:"to Maya Chen", timestamp:ago(300), status:"Opened 3×", opened:true },
+  { threadId:"sample-2", subject:"Invoice #2041", who:"to billing@fieldwork.test", timestamp:ago(1500), status:"Not opened", opened:false },
+  { threadId:"sample-3", subject:"Coffee Tuesday works", who:"to Nina and Alex", timestamp:ago(4400) },
+]};
 let empty = false;
 const listeners = new Set<(changes: unknown, area: string) => void>();
 const demoSettings = {...DEFAULT_SETTINGS, aiMode:"disabled", trackerBaseUrl:"", personalApiToken:"", aiApiKey:"", aiEndpoint:""};
@@ -38,7 +56,7 @@ const PRODUCT_MESSAGES = new Set(["GET_PRODUCT_STATE","SET_RUN_MODE","CLOUD_SIGN
 Object.defineProperty(window, "chrome", { configurable:true, value: {
   runtime: { getURL:(p:string)=>`/${p}`, onMessage:{addListener:()=>undefined,removeListener:()=>undefined}, openOptionsPage:()=>{location.hash="settings";location.reload();},
     sendMessage:(message:{type:string;category?:string}, callback?:(r:unknown)=>void)=>{
-      const response = PRODUCT_MESSAGES.has(message.type) ? productReply(message) : message.type==="GET_SETTINGS" ? {settings:demoSettings} : message.type==="LIST_SPLIT" ? {threads:empty || message.category!=="RESPOND" ? [] : demoThreads} : message.type==="RUN_DIAGNOSTICS" ? {gmailTab:"connected",ai:{status:"ready"},tracking:"healthy",coverage:"Preview uses fictional messages."} : message.type==="ASK_INBOX" ? {answer:"Maya is waiting for feedback on the new direction. Oliver’s samples arrive tomorrow. Nina and Alex suggested coffee on Tuesday.",citations:[]} : {};
+      const response = PRODUCT_MESSAGES.has(message.type) ? productReply(message) : message.type==="GET_SETTINGS" ? {settings:demoSettings} : message.type==="LIST_SPLIT" ? {threads:empty || message.category!=="RESPOND" ? [] : demoThreads} : message.type==="RUN_DIAGNOSTICS" ? {gmailTab:"connected",ai:{status:"ready"},tracking:"healthy",coverage:"Preview uses fictional messages."} : message.type==="ASK_INBOX" ? (/^(draft|write|email)\b/i.test(String((message as {query?:string}).query||"")) ? demoDraft : demoAsk) : message.type==="OPEN_COMPOSE_DRAFT" ? {opened:true} : message.type==="GET_TRACKED_EMAILS" ? {emails:empty ? [] : demoTracked} : message.type==="GET_TRACKING_TIMELINE" ? {timeline:(message as {trackingId?:string}).trackingId==="trk-1" ? demoTimeline : (message as {trackingId?:string}).trackingId==="trk-3" ? [{type:"OPEN",timestamp:ago(4380)}] : []} : {};
       setTimeout(()=>callback?.(response),message.type==="ASK_INBOX" ? 1800 : 0); return Promise.resolve(response);
     } },
   storage:{session:{get:(_k:string,cb:(v:unknown)=>void)=>cb({}),set:()=>Promise.resolve()},local:{set:()=>Promise.resolve()},onChanged:{addListener:(fn:(changes:unknown,area:string)=>void)=>listeners.add(fn),removeListener:(fn:(changes:unknown,area:string)=>void)=>listeners.delete(fn)}},

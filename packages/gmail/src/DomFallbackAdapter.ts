@@ -44,7 +44,7 @@ function parseContact(text: string, emailAttr?: string | null): Contact {
   return { email, name: name !== email ? name : undefined };
 }
 
-function routeFromLocation(): ThreadRoute {
+export function routeFromLocation(): ThreadRoute {
   const hash = typeof location !== 'undefined' ? location.hash.toLowerCase() : '';
   if (hash.includes('sent')) return 'sent';
   if (hash.includes('draft')) return 'drafts';

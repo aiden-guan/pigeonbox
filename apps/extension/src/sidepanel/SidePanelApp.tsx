@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ExtensionSettings } from '@pigeonbox/shared';
 import { DEFAULT_SETTINGS } from '@pigeonbox/shared';
 import { Orb } from '../ui/Orb';
+import { relative, stamp, WaitingView } from './WaitingView';
 
 type SplitCategory =
   | 'PRIORITY'
@@ -24,9 +25,26 @@ type SplitThread = {
   manual?: boolean;
 };
 
+type AskItem = {
+  threadId: string | null;
+  subject: string;
+  who: string;
+  timestamp: string | null;
+  status?: string;
+  opened?: boolean;
+};
+
+type AskDraft = {
+  to: Array<{ email: string; name?: string }>;
+  subject: string;
+  body: string;
+};
+
 type AskResult = {
   answer?: string;
   citations?: Array<{ threadId: string; subject: string }>;
+  items?: AskItem[];
+  draft?: AskDraft;
   coverageNote?: string;
   error?: string;
 };
@@ -48,9 +66,12 @@ export function SidePanelApp() {
   const [threads, setThreads] = useState<SplitThread[]>([]);
   const [coverage, setCoverage] = useState('');
   const [query, setQuery] = useState('');
+  const [asked, setAsked] = useState('');
   const [loading, setLoading] = useState(false);
+  const [draftState, setDraftState] = useState<'opening' | 'opened' | 'failed' | null>(null);
   const [result, setResult] = useState<AskResult | null>(null);
   const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_SETTINGS);
+  const [waitingCount, setWaitingCount] = useState('');
 
   const loadSplit = useCallback((next: SplitCategory) => {
     chrome.runtime.sendMessage({ type: 'LIST_SPLIT', category: next }, (res?: { threads?: SplitThread[] }) => {
@@ -98,11 +119,24 @@ export function SidePanelApp() {
   }
 
   function ask() {
-    if (!query.trim()) return;
+    const question = query.trim();
+    if (!question || loading) return;
+    setAsked(question);
+    setQuery('');
+    setResult(null);
+    setDraftState(null);
     setLoading(true);
-    chrome.runtime.sendMessage({ type: 'ASK_INBOX', query }, (res: AskResult) => {
+    chrome.runtime.sendMessage({ type: 'ASK_INBOX', query: question }, (res: AskResult) => {
       setResult(res || { error: 'No response' });
       setLoading(false);
+      if (res?.draft) openDraft(res.draft);
+    });
+  }
+
+  function openDraft(draft: AskDraft) {
+    setDraftState('opening');
+    chrome.runtime.sendMessage({ type: 'OPEN_COMPOSE_DRAFT', draft }, (res?: { opened?: boolean }) => {
+      setDraftState(res?.opened ? 'opened' : 'failed');
     });
   }
 
@@ -130,7 +164,7 @@ export function SidePanelApp() {
         </div>
         <div className="gi-panel-heading"><div><div className="gi-kicker">{mode === 'ask' ? 'A second pair of eyes' : 'A little focus goes a long way'}</div><h1>{mode === 'ask' ? 'Ask your inbox' : label}</h1></div><Pigeon state={loading ? 'indexing' : result?.error ? 'error' : 'idle'} size={78} /></div>
         {mode === 'inbox' ? (
-          <p className="gi-muted mt-1 text-[12px]">{threads.length === 1 ? '1 thread' : `${threads.length} threads`}</p>
+          <p className="gi-muted mt-1 text-[12px]">{category === 'WAITING' && waitingCount ? waitingCount : threads.length === 1 ? '1 thread' : `${threads.length} threads`}</p>
         ) : (
           <p className="gi-muted mt-1 text-[12px]">Mail already on this computer</p>
         )}
@@ -145,7 +179,9 @@ export function SidePanelApp() {
             ))}
           </nav>
           <main className="min-h-0 flex-1 overflow-auto">
-            {threads.length === 0 ? (
+            {category === 'WAITING' ? (
+              <WaitingView threads={threads} onOpenThread={(id, folder) => void openThread(id, folder)} onCount={setWaitingCount} />
+            ) : threads.length === 0 ? (
               <div className="gi-empty"><Pigeon size={138} /><h2>A quiet little corner.</h2><p>No threads in this view yet.<br />Open Gmail to bring your mail into view.</p></div>
             ) : (
               <ul className="gi-list">
@@ -154,7 +190,7 @@ export function SidePanelApp() {
                     <button type="button" className="gi-mail" onClick={() => openThread(thread.threadId)}>
                       <div className="flex items-baseline justify-between gap-3">
                         <span className="truncate text-[13px] font-semibold tracking-[-0.02em]">{thread.sender}</span>
-                        <span className="gi-time shrink-0">{when(thread.timestamp)}</span>
+                        <span className="gi-time shrink-0">{relative(thread.timestamp)}</span>
                       </div>
                       <div className="mt-0.5 truncate text-[13px] text-[#e7e2d7]">{thread.subject || '(no subject)'}</div>
                       {thread.snippet ? <div className="gi-muted mt-0.5 truncate text-[12px]">{thread.snippet}</div> : null}
@@ -174,13 +210,39 @@ export function SidePanelApp() {
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-auto px-4 pb-2">
-            {coverage ? <p className="gi-muted mb-3 text-[12px] leading-relaxed">{coverage}</p> : null}
+            {result?.coverageNote || coverage ? <p className="gi-muted mb-3 text-[12px] leading-relaxed">{result?.coverageNote || coverage}</p> : null}
             {settings.aiMode === 'disabled' ? <p className="gi-muted mb-3 text-[12px]">AI is off. Results are local matches.</p> : null}
             {result?.error ? <p className="gi-danger">{result.error}</p> : null}
+            {asked && (loading || result) ? <p className="gi-asked">{asked}</p> : null}
             {result?.answer ? <p className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[-0.011em]">{result.answer}</p> : null}
+            {result?.draft ? <DraftCard draft={result.draft} state={draftState} onOpen={() => openDraft(result.draft!)} /> : null}
             {!result && !loading ? <div className="gi-ask-start"><h2>What’s on your mind?</h2><p>Find a detail, catch up on a conversation, or remember what you promised.</p><div className="gi-suggestions">{['What needs a reply?', 'What did I promise this week?', 'Find upcoming deadlines'].map((prompt) => <button type="button" key={prompt} onClick={() => setQuery(prompt)}>{prompt}<span aria-hidden="true">↗</span></button>)}</div></div> : null}
             {loading ? <p className="gi-muted gi-orb-line" role="status"><Orb size={20} />Looking through your mail…</p> : null}
-            {result?.citations?.length ? (
+            {result?.items?.length ? (
+              <ul className="gi-list -mx-4 mt-3">
+                {result.items.map((item, index) => (
+                  <li key={`${item.threadId || item.subject}-${index}`}>
+                    <button
+                      type="button"
+                      className="gi-mail"
+                      disabled={!item.threadId}
+                      onClick={() => item.threadId && void openThread(item.threadId, item.who.startsWith('to ') ? 'sent' : 'inbox')}
+                    >
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="truncate text-[13px] font-semibold tracking-[-0.02em]">{item.who}</span>
+                        <span className="gi-time shrink-0" title={item.timestamp ? stamp(item.timestamp) : undefined}>{item.timestamp ? relative(item.timestamp) : ''}</span>
+                      </div>
+                      <div className="mt-0.5 truncate text-[13px] text-[#e7e2d7]">{item.subject}</div>
+                      {item.status ? (
+                        <div className="mt-1.5 text-[11px]">
+                          <span className="gi-open-state" data-opened={Boolean(item.opened)}><i aria-hidden="true" />{item.status}</span>
+                        </div>
+                      ) : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : result?.citations?.length ? (
               <ul className="mt-4 space-y-2">
                 {result.citations.map((citation) => (
                   <li key={citation.threadId}>
@@ -202,16 +264,37 @@ export function SidePanelApp() {
             <input
               className="gi-field min-w-0 flex-1"
               aria-label="Ask about mail on this computer"
-              placeholder="Ask about your mail…"
+              placeholder="Ask, or draft an email…"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
             <button type="submit" className="gi-btn shrink-0" disabled={loading || !query.trim()}>
-              {loading ? <><Orb size={14} tone="on-accent" />Asking</> : 'Ask'}
+              {loading ? <><Orb size={14} tone="on-accent" />Working</> : 'Send'}
             </button>
           </form>
         </div>
       )}
+    </div>
+  );
+}
+
+function DraftCard(props: { draft: AskDraft; state: 'opening' | 'opened' | 'failed' | null; onOpen: () => void }) {
+  const { draft, state } = props;
+  const to = draft.to.map((contact) => contact.name || contact.email).join(', ');
+  const status = state === 'opening' ? 'Opening in Gmail…' : state === 'opened' ? 'Opened in Gmail as a draft. Nothing sends until you do.' : state === 'failed' ? 'Could not open Gmail.' : '';
+  return (
+    <div className="gi-draft">
+      <dl>
+        <div><dt>To</dt><dd title={draft.to.map((contact) => contact.email).join(', ')}>{to || <span className="gi-muted">Add a recipient in Gmail</span>}</dd></div>
+        <div><dt>Subject</dt><dd>{draft.subject || <span className="gi-muted">(no subject)</span>}</dd></div>
+      </dl>
+      <p className="gi-draft-body">{draft.body}</p>
+      <div className="gi-draft-foot">
+        <span className="gi-muted" role="status">{status}</span>
+        <button type="button" className="gi-btn gi-btn-ghost" disabled={state === 'opening'} onClick={props.onOpen}>
+          {state === 'opened' ? 'Open again' : 'Open in Gmail'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -224,20 +307,21 @@ function Tab(props: { active: boolean; onClick: () => void; children: string }) 
   );
 }
 
-function when(value: string): string {
-  const time = Date.parse(value);
-  if (!Number.isFinite(time)) return '';
-  const delta = Date.now() - time;
-  const minutes = Math.round(delta / 60000);
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.round(hours / 24)}d`;
+/** Gmail URLs want the hex thread id; InboxSDK sometimes reports the decimal "thread-f:" form. */
+function gmailUrlId(threadId: string): string {
+  const bare = threadId.trim().replace(/^#/, '').replace(/^(thread-f:|thread-a:|msg-f:|msg-a:)/i, '');
+  if (/^\d{17,}$/.test(bare)) {
+    try {
+      return BigInt(bare).toString(16);
+    } catch {
+      return bare;
+    }
+  }
+  return bare;
 }
 
-async function openThread(threadId: string): Promise<void> {
-  const url = `https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(threadId)}`;
+async function openThread(threadId: string, folder: 'inbox' | 'sent' = 'inbox'): Promise<void> {
+  const url = `https://mail.google.com/mail/u/0/#${folder}/${encodeURIComponent(gmailUrlId(threadId))}`;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id && tab.url?.includes('mail.google.com')) {
     await chrome.tabs.update(tab.id, { url });

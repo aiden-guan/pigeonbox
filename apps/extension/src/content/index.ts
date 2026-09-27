@@ -12,6 +12,7 @@ import {
   findThreadRows,
   normalizeOpenedThread,
   normalizeVisibleRow,
+  routeFromLocation,
   type ActionQueueResult,
   type ComposeHandle,
   type NormalizedThread,
@@ -21,6 +22,7 @@ import {
   verifyNavigation,
   type InboxSdkLike,
   type InboxSdkHooks,
+  type NewDraft,
   type QueuedGmailAction,
 } from '@pigeonbox/gmail';
 import {
@@ -178,6 +180,7 @@ function reportRuntime(lastAction?: { success: boolean; action: string; reason?:
       currentThreadId,
       lastAction: lastAction ? { ...lastAction, at: Date.now() } : undefined,
     },
+    owner: mailboxOwner(),
   });
 }
 
@@ -241,9 +244,11 @@ async function boot(): Promise<void> {
   reportTracking(null);
   await adapter.start((event) => {
     if (event.type === 'VISIBLE_ROWS_CHANGED') {
-      const threads = event.rows.map((row) => normalizeVisibleRow(row, adapter.getActiveIntegration() === 'inboxsdk' ? 'inboxsdk' : 'dom'));
+      // Rows keep the folder they were seen in, so Ask can tell sent mail from received.
+      const route = routeFromLocation();
+      const threads = event.rows.map((row) => normalizeVisibleRow(row, adapter.getActiveIntegration() === 'inboxsdk' ? 'inboxsdk' : 'dom', route));
       if (threads.length) {
-        void send({ type: 'INGEST_THREADS', direction: 'inbound', threads });
+        void send({ type: 'INGEST_THREADS', direction: route === 'sent' ? 'outbound' : 'inbound', threads });
         void paintVisibleChips(threads.map((thread) => thread.threadId));
       }
     }
@@ -751,6 +756,14 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
         sendResponse(await hydrateThread(String(message.threadId || ''), message.restore !== false));
         return;
       }
+      if (message?.type === 'OPEN_COMPOSE_DRAFT' && message.draft && typeof message.draft === 'object') {
+        // A Gmail tab that just opened is still loading InboxSDK.
+        for (let waited = 0; !adapter.getActiveIntegration() && waited < 15_000; waited += 250) await wait(250);
+        const result = await adapter.openNewDraft(message.draft as NewDraft);
+        reportRuntime({ success: result.success, action: 'OPEN_COMPOSE_DRAFT', reason: result.reason });
+        sendResponse(result);
+        return;
+      }
       if (message?.type === 'GET_CAPABILITIES') {
         sendResponse(await adapter.detectCapabilities());
       }
@@ -929,7 +942,8 @@ async function indexBatch(query: string, cursor: string) {
     await wait(1200);
   }
   const rows = await adapter.getVisibleThreadMetadata();
-  const threads = (rows.rows || []).map((row) => normalizeVisibleRow(row, 'dom', 'search'));
+  const route = /\bin:sent\b/i.test(query) ? 'sent' : 'search';
+  const threads = (rows.rows || []).map((row) => normalizeVisibleRow(row, 'dom', route));
   return { threads, nextCursor: threads.length && page < 8 ? String(page + 1) : undefined };
 }
 

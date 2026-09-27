@@ -64,6 +64,13 @@ export type ComposeHandle = {
   element?: HTMLElement | null;
 };
 
+/** A new email to open in Gmail's compose window. */
+export type NewDraft = {
+  to: Contact[];
+  subject: string;
+  body: string;
+};
+
 export type MailboxEvent =
   | { type: 'VISIBLE_ROWS_CHANGED'; rows: VisibleThreadRow[]; at: number }
   | { type: 'MESSAGE_ARRIVED'; row: VisibleThreadRow; at: number }

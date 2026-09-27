@@ -292,8 +292,8 @@ async function compactAnswer(
   const chunks = input.contextChunks.slice(0, 4);
   const context = chunks.map((chunk, index) => `[${index + 1}] ${chunk.subject}\n${clip(chunk.text, 700)}`).join('\n\n');
   const completion = await complete(
-    'Answer the question using only these emails. If they do not contain the answer, say so. Answer in 1 to 3 sentences.',
-    `${context}\n\nQuestion: ${input.query}`,
+    'Answer the question using only these emails. "you" means the person asking, and each email starts with a Status line saying who wrote last. If the emails do not contain the answer, say so. Answer in 1 to 3 sentences.',
+    `${context}\n\n${input.coverageNote}\nQuestion: ${input.query}`,
     { maxTokens: 160 },
   );
   const answer = cleanCompactText(completion.text);
