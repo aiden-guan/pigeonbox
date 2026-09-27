@@ -184,6 +184,8 @@ export function validateManifest(manifest, names, expectedVersion) {
   if (manifest.manifest_version !== 3) problems.push('manifest_version must be 3');
   if (expectedVersion && manifest.version !== expectedVersion) problems.push(`manifest version ${manifest.version} != package version ${expectedVersion}`);
   if (!/^\d+(\.\d+){0,3}$/.test(String(manifest.version))) problems.push(`invalid manifest version ${manifest.version}`);
+  // The store assigns the key; an uploaded manifest must not carry the dev build's.
+  if ('key' in manifest) problems.push('manifest.json must not contain "key" (dev builds only)');
   const csp = manifest.content_security_policy?.extension_pages ?? '';
   // WebAssembly compilation ('wasm-unsafe-eval') is allowed; JS eval, inline script and remote sources are not.
   const stripped = csp.replace(/'wasm-unsafe-eval'/g, '');
