@@ -91,7 +91,11 @@ To publish a release by hand: `CWS_PUBLISHER_ID=… CWS_EXTENSION_ID=… CWS_SER
 
 ## Cloud in store builds
 
-A build has PigeonBox Cloud only if it was built with `VITE_PIGEONBOX_CLOUD_API_URL`. The release workflow reads it from the repository variables `PIGEONBOX_CLOUD_API_URL` and `PIGEONBOX_CLOUD_TRACKER_URL`. While they are unset, onboarding shows Cloud as "Not available in this build" and the store listing must not advertise it. When Cloud launches, follow "When Cloud launches" in [store/listing.md](store/listing.md).
+A build has PigeonBox Cloud only if it was built with `VITE_PIGEONBOX_CLOUD_API_URL`. The release workflow reads it from the repository variables `PIGEONBOX_CLOUD_API_URL` and `PIGEONBOX_CLOUD_TRACKER_URL`. While they are unset, Settings and onboarding show Cloud as "Coming soon" and the store listing must not advertise it. When Cloud launches, follow "When Cloud launches" in [store/listing.md](store/listing.md).
+
+## Local builds with the store ID
+
+An unpacked build gets an ID derived from its folder path, so it differs from the store item's. Cloud sign-in (`https://<id>.chromiumapp.org/` redirects, `ALLOWED_EXTENSION_IDS`) only accepts known IDs. To give `dist/` the store ID, copy the item's public key (Developer Dashboard → Package → View public key) into `apps/extension/.env.local` as `PIGEONBOX_EXTENSION_KEY=…` and rebuild; the build logs the resulting ID. Release builds never include the key, and packaging fails if a manifest has one. Chrome can't have the store copy and the unpacked copy with the same ID installed in one profile, so use a separate profile for development.
 
 ## After listing
 

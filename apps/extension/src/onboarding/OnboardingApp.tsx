@@ -87,7 +87,15 @@ export function OnboardingApp() {
                       setStep(3);
                     }}
                   />
-                ) : null}
+                ) : (
+                  <Choice
+                    title="PigeonBox Cloud"
+                    detail="No model downloads or personal API keys. Not available yet."
+                    badge="Coming soon"
+                    disabled
+                    onClick={() => undefined}
+                  />
+                )}
                 <Choice
                   title="Advanced"
                   detail="Ollama or your own API key. Set it up in Settings → Change AI."
@@ -138,18 +146,23 @@ export function OnboardingApp() {
   );
 }
 
-function Choice(props: { title: string; detail: string; onClick: () => void }) {
+function Choice(props: { title: string; detail: string; badge?: string; disabled?: boolean; onClick: () => void }) {
   return (
-    <button type="button" className="gi-choice" onClick={props.onClick}>
+    <button type="button" className="gi-choice" disabled={props.disabled} onClick={props.onClick}>
       <span>
-        <span className="block text-[14px] font-medium tracking-[-0.02em]">{props.title}</span>
+        <span className="flex items-center gap-2 text-[14px] font-medium tracking-[-0.02em]">
+          {props.title}
+          {props.badge ? <span className="gi-badge">{props.badge}</span> : null}
+        </span>
         <span className="gi-muted mt-1 block text-[12px] leading-relaxed">{props.detail}</span>
       </span>
-      <span className="gi-choice-go" aria-hidden="true">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M3 7h8M8 3.5 11.5 7 8 10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </span>
+      {props.disabled ? null : (
+        <span className="gi-choice-go" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 7h8M8 3.5 11.5 7 8 10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      )}
     </button>
   );
 }

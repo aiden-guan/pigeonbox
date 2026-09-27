@@ -1,4 +1,5 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { createHash } from 'node:crypto';
 import react from '@vitejs/plugin-react';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -92,6 +93,40 @@ function releaseHygiene(): Plugin {
   };
 }
 
+/**
+ * Chrome derives an extension's ID from the manifest `key`, or from the folder
+ * path when there is none. Setting `PIGEONBOX_EXTENSION_KEY` (the store item's
+ * public key: Developer Dashboard → Package → View public key) gives the
+ * unpacked dev build the same ID as the Chrome Web Store item, so Cloud sign-in
+ * redirects and ID allowlists behave the same locally. Release builds never
+ * carry it: the store assigns its own key.
+ */
+function extensionKey(mode: string): string | undefined {
+  if (release) return undefined;
+  const raw = process.env.PIGEONBOX_EXTENSION_KEY ?? loadEnv(mode, __dirname, 'PIGEONBOX_').PIGEONBOX_EXTENSION_KEY;
+  const key = raw
+    ?.replace(/-----(BEGIN|END) PUBLIC KEY-----/g, '')
+    .replace(/\s+/g, '');
+  if (!key) return undefined;
+  const der = Buffer.from(key, 'base64');
+  if (der.length < 100 || der.toString('base64') !== key) {
+    throw new Error('PIGEONBOX_EXTENSION_KEY is not a base64 public key. Copy it from Developer Dashboard → Package → View public key.');
+  }
+  return key;
+}
+
+/** The extension ID Chrome derives from a manifest key. */
+function extensionIdFromKey(key: string): string {
+  const hex = createHash('sha256').update(Buffer.from(key, 'base64')).digest('hex').slice(0, 32);
+  return [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
+}
+
+function manifestTransform(mode: string) {
+  const key = extensionKey(mode);
+  if (key) console.log(`[pigeonbox] Unpacked build uses the store extension ID ${extensionIdFromKey(key)}`);
+  return (content: string) => (key ? JSON.stringify({ ...JSON.parse(content), key }, null, 2) + '\n' : content);
+}
+
 export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [
@@ -104,7 +139,7 @@ export default defineConfig(({ mode }) => ({
       ? [
           viteStaticCopy({
             targets: [
-              { src: 'manifest.json', dest: '.' },
+              { src: 'manifest.json', dest: '.', transform: manifestTransform(mode) },
               { src: 'public/icons/*', dest: 'icons' },
               {
                 src: '../../node_modules/@inboxsdk/core/pageWorld.js',

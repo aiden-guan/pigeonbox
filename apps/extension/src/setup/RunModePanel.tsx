@@ -4,7 +4,7 @@ import { Orb } from '../ui/Orb';
 import { CloudConnections } from './CloudConnections';
 
 const CLOUD_STATUS_LABEL: Record<string, string> = {
-  not_configured: 'Not available in this build',
+  not_configured: 'Coming soon',
   signed_out: 'Signed out',
   ready: 'Connected',
   not_entitled: 'Subscription not active',
@@ -50,8 +50,9 @@ export function RunModePanel({
           detail={
             state.cloudAvailable
               ? 'No model downloads or personal API keys. Needs a PigeonBox account.'
-              : 'Not available in this build of PigeonBox.'
+              : 'No model downloads or personal API keys. Not available yet.'
           }
+          badge={state.cloudAvailable ? undefined : 'Coming soon'}
           active={cloudMode}
           disabled={!state.cloudAvailable}
           onClick={() => setPickingCloud(true)}
@@ -145,7 +146,14 @@ export function RunModePanel({
   );
 }
 
-function ModeChoice(props: { title: string; detail: string; active: boolean; disabled?: boolean; onClick: () => void }) {
+function ModeChoice(props: {
+  title: string;
+  detail: string;
+  badge?: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
@@ -155,14 +163,19 @@ function ModeChoice(props: { title: string; detail: string; active: boolean; dis
       onClick={props.onClick}
     >
       <span>
-        <span className="block text-[14px] font-medium tracking-[-0.02em]">{props.title}</span>
+        <span className="flex items-center gap-2 text-[14px] font-medium tracking-[-0.02em]">
+          {props.title}
+          {props.badge ? <span className="gi-badge">{props.badge}</span> : null}
+        </span>
         <span className="gi-muted mt-1 block text-[12px] leading-relaxed">{props.detail}</span>
       </span>
-      <span className="gi-choice-go" aria-hidden="true">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M3 7h8M8 3.5 11.5 7 8 10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </span>
+      {props.disabled ? null : (
+        <span className="gi-choice-go" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 7h8M8 3.5 11.5 7 8 10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      )}
     </button>
   );
 }

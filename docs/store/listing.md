@@ -52,7 +52,7 @@ PigeonBox is MIT-licensed. The code, the privacy model and reproducible release 
 | Field | File |
 |---|---|
 | Store icon (128×128) | `store-icon-128.png` |
-| Screenshots (1280×800) | `screenshot-1.png` … `screenshot-4.png`, in that order |
+| Screenshots (1280×800) | `screenshot-1.png` … `screenshot-5.png`, in that order |
 | Small promo tile (440×280) | `promo-small.png` |
 | Marquee promo tile (1400×560) | `promo-marquee.png` |
 
