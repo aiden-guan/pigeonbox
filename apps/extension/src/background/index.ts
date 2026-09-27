@@ -76,6 +76,7 @@ import { cloudIntelAvailable, forgetThreadIntel, NOTIFICATION_ALARM, pageCall, p
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, senderMaySend } from './messaging';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
 import { EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl } from '../config';
+import { TrackingNotificationHistory } from './tracking-notifications';
 
 const db = getMailboxDb();
 const queue = new AIJobQueue();
@@ -84,7 +85,8 @@ const lexical = new LexicalSearchIndex();
 let settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
 let agent: AgentLoop | null = null;
 let indexRunner: IndexJobRunner | null = null;
-const notifiedEventIds = new Set<string>();
+const notificationHistory = new TrackingNotificationHistory(chrome.storage.local);
+let trackingPollInFlight: Promise<void> | null = null;
 
 const workerTabs = new WorkerTabController({
   query: (q) => chrome.tabs.query(q) as Promise<Array<{ id?: number; url?: string; pinned?: boolean }>>,
@@ -708,7 +710,26 @@ async function trackerTarget(): Promise<{ baseUrl: string; token: string } | nul
   return { baseUrl: settings.trackerBaseUrl, token: settings.personalApiToken };
 }
 
+async function notificationScope(baseUrl: string): Promise<string> {
+  // A different account on the same tracker must get its own baseline. Hash the
+  // local credential so it is never stored in notification history as plaintext.
+  const identity = settings.runMode === 'cloud'
+    ? (await cloudSession.readSession())?.user.id || 'cloud'
+    : settings.personalApiToken;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${settings.runMode}:${baseUrl}:${identity}`));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 async function pollTracking(): Promise<void> {
+  if (!trackingPollInFlight) {
+    trackingPollInFlight = pollTrackingNow().finally(() => {
+      trackingPollInFlight = null;
+    });
+  }
+  return trackingPollInFlight;
+}
+
+async function pollTrackingNow(): Promise<void> {
   if (!settings.trackingEnabled) return;
   const target = await trackerTarget();
   if (!target) return;
@@ -737,12 +758,10 @@ async function pollTracking(): Promise<void> {
     );
   }
   let events: Awaited<ReturnType<TrackingClient['getRecentEvents']>> = [];
-  let hasNotifiedBaseline = true;
-  let eventsLoaded = false;
+  let newEvents: typeof events = [];
   try {
-    hasNotifiedBaseline = await loadNotifiedEvents();
     events = await client.getRecentEvents();
-    eventsLoaded = true;
+    newEvents = await notificationHistory.claim(await notificationScope(target.baseUrl), events);
     if (!sawRemote && events.length) {
       for (const email of applyRecentOpens([...byId.values()], events)) byId.set(email.trackingId, email);
     }
@@ -768,22 +787,24 @@ async function pollTracking(): Promise<void> {
   } catch (e) {
     console.warn('[gi] tracking poll failed', e);
   }
-  if (sawRemote || local.length) await writeTrackedEmails([...byId.values()]);
-  try {
-    if (!hasNotifiedBaseline) {
-      // First poll without a baseline: treat existing events as already seen
-      // instead of flooding the user with notifications for old opens.
-      if (!eventsLoaded) return;
-      for (const ev of events) notifiedEventIds.add(ev.id);
-      await saveNotifiedEvents();
-      return;
+  // The list endpoint only returns the 200 newest sent emails. An older email
+  // can still have a new open, so look up its details before composing the alert.
+  const missingIds = [...new Set(newEvents.filter(isNotifiableTrackingEvent).map((event) => event.tracking_id))]
+    .filter((id) => !byId.has(id));
+  await Promise.all(missingIds.map(async (id) => {
+    try {
+      const row = await client.getEmail(id);
+      byId.set(id, summaryFromRemote(row));
+    } catch {
+      /* The event can still be shown with a generic subject. */
     }
+  }));
+  if (sawRemote || local.length || missingIds.length) await writeTrackedEmails([...byId.values()]);
+  try {
     const fresh = [...byId.values()];
-    for (const ev of events) {
+    for (const ev of newEvents) {
       if (!isNotifiableTrackingEvent(ev)) continue;
-      if (notifiedEventIds.has(ev.id)) continue;
       if (settings.hideSuspectedSelfOpens && ev.suspected_self_open) continue;
-      if (!(await markEventNotified(ev.id))) continue;
       if (!settings.desktopNotifications) continue;
       const email = fresh.find((item) => item.trackingId === ev.tracking_id);
       const who = email?.recipients.length === 1 ? email.recipients[0] : 'Someone';
@@ -801,31 +822,6 @@ async function pollTracking(): Promise<void> {
   } catch (e) {
     console.warn('[gi] tracking poll failed', e);
   }
-}
-
-// Persisted in storage.local (not session) so reloading the extension or
-// restarting Chrome does not re-notify for events already seen. Returns false
-// when there is no stored baseline yet, e.g. on first run.
-async function loadNotifiedEvents(): Promise<boolean> {
-  const stored = await chrome.storage.local.get('notifiedEventIds');
-  const ids = stored.notifiedEventIds;
-  if (!Array.isArray(ids)) return false;
-  for (const id of ids) {
-    if (typeof id === 'string') notifiedEventIds.add(id);
-  }
-  return true;
-}
-
-async function saveNotifiedEvents(): Promise<void> {
-  const ids = [...notifiedEventIds].slice(-500);
-  await chrome.storage.local.set({ notifiedEventIds: ids });
-}
-
-async function markEventNotified(id: string): Promise<boolean> {
-  if (notifiedEventIds.has(id)) return false;
-  notifiedEventIds.add(id);
-  await saveNotifiedEvents();
-  return true;
 }
 
 async function ensureNoReplyReminder(email: TrackedEmailSummary): Promise<void> {

@@ -90,6 +90,15 @@ describe('CloudSessionManager', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a callback path that merely starts with the expected path', async () => {
+    const { manager, fetchMock } = setup(async () => json(session()), async (url) => {
+      const state = new URL(url).searchParams.get('state');
+      return `${REDIRECT}-other?code=abc12345&state=${state}`;
+    });
+    await expect(manager.signIn(API)).rejects.toMatchObject({ code: 'invalid_response' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('refreshes an expiring access token once for concurrent callers', async () => {
     let refreshes = 0;
     const { manager, advance } = setup(async (url) => {
