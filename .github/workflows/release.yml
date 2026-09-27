@@ -12,6 +12,10 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      # Public build-time config (repository variables). Blank means Cloud shows as unavailable.
+      VITE_PIGEONBOX_CLOUD_API_URL: ${{ vars.PIGEONBOX_CLOUD_API_URL }}
+      VITE_PIGEONBOX_CLOUD_TRACKER_URL: ${{ vars.PIGEONBOX_CLOUD_TRACKER_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,3 +54,16 @@ jobs:
             --title "PigeonBox ${GITHUB_REF_NAME}" \
             --notes "Prebuilt extension ZIP for loading unpacked or for the Chrome Web Store. Verify with: sha256sum -c PigeonBox-${GITHUB_REF_NAME}.sha256. See CHANGELOG.md for changes." \
             --verify-tag
+
+      # Skipped until the store item exists and its credentials are set (docs/chrome-web-store.md).
+      - name: Publish to the Chrome Web Store
+        if: ${{ vars.CWS_EXTENSION_ID != '' }}
+        env:
+          CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+          CWS_EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
+          CWS_PUBLISH: ${{ vars.CWS_PUBLISH }}
+          CWS_SERVICE_ACCOUNT_JSON: ${{ secrets.CWS_SERVICE_ACCOUNT_JSON }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: node scripts/publish-chrome-web-store.mjs "release/PigeonBox-${GITHUB_REF_NAME}.zip"
