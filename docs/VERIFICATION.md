@@ -6,7 +6,7 @@
 npm run verify     # repo checks, versions, typecheck, lint, tests, build, release ZIP validation
 ```
 
-`verify` runs without any Cloud backend, Supabase, Stripe, Convex or AI key. Local-mode independence from Cloud is covered by `packages/core/src/core.test.ts` and `apps/extension/src/background/intelligence.test.ts`; settings migration by `packages/shared/src/settings-migration.test.ts`.
+`verify` runs without any Cloud backend, Supabase, Stripe, Convex or AI key. Local-mode independence from Cloud is covered by `packages/core/src/core.test.ts` and `apps/extension/src/background/ai/provider-router.test.ts`; settings migration by `packages/shared/src/settings-migration.test.ts`.
 
 ## Live Gmail
 
@@ -25,7 +25,7 @@ This environment did not sign in to Gmail, so the flows below are **not** claime
 ## Honest degradation
 
 - Native Gmail label mutation is not available. Categories are local.
-- Ask Inbox and summaries use full message text only after a thread has been opened. Row snippets are previews.
+- Ask Pigeon and summaries use full message text only after a thread has been opened. Row snippets are previews.
 - Archive is confirmed by Gmail’s notice, leaving the thread, or the thread disappearing from the inbox list. A click alone is not success.
 - ChatGPT web sign-in is experimental and not part of setup.
 - Tracking cannot delay or block Send. A miss is logged and the mail goes out untracked.

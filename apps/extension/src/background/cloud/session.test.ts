@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CloudSessionManager, type CloudSessionDeps } from './cloud-session';
+import { CloudSessionManager, type CloudSessionDeps } from './session';
 
 const API = 'https://api.example.com';
 const REDIRECT = 'https://abcdefghijklmnop.chromiumapp.org/cloud';

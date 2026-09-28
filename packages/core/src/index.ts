@@ -34,7 +34,7 @@ export type LocalCapabilityInput = Pick<ExtensionSettings, 'aiMode' | 'aiProvide
 
 /** Local capabilities come from the device and settings only. No network, no account. */
 export function localCapabilities(settings: LocalCapabilityInput): PigeonBoxCapability[] {
-  // Ask Inbox always works: with AI off it returns lexical matches from the local index.
+  // Ask Pigeon always works: with AI off it returns lexical matches from the local index.
   const caps: PigeonBoxCapability[] = ['ask_inbox'];
   if (isLocalAiConfigured(settings.aiMode)) caps.push('local_ai');
   return caps;
@@ -66,7 +66,7 @@ export class CapabilitySet {
  * Local mode never looks at Cloud state, so a Cloud outage, an expired
  * subscription or a signed-out account cannot change what Local does.
  * Cloud mode uses what the server granted, plus the parts of the product that
- * always run on the device (the local index behind Ask Inbox).
+ * always run on the device (the local index behind Ask Pigeon).
  */
 export function resolveCapabilities(input: {
   mode: PigeonBoxMode;

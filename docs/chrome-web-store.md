@@ -28,7 +28,7 @@ Release builds turn off experimental features (ChatGPT web sign-in) and omit sou
 | `notifications` | Open/click and follow-up reminder alerts |
 | `alarms` | Tracking poll and reminder schedule |
 | `scripting` | Injecting InboxSDK's bundled `pageWorld.js` into Gmail's MAIN world, as InboxSDK requires under MV3 |
-| `sidePanel` | Split inbox and Ask Inbox panel |
+| `sidePanel` | Split inbox and Ask Pigeon panel |
 | `offscreen` | Running WebGPU/ONNX and Gemini Nano outside the service worker (reason `WORKERS`) |
 | host `https://mail.google.com/*` | The product works inside Gmail |
 

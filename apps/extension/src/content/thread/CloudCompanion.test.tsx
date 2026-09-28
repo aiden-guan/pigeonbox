@@ -5,7 +5,7 @@ import type { ThreadIntel } from '@pigeonbox/api-contract';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
-import { CloudCompanion } from './cloud-companion';
+import { CloudCompanion } from './CloudCompanion';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

@@ -5,7 +5,7 @@ import { SIGNED_OUT_CLOUD, aiDataDestination, localCapabilities, resolveCapabili
 const ready: CloudState = { status: 'ready', email: 'a@example.com', plan: 'cloud', capabilities: ['cloud_ai', 'cloud_tracking', 'unknown_future'] };
 
 describe('capabilities', () => {
-  it('Local with AI off still has Ask Inbox and no account capabilities', () => {
+  it('Local with AI off still has Ask Pigeon and no account capabilities', () => {
     const caps = resolveCapabilities({ mode: 'local', settings: DEFAULT_SETTINGS, cloud: SIGNED_OUT_CLOUD });
     expect(caps.list()).toEqual(['ask_inbox']);
     expect(caps.has('cloud_ai')).toBe(false);

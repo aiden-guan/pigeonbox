@@ -75,7 +75,7 @@ PigeonBox helps people manage their Gmail inbox: it sorts and summarizes mail, d
 | `notifications` | Tells the user when a tracked email is opened or a follow-up reminder is due. |
 | `alarms` | Schedules checks for tracking events and follow-up reminders. |
 | `scripting` | Injects the bundled InboxSDK page script into Gmail, which InboxSDK requires under Manifest V3 to add PigeonBox's UI to Gmail. The script ships in the package. |
-| `sidePanel` | Shows the sorted inbox and Ask Inbox in Chrome's side panel. |
+| `sidePanel` | Shows the sorted inbox and Ask Pigeon in Chrome's side panel. |
 | `offscreen` | Runs on-device AI (WebGPU/ONNX and Gemini Nano) in an offscreen document, because the service worker cannot. |
 | `identity` (optional) | Requested only if the user signs in to PigeonBox Cloud, to run the sign-in flow. |
 | Host `https://mail.google.com/*` | PigeonBox works inside Gmail: it reads the mail the user has open and adds its UI there. |

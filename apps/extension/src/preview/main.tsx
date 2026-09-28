@@ -7,9 +7,9 @@ import { PopupApp } from "../popup/PopupApp";
 import { SidePanelApp } from "../sidepanel/SidePanelApp";
 import { SettingsApp } from "../settings/SettingsApp";
 import { OnboardingApp } from "../onboarding/OnboardingApp";
-import { ThreadIntelCard } from "../content/thread-panel";
-import { SURFACE_CSS, shadowMount } from "../content/surface";
-import { installFloatDrag, placeFloat } from "../content/float-drag";
+import { ThreadPanel } from "../content/thread/ThreadPanel";
+import { SURFACE_CSS, shadowMount } from "../content/shell/surface";
+import { installFloatDrag, placeFloat } from "../content/shell/float-drag";
 import { Pigeon, type PigeonState } from "../ui/Pigeon";
 import "../styles.css";
 import "./preview.css";
@@ -66,7 +66,7 @@ Object.defineProperty(window, "chrome", { configurable:true, value: {
 function ThreadPreview({state}:{state:PigeonState}) {
  const ref=useRef<HTMLDivElement>(null); const [mount,setMount]=useState<ShadowRoot|null>(null); const [drafting,setDrafting]=useState(false); const [notice,setNotice]=useState("");
  useLayoutEffect(()=>{ if(ref.current) setMount(ref.current.shadowRoot || ref.current.attachShadow({mode:"open"})); },[]);
- return <><div ref={ref} data-gi-ui="thread-sidebar"/>{mount ? createPortal(<><style>{SURFACE_CSS}</style><div id="gi-mount"><ThreadIntelCard variant="sidebar" canDraft drafting={drafting || state==="drafting"}
+ return <><div ref={ref} data-gi-ui="thread-sidebar"/>{mount ? createPortal(<><style>{SURFACE_CSS}</style><div id="gi-mount"><ThreadPanel variant="sidebar" canDraft drafting={drafting || state==="drafting"}
    pending={state==="indexing" ? "Analyzing this thread…" : null}
    intel={{classification:{category:"RESPOND",needsReply:true},summary:{source:"model",aiStatus:state==="error" ? "failed":"success",summary:{oneLine:"Maya likes the direction. She needs two small changes before Friday’s review.",keyPoints:["Try a warmer tone for the main screen.","Keep the pigeon. Give it a little personality."],actionItems:["Send the updated screens before the review."],dates:["Friday, September 25"]}}}}
    tracking={state==="opened" ? {opened:true,markLabel:"Open detected",headline:"An open was recorded for your email.",detail:"Image loading is a signal, not proof of reading.",countLabel:"1 open detected"}:null}
@@ -82,7 +82,7 @@ function Preview(){
 }
 function FloatCard() {
  const [mode,setMode]=useState<"docked"|"open"|"expanded">("open");
- return <ThreadIntelCard mode={mode} onMode={setMode} canDraft intel={{classification:{category:"PROMOTIONS"},summary:{source:"model",aiStatus:"success",summary:{oneLine:"A Math 52 exam review is scheduled for Monday from 4:00pm to 6:00pm.",keyPoints:["Math 52 midterm review, Monday, 4:00-6:00pm"],actionItems:["Attend the review"]}}}} onDraft={()=>{}} onRemind={()=>{}}/>;
+ return <ThreadPanel mode={mode} onMode={setMode} canDraft intel={{classification:{category:"PROMOTIONS"},summary:{source:"model",aiStatus:"success",summary:{oneLine:"A Math 52 exam review is scheduled for Monday from 4:00pm to 6:00pm.",keyPoints:["Math 52 midterm review, Monday, 4:00-6:00pm"],actionItems:["Attend the review"]}}}} onDraft={()=>{}} onRemind={()=>{}}/>;
 }
 // `#float` mounts the draggable, resizable card the way the content script does in Gmail.
 if (location.hash === "#float") {

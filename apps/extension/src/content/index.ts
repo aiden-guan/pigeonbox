@@ -32,24 +32,24 @@ import {
   type TrackedEmailPatch,
   type TrackedEmailSummary,
 } from '@pigeonbox/tracking';
-import { applyCategoryChip, rowsForThread } from './chips';
+import { applyCategoryChip, rowsForThread } from './thread/chips';
 import { isVisibleCommand, paletteCommands, type CommandId } from './commands';
-import { attachSdkComposeTracking, type ComposeTrackingSession } from './compose-tracking';
-import { attachPlaceholderGuard } from './placeholder-guard';
+import { attachSdkComposeTracking, type ComposeTrackingSession } from './tracking/compose-tracking';
+import { attachPlaceholderGuard } from './shell/placeholder-guard';
 import {
   buildSelfViewEventId,
   createMessageSelfViewHandler,
   type MessageSelfViewController,
   type PageReloadContext,
   type SelfViewSource,
-} from './message-self-view';
-import { installSentStatus, type SentStatusController } from './sent-status';
-import { SURFACE_CSS, ensureSurface, floatPanelRightPx, shadowMount } from './surface';
+} from './tracking/message-self-view';
+import { installSentStatus, type SentStatusController } from './tracking/sent-status';
+import { SURFACE_CSS, ensureSurface, floatPanelRightPx, shadowMount } from './shell/surface';
 import type { ThreadIntel } from '@pigeonbox/api-contract';
-import { ThreadIntelCard, type IslandMode, type ThreadIntelData } from './thread-panel';
-import { installFloatDrag, placeFloat, type FloatPos } from './float-drag';
-import { showBusyToast, showToast } from './toasts';
-import { SelfViewDeduplicator } from './self-view-dedupe';
+import { ThreadPanel, type IslandMode, type LocalThreadIntel } from './thread/ThreadPanel';
+import { installFloatDrag, placeFloat, type FloatPos } from './shell/float-drag';
+import { showBusyToast, showToast } from './shell/toasts';
+import { SelfViewDeduplicator } from './tracking/self-view-dedupe';
 
 export const adapter = new CompositeGmailAdapter();
 let settings: PublicExtensionSettings = toPublicSettings(DEFAULT_SETTINGS);
@@ -495,7 +495,7 @@ async function refreshThread(threadId: string): Promise<void> {
 }
 
 async function paintVisibleChips(threadIds: string[]): Promise<void> {
-  const res = await send<{ intel?: Record<string, ThreadIntelData> }>({ type: 'GET_THREAD_INTEL_MANY', threadIds });
+  const res = await send<{ intel?: Record<string, LocalThreadIntel> }>({ type: 'GET_THREAD_INTEL_MANY', threadIds });
   const intel = res?.intel || {};
   for (const threadId of threadIds) {
     const category = intel[threadId]?.classification?.category;
@@ -533,7 +533,7 @@ async function refreshPanel(el: HTMLElement, threadId: string): Promise<void> {
     ? (settings.aiModel ? `Analyzing with ${settings.aiModel}…` : 'Analyzing email…')
     : (note?.reason || (intel?.summary?.aiStatus === 'failed' ? (intel?.summary?.aiError ? `AI summary failed: ${intel.summary.aiError}` : 'AI summary failed.') : (intel?.classification || hasModelSummary ? null : 'Analyzing thread…')));
   root.render(
-    createElement(ThreadIntelCard, {
+    createElement(ThreadPanel, {
       intel,
       tracking,
       pending,
@@ -706,8 +706,8 @@ async function getCloudIntel(threadId: string): Promise<ThreadIntel | null> {
 let cloudAvailable = false;
 void send<{ available?: boolean }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [] }).then((res) => (cloudAvailable = Boolean(res?.available)));
 
-function getIntel(threadId: string): Promise<ThreadIntelData | undefined> {
-  return send<ThreadIntelData>({ type: 'GET_THREAD_INTEL', threadId });
+function getIntel(threadId: string): Promise<LocalThreadIntel | undefined> {
+  return send<LocalThreadIntel>({ type: 'GET_THREAD_INTEL', threadId });
 }
 
 async function createTracked(input: CreateTrackedEmailInput): Promise<CreateTrackedEmailResult | null> {
@@ -1130,7 +1130,7 @@ async function runCommand(id: string): Promise<void> {
   const command = id as CommandId;
   if (command === 'ask') {
     const res = await send<{ ok?: boolean; reason?: string }>({ type: 'FOCUS_SIDEPANEL', mode: 'ask' });
-    if (!res?.ok) showToast(res?.reason || 'Could not open Ask Inbox.');
+    if (!res?.ok) showToast(res?.reason || 'Could not open Ask Pigeon.');
     return;
   }
   if (command === 'cloud') {

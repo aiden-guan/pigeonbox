@@ -4,7 +4,7 @@ import { sans } from "../theme";
 /**
  * A light webmail surface, drawn at ~2x so it reads on a 1080p frame.
  * PigeonBox elements (tracking pill, sent-row mark, open-status card) mirror
- * apps/extension/src/content/surface.ts and packages/tracking describeTrackingStatus.
+ * apps/extension/src/content/shell/surface.ts and packages/tracking describeTrackingStatus.
  */
 
 export const UI = {

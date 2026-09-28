@@ -1,3 +1,4 @@
+/** Runs on-device models (WebGPU, Gemini Nano) through the offscreen document. */
 import type { PromptOptions } from '@pigeonbox/ai';
 
 const OFFSCREEN_URL = 'offscreen.html';

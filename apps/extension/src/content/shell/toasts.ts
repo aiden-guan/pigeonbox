@@ -1,4 +1,4 @@
-import { createOrb } from '../ui/orb-markup';
+import { createOrb } from '../../ui/orb-markup';
 import { ensureSurface, SURFACE_CSS } from './surface';
 
 /** A toast for work in progress; the next toast replaces it. */

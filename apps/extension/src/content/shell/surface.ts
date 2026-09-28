@@ -1,5 +1,5 @@
-import pigeonCss from '../ui/pigeon.css?inline';
-import orbCss from '../ui/orb.css?inline';
+import pigeonCss from '../../ui/pigeon.css?inline';
+import orbCss from '../../ui/orb.css?inline';
 
 /** Injected into Gmail. Every selector is namespaced so it cannot restyle the host page. */
 export const SURFACE_CSS = `${pigeonCss}

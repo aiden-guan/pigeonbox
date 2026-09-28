@@ -1,8 +1,14 @@
+/**
+ * The service worker's PigeonBox Cloud connection: one signed-in session, a
+ * `PigeonBoxCloudClient` for the configured API, and the cached account state
+ * (plan, capabilities). Account state never carries mailbox data; which
+ * features may use Cloud is decided by the callers and `@pigeonbox/core`.
+ */
 import { CloudApiError, type PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
 import { SIGNED_OUT_CLOUD, type CloudState } from '@pigeonbox/core';
 import type { ExtensionSettings } from '@pigeonbox/shared';
-import { cloudApiUrl, cloudTrackerUrl } from '../config';
-import { CloudSessionManager } from './cloud-session';
+import { cloudApiUrl, cloudTrackerUrl } from '../../config';
+import { CloudSessionManager } from './session';
 
 const STATE_KEY = 'cloudState';
 type StoredCloudState = { apiBaseUrl: string; userId: string | null; state: CloudState };

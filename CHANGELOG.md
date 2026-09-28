@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Architecture and naming cleanup, no behavior change.** The extension's service worker is organized by responsibility (`background/ai`, `background/cloud`, `background/search`, `background/tracking`) and the Gmail content script by concern (`content/thread`, `content/tracking`, `content/shell`). `background/intelligence.ts` is now `background/ai/provider-router.ts` (`resolveAIProvider`), Cloud thread state lives in `background/cloud/thread-state.ts`, and Ask Inbox is called Ask Pigeon throughout. See [docs/architecture.md](docs/architecture.md).
+- The local Supabase `project_id` is `pigeonbox` (was the old working name `EmailApp`). It only names local Docker containers and volumes; stop a stack started under the old ID with `supabase stop --project-id EmailApp`.
+- `npm run check:repo` also checks package boundaries: low-level packages never import `@pigeonbox/cloud-client`, and `@pigeonbox/api-contract` never imports React or Supabase.
+
+---
+
 ## [0.3.1] — 2026-09-26
 
 ### Added

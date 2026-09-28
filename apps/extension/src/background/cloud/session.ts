@@ -1,3 +1,4 @@
+/** PigeonBox Cloud sign-in (Authorization Code + PKCE) and token storage for the service worker. */
 import type { CloudSession } from '@pigeonbox/api-contract';
 import {
   CloudApiError,

@@ -111,9 +111,9 @@ On-device mode provides inbox intelligence without a cloud service; tracking run
 | <img src="assets/readme/feature-triage.png" alt="Inbox Triage in Side Panel" width="400" /> | <img src="assets/readme/feature-companion.png" alt="Thread Companion Card" width="400" /> |
 | Automatically sorts threads into Respond, Waiting, FYI, and Follow-ups using plain-language rules. Operates via on-device heuristics even when AI inference is disabled. | Draggable and resizable companion card floating inside Gmail threads. Surfaces structured summaries, action items, key dates, and open questions without leaving your view. |
 
-| Voice-Matched Draft Generation | Ask Inbox with Citation Provenance |
+| Voice-Matched Draft Generation | Ask Pigeon with Citation Provenance |
 | :---: | :---: |
-| <img src="assets/readme/feature-drafting.png" alt="AI Draft Generation" width="400" /> | <img src="assets/readme/feature-ask.png" alt="Ask Inbox Natural Language Search" width="400" /> |
+| <img src="assets/readme/feature-drafting.png" alt="AI Draft Generation" width="400" /> | <img src="assets/readme/feature-ask.png" alt="Ask Pigeon Natural Language Search" width="400" /> |
 | Generates context-aware replies matching the mailbox owner's tone and signature. Drafts are injected into Gmail's native composer; PigeonBox **never automatically sends mail**. | Natural-language query interface across locally indexed threads using MiniSearch hybrid retrieval. Provides direct citations and explicitly discloses partial index coverage. |
 
 ---
@@ -176,8 +176,8 @@ flowchart TD
 1. **Thread Lifecycle Detection**: When opening an email in Gmail, `packages/gmail/src/InboxSdkAdapter.ts` (or `DomFallbackAdapter.ts`) intercepts the thread view and extracts thread metadata.
 2. **Context-Grounded Message Ingestion**: The content script packages thread text and dispatches typed `INGEST_THREAD` messages through the background message gateway (`apps/extension/src/background/messaging.ts`).
 3. **Local Indexing**: `packages/mailbox/src/index.ts` stores thread records in IndexedDB (`gi_mailbox_v1` Dexie schema v4) and updates the lexical search index (`packages/search/src/search.ts`) for instant citation retrieval.
-4. **Guarded Inference Dispatch**: `apps/extension/src/background/intelligence.ts` checks `@pigeonbox/core` capabilities. Local inference routes to WebGPU in an offscreen document or local endpoints (`http://localhost:11434`). Cloud requests validate through `@pigeonbox/api-contract` Zod schemas.
-5. **UI Rendering & Draft Injection**: Summaries, key dates, and drafted replies return to `apps/extension/src/content/thread-panel.tsx`. Generated drafts inject directly into Gmail's native compose window for manual user review and approval.
+4. **Guarded Inference Dispatch**: `apps/extension/src/background/ai/provider-router.ts` checks `@pigeonbox/core` capabilities. Local inference routes to WebGPU in an offscreen document or local endpoints (`http://localhost:11434`). Cloud requests validate through `@pigeonbox/api-contract` Zod schemas.
+5. **UI Rendering & Draft Injection**: Summaries, key dates, and drafted replies return to `apps/extension/src/content/thread/ThreadPanel.tsx`. Generated drafts inject directly into Gmail's native compose window for manual user review and approval.
 
 ---
 
@@ -186,7 +186,7 @@ flowchart TD
 ### 1. One-Shot Claims Protocol for Sender Self-Open Suppression
 
 - **Problem**: When a sender views an email in their Sent folder, Gmail's caching image proxy (`ci3.googleusercontent.com/proxy/*`) fetches the tracking pixel asynchronously. Traditional email trackers suppress self-opens by ignoring pixel hits within a fixed timestamp window (e.g., 8 seconds post-send). However, if Gmail delays fetching the pixel until the user re-opens the thread days later, the proxy fetch arrives without timestamp correlation and triggers a false "Recipient opened email" notification. Conversely, wide timestamp windows swallow legitimate recipient opens that occur quickly.
-- **Approach**: Built an exact-identity, one-shot claim lifecycle (`packages/tracking/src/lifecycle.ts`, `apps/extension/src/content/message-self-view.ts`, `workers/tracker/src/index.ts`). When the user views a sent thread in Gmail, the extension detects distinct render milestones (`expandedAt` and `loadedAt`), applies client-side priority deduplication (`MESSAGE_LOAD` > `MESSAGE_EXPANDED` > `ROW_INTERACTION`), and registers a short-lived (25-second) self-view claim via `TRACKING_SELF_VIEW` with exponential retries and deterministic idempotency (`selfViewEventId`). The tracking server atomically consumes the claim upon the proxy's pixel request, classifies it as `SELF_LIKELY`, and re-opens the window for subsequent recipient opens.
+- **Approach**: Built an exact-identity, one-shot claim lifecycle (`packages/tracking/src/lifecycle.ts`, `apps/extension/src/content/tracking/message-self-view.ts`, `workers/tracker/src/index.ts`). When the user views a sent thread in Gmail, the extension detects distinct render milestones (`expandedAt` and `loadedAt`), applies client-side priority deduplication (`MESSAGE_LOAD` > `MESSAGE_EXPANDED` > `ROW_INTERACTION`), and registers a short-lived (25-second) self-view claim via `TRACKING_SELF_VIEW` with exponential retries and deterministic idempotency (`selfViewEventId`). The tracking server atomically consumes the claim upon the proxy's pixel request, classifies it as `SELF_LIKELY`, and re-opens the window for subsequent recipient opens.
 - **Why**: Eliminates false positives from delayed proxy fetches and reloads without suppressing legitimate recipient interactions.
 - **Tradeoff**: Requires coordinated state handling between the content script, background worker, and tracking store (Cloudflare Worker, Convex, or in-memory dev store) over Tracking Protocol v3.
 
@@ -221,7 +221,7 @@ flowchart TD
 - **Gmail Surface Integration**: `@pigeonbox/gmail` (InboxSDK 2.2 + custom DOM Fallback Adapter)
 - **Local Model Execution**: WebGPU via `@huggingface/transformers` and ONNX Runtime Web
 
-### Intelligence & Agent Orchestration
+### AI & Agent Orchestration
 - **Agent Framework**: `@pigeonbox/agent` (Plain-language rule engine, safety-tiered job queue, and fingerprinting)
 - **Provider Layer**: `@pigeonbox/ai` (`AIProvider` interface, prompt engineering, on-device model catalog)
 - **Protocol Contract**: `@pigeonbox/api-contract` (Typed Zod protocol schemas, route definitions, and error codes)
@@ -320,7 +320,7 @@ Configure tracking endpoints in the extension under **Settings → Email Trackin
 ## Limitations & Boundaries
 
 - **Gmail Interface Evolution**: Gmail updates DOM layouts and CSS classes periodically. While PigeonBox uses InboxSDK and a centralized selector fallback registry, upstream Google changes may require adapter updates.
-- **Index Coverage**: PigeonBox indexes email as threads are loaded or explicitly selected for ingestion. The Ask Inbox interface discloses when search queries span partially indexed mailboxes.
+- **Index Coverage**: PigeonBox indexes email as threads are loaded or explicitly selected for ingestion. The Ask Pigeon interface discloses when search queries span partially indexed mailboxes.
 - **Open Tracking Nature**: Email open tracking is a probabilistic signal rather than definitive proof. Image blocking, VPNs, and Apple Mail Privacy Protection can suppress or simulate pixel loads. PigeonBox reports "Open detected", never "Read".
 - **On-Device Model Constraints**: Quantized WebGPU models are optimized for factual extraction, categorization, and concise draft replies. Complex multi-step reasoning benefits from local Ollama or BYOK endpoints.
 

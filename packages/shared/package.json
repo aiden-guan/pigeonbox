@@ -1,6 +1,7 @@
 {
   "name": "@pigeonbox/shared",
   "version": "0.3.1",
+  "description": "Shared primitives: extension settings and their migration, message schemas, constants and small utilities.",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",

@@ -25,6 +25,6 @@ ffmpeg -i out/pigeonbox-launch.mp4 -c:v copy -af "alimiter=limit=0.89:level=fals
   - `scripts/gen_hazards.py`: airliner, hawk, storm.
   - `scripts/gen_sunset.py`: the closing rooftop and the pigeon's friends.
 - **Score and sound design:** `scripts/gen_audio.py` synthesizes everything (original, no samples or licenses) into `public/audio`, and writes `src/typing.json` for the on-screen typing and `src/whistle.json` for the notes the sender whistles. Desk cutaway sound cues live in `DESK_CUES` (`src/scenes/Desk.tsx`).
-- **Product UI:** real captures of the extension's Copper Perch preview fixture (`apps/extension/src/preview`) via `scripts/capture-product.mjs` (Chrome DevTools protocol, 2x). The fixture's fictional demo mail is swapped for the film's story; the UI is untouched. Tracking card, sent-row mark and category chips mirror `apps/extension/src/content/surface.ts`.
+- **Product UI:** real captures of the extension's Copper Perch preview fixture (`apps/extension/src/preview`) via `scripts/capture-product.mjs` (Chrome DevTools protocol, 2x). The fixture's fictional demo mail is swapped for the film's story; the UI is untouched. Tracking card, sent-row mark and category chips mirror `apps/extension/src/content/shell/surface.ts`.
 
 Regenerate assets in this order: `gen_world.py`, `gen_pigeon.py`, `gen_hazards.py`, `gen_sunset.py`, then `gen_audio.py`.

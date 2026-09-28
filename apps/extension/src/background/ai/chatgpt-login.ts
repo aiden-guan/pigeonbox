@@ -1,3 +1,4 @@
+/** Experimental ChatGPT web-session provider (source builds only): sign-in and requests. */
 import {
   ChatGptAuthError,
   ChatGptHttpError,

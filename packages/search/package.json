@@ -1,6 +1,7 @@
 {
   "name": "@pigeonbox/search",
   "version": "0.3.1",
+  "description": "Local retrieval for Ask Pigeon: query parsing, lexical and hybrid search over the local mailbox index.",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { IndexCoverage, MessageRow, SearchDocumentRow, ThreadRow } from '@pigeonbox/mailbox';
 import { LexicalSearchIndex } from '@pigeonbox/search';
 import type { TrackedEmailSummary } from '@pigeonbox/tracking';
-import { answerAskInbox, splitDraft, type AskInboxInput } from './ask-inbox';
+import { answerAskPigeon, splitDraft, type AskPigeonInput } from './ask-pigeon';
 
 const NOW = new Date('2026-09-26T17:00:00Z');
 const OWNER = { email: 'aiden@example.com', name: 'Aiden' };
@@ -72,7 +72,7 @@ const coverage: IndexCoverage = {
   state: 'idle',
 };
 
-function input(patch: Partial<AskInboxInput>): AskInboxInput {
+function input(patch: Partial<AskPigeonInput>): AskPigeonInput {
   const threads = patch.threads ?? [];
   const lexical = new LexicalSearchIndex();
   const docs: SearchDocumentRow[] = threads.map((row) => ({
@@ -102,14 +102,14 @@ function input(patch: Partial<AskInboxInput>): AskInboxInput {
   };
 }
 
-describe('answerAskInbox', () => {
+describe('answerAskPigeon', () => {
   const mathThreads = ['[SLC Math 52] Topic reviews', '[SLC Math 52] Exam reviews', 'Thanks for filling out this form'].map((subject, i) =>
     thread(`math${i}`, { subject, latestSender: { email: 'math52@berkeley.edu', name: 'SLC Math 52' }, latestTimestamp: `2026-09-2${i}T09:00:00Z` }),
   );
 
   it('lists sent mail for "what emails have i sent recently" without calling the model', async () => {
     const model = vi.fn();
-    const result = await answerAskInbox(
+    const result = await answerAskPigeon(
       input({
         query: 'what emails have i sent recently',
         threads: [
@@ -131,7 +131,7 @@ describe('answerAskInbox', () => {
   });
 
   it('lists threads that need a reply', async () => {
-    const result = await answerAskInbox(
+    const result = await answerAskPigeon(
       input({
         query: 'What needs a reply?',
         threads: [...mathThreads, thread('ask', { subject: 'Can you review?', classification: 'RESPOND', latestSender: { email: 'dana@example.com', name: 'Dana' } })],
@@ -148,7 +148,7 @@ describe('answerAskInbox', () => {
       ...message(threadId, 'aidenguan@berkeley.edu', 'arlan@example.com', timestamp, body),
       sender: { email: 'aidenguan@berkeley.edu', name: 'Aiden Haoyu Guan' },
     });
-    const result = await answerAskInbox(
+    const result = await answerAskPigeon(
       input({
         query: 'What are some emails that I need to respond to?',
         owner: signedInAs,
@@ -184,7 +184,7 @@ describe('answerAskInbox', () => {
   });
 
   it('trusts every address the user has been signed in as', async () => {
-    const result = await answerAskInbox(
+    const result = await answerAskPigeon(
       input({
         query: 'what do I need to reply to',
         ownerAliases: ['aidenguan@berkeley.edu'],
@@ -199,7 +199,7 @@ describe('answerAskInbox', () => {
   });
 
   it('reports open status for tracked mail when asked who has not replied', async () => {
-    const result = await answerAskInbox(
+    const result = await answerAskPigeon(
       input({
         query: 'who hasnt replied to me',
         tracked: [tracked('a'), tracked('b', { openCount: 1, sentAt: '2026-09-24T10:00:00Z' }), tracked('c', { status: 'CANCELLED' })],
@@ -211,7 +211,7 @@ describe('answerAskInbox', () => {
 
   it('gives the model sender, recipient and date for each thread', async () => {
     const model = vi.fn(async () => ({ answer: 'You asked about the lease.', citations: [{ threadId: 'lease', subject: 'Lease renewal' }, { threadId: 'nope', subject: 'x' }], incompleteIndex: false }));
-    const result = await answerAskInbox(
+    const result = await answerAskPigeon(
       input({
         query: 'what did I tell the landlord about the lease',
         threads: [...mathThreads, thread('lease', { subject: 'Lease renewal', snippet: 'lease' })],
@@ -231,7 +231,7 @@ describe('answerAskInbox', () => {
   });
 
   it('says so when nothing matches', async () => {
-    const result = await answerAskInbox(input({ query: 'quarterly tax invoice', threads: mathThreads }));
+    const result = await answerAskPigeon(input({ query: 'quarterly tax invoice', threads: mathThreads }));
     expect(result.answer).toMatch(/No matching threads/);
     expect(result.citations).toEqual([]);
   });
@@ -250,7 +250,7 @@ describe('drafting from Ask', () => {
       citations: [],
       incompleteIndex: false,
     }));
-    const result = await answerAskInbox(input({ query: 'draft an email to Dylan Nguyen saying hi', threads, answerWithModel: model }));
+    const result = await answerAskPigeon(input({ query: 'draft an email to Dylan Nguyen saying hi', threads, answerWithModel: model }));
     const call = model.mock.calls[0]![0] as { query: string; contextChunks: Array<{ threadId: string }> };
     expect(call.query).toContain('Recipient: Dylan Do Nguyen <dylan@example.com>');
     expect(call.contextChunks.map((chunk) => chunk.threadId)).toEqual(['meet']);
@@ -264,13 +264,13 @@ describe('drafting from Ask', () => {
 
   it('still drafts when the recipient is not in the index, and says to add them', async () => {
     const model = vi.fn(async () => ({ answer: 'Subject: Hello\n\nHi Morgan!', citations: [], incompleteIndex: false }));
-    const result = await answerAskInbox(input({ query: 'write an email to Morgan saying hello', threads, answerWithModel: model }));
+    const result = await answerAskPigeon(input({ query: 'write an email to Morgan saying hello', threads, answerWithModel: model }));
     expect(result.draft).toEqual({ to: [], subject: 'Hello', body: 'Hi Morgan!' });
     expect(result.answer).toMatch(/couldn't find Morgan's address/);
   });
 
   it('asks for AI instead of guessing when AI is off', async () => {
-    const result = await answerAskInbox(input({ query: 'draft an email to Dylan saying hi', threads }));
+    const result = await answerAskPigeon(input({ query: 'draft an email to Dylan saying hi', threads }));
     expect(result.draft).toBeUndefined();
     expect(result.answer).toMatch(/Turn on AI/);
   });

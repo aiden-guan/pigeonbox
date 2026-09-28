@@ -1,5 +1,5 @@
 /**
- * Reads what an Ask Inbox question is filtering on before any search runs.
+ * Reads what an Ask Pigeon question is filtering on before any search runs.
  *
  * Keyword search alone cannot answer "what emails have I sent recently": every
  * word in it is filler, and "i" prefix-matches nearly every thread. This pulls

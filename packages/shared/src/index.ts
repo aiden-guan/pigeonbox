@@ -218,6 +218,7 @@ export const RuntimeMessageSchema = z.discriminatedUnion('type', [
     action: z.string(),
     args: z.record(z.unknown()).optional(),
   }),
+  // Ask Pigeon. The message name predates the feature name.
   z.object({
     type: z.literal('ASK_INBOX'),
     query: z.string().min(1).max(2000),
@@ -408,7 +409,12 @@ export type VoiceProfile = {
   personalInstructions: string;
 };
 
-/** Registered InboxSDK app id. A blank setting still uses this so Gmail does not show the unregistered-app warning. */
+/**
+ * Registered InboxSDK app id. A blank setting still uses this so Gmail does not show the unregistered-app warning.
+ *
+ * Legacy registered InboxSDK identifier. The opaque ID must remain unchanged
+ * even though the product is now named PigeonBox (it was registered as "Gmail Intelligence").
+ */
 export const INBOX_SDK_APP_ID = 'sdk_Intelligence_c698f940a0';
 
 export const DEFAULT_VOICE_PROFILE: VoiceProfile = {

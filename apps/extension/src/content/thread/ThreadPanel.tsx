@@ -1,13 +1,14 @@
-import { Pigeon, type PigeonState } from '../ui/Pigeon';
-import { Orb } from '../ui/Orb';
+import { Pigeon, type PigeonState } from '../../ui/Pigeon';
+import { Orb } from '../../ui/Orb';
 import { useState, type MouseEvent } from 'react';
 import type { ThreadIntel } from '@pigeonbox/api-contract';
 import { categoryLabel } from './chips';
-import { CloudCompanion } from './cloud-companion';
+import { CloudCompanion } from './CloudCompanion';
 
 export type IslandMode = 'docked' | 'open' | 'expanded';
 
-export type ThreadIntelData = {
+/** What PigeonBox derived on this computer for a thread (classification, summary, draft). */
+export type LocalThreadIntel = {
   classification?: { category?: string; needsReply?: boolean; reason?: string };
   summary?: {
     source?: 'model' | 'message';
@@ -38,8 +39,8 @@ export type ThreadTrackingStatus = {
   countLabel: string;
 };
 
-export function ThreadIntelCard(props: {
-  intel?: ThreadIntelData;
+export function ThreadPanel(props: {
+  intel?: LocalThreadIntel;
   pending?: string | null;
   preview?: string | null;
   tracking?: ThreadTrackingStatus | null;
