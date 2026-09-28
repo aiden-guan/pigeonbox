@@ -10,7 +10,7 @@ The short version: **by default everything stays in your browser.** Email conten
 
 | Data | Why | Where it is kept |
 |---|---|---|
-| Email content visible in Gmail (subjects, senders, recipients, dates, message text) | Sorting, summaries, search, Ask Inbox, reply drafts | In your browser (IndexedDB), on your computer |
+| Email content visible in Gmail (subjects, senders, recipients, dates, message text) | Sorting, summaries, search, Ask Pigeon, reply drafts | In your browser (IndexedDB), on your computer |
 | Your Gmail address and display name, read from the page | Knowing which messages are yours and signing drafts | In your browser (`chrome.storage.local`) |
 | Settings, API keys and tracker tokens you enter | Running the features you turn on | In your browser (`chrome.storage.local`), readable only by the extension's own pages and background worker |
 | Tracked-email records (see Tracking) | Showing opens and clicks | On the tracker you choose, and a copy in your browser |

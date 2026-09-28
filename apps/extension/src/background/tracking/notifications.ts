@@ -1,3 +1,4 @@
+/** Remembers which open-tracking events already produced a desktop notification. */
 import type { TrackingEvent } from '@pigeonbox/tracking';
 
 const STORAGE_KEY = 'trackingNotificationHistory';

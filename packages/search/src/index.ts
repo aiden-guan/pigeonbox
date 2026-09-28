@@ -198,7 +198,7 @@ function recencyScore(iso: string): number {
   return Math.max(0, 1 - days / 365);
 }
 
-export class AskInboxEngine {
+export class AskPigeonEngine {
   constructor(
     private readonly retriever: HybridRetriever,
     private readonly coverage: () => Promise<CoverageInfo>,

@@ -3,7 +3,7 @@ import { DEFAULT_SETTINGS } from '@pigeonbox/shared';
 
 const session = vi.hoisted(() => ({ user: { id: 'user-a', email: 'ada@example.com' } as { id: string; email: string } | null }));
 
-vi.mock('./cloud-session', () => ({
+vi.mock('./session', () => ({
   CloudSessionManager: class {
     async currentUser() { return session.user; }
     client(base: string) {
@@ -35,7 +35,7 @@ beforeEach(() => {
 
 describe('Cloud state cache', () => {
   it('drops a cached connected state when the session ends', async () => {
-    const { readCloudState } = await import('./cloud');
+    const { readCloudState } = await import('./client');
     const settings = { ...DEFAULT_SETTINGS, cloudApiUrl: 'https://api-a.example' };
     expect((await readCloudState(settings)).status).toBe('ready');
     session.user = null;
@@ -43,7 +43,7 @@ describe('Cloud state cache', () => {
   });
 
   it('refreshes capabilities when the configured API changes', async () => {
-    const { readCloudState } = await import('./cloud');
+    const { readCloudState } = await import('./client');
     const a = { ...DEFAULT_SETTINGS, cloudApiUrl: 'https://api-a.example' };
     const b = { ...DEFAULT_SETTINGS, cloudApiUrl: 'https://api-b.example' };
     expect((await readCloudState(a)).status).toBe('ready');

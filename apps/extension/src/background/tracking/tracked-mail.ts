@@ -1,5 +1,6 @@
+/** The list of tracked sent emails kept in `chrome.storage.local` and pushed to Gmail tabs. */
 import type { TrackedEmailSummary } from '@pigeonbox/tracking';
-import { broadcastToGmailTabs } from './messaging';
+import { broadcastToGmailTabs } from '../messaging';
 
 const KEY = 'trackedEmails';
 const MAX_TRACKED = 400;

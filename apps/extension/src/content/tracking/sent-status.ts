@@ -7,7 +7,7 @@ import {
   type TrackingStatusCopy,
 } from '@pigeonbox/tracking';
 import { findThreadRows, threadIdFromLocation } from '@pigeonbox/gmail';
-import { ensureSurface } from './surface';
+import { ensureSurface } from '../shell/surface';
 import type { SelfViewSource } from './message-self-view';
 
 export type SentStatusController = {

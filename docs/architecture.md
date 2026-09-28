@@ -1,6 +1,36 @@
 # Architecture
 
-PigeonBox is **one Chrome extension with two execution environments**. The public repository owns the extension, every Gmail integration, all local AI, and a typed client for PigeonBox Cloud. The private `pigeonbox-cloud` repository owns only what exists because PigeonBox operates servers.
+```
+                       PIGEONBOX
+                           │
+                Chrome Extension Client
+                           │
+       ┌───────────────────┼────────────────────┐
+       │                   │                    │
+      Gmail             Mailbox              Tracking
+       │                   │
+       │                Search
+       │                   │
+       └─────────────── AI / Agent
+                           │
+                  Provider Router
+                   /             \
+                Local          Cloud
+                                  │
+                          cloud-client
+                                  │
+                                  ▼
+                         PigeonBox Cloud
+```
+
+**"PigeonBox Intelligence" is not a separate application.** "Intelligence" refers collectively to AI/search/agent-derived functionality inside PigeonBox. Likewise there is no "EmailApp" application; that was an old working name.
+
+PigeonBox is **one Chrome extension with two execution environments** (Local and Cloud). There are exactly two codebases:
+
+| Repository | Visibility | Owns |
+|---|---|---|
+| `pigeonbox` (this repo) | Public | The Chrome extension, Gmail integration, local mailbox, search and AI, BYOK, tracking client, and the typed client for PigeonBox Cloud. |
+| `pigeonbox-cloud` | Private | Hosted infrastructure: hosted AI, accounts and auth, billing, Google mailbox sync, always-on agents, server-side intelligence, Cloud tracking and the account web app. |
 
 > Rule: anything needed to interact with Gmail or run PigeonBox locally is public. Anything that exists because PigeonBox operates hosted production servers is private. The public repository never imports private code; it talks to Cloud over HTTPS using `@pigeonbox/api-contract`.
 
@@ -11,6 +41,54 @@ extension (public)
    ├── @pigeonbox/ai              AIProvider: on-device, Gemini Nano, Ollama, BYOK
    ├── @pigeonbox/cloud-client ──── HTTPS + @pigeonbox/api-contract ────▶ PigeonBox Cloud API (private)
    └── @pigeonbox/tracking     ──── tracker protocol v3 ─────────────────▶ self-hosted tracker, Convex, or Cloud tracker
+```
+
+### Dependency direction
+
+Allowed: `extension → cloud-client → api-contract → (HTTPS) → Cloud server`.
+
+Not allowed: the extension importing Cloud server source, Cloud importing extension code, `api-contract` depending on React or Supabase, and low-level domain packages (`gmail`, `mailbox`, `search`, `tracking`) talking to Cloud. Cloud access happens only from extension orchestration (`apps/extension/src/background`). `scripts/check-repo.mjs` enforces the public/private split.
+
+## Workspace packages
+
+| Package | Responsibility |
+|---|---|
+| `apps/extension` | The PigeonBox client: Manifest V3, service worker, Gmail content scripts, popup, side panel, onboarding, settings, Chrome messaging and storage, and orchestration between the packages below. |
+| `packages/core` | Product and runtime policy: Local vs Cloud mode, capability resolution and privacy boundaries. No UI. |
+| `packages/shared` | Shared primitives: settings types and migration, extension message schemas, constants and small utilities. |
+| `packages/gmail` | Gmail integration primitives: InboxSDK and DOM adapters, event and thread/message ID normalization, selectors, Gmail actions and draft placement. No AI reasoning. |
+| `packages/mailbox` | Local mailbox persistence in IndexedDB: thread, message and search-document records and derived state. No React, no Cloud calls. |
+| `packages/search` | Local retrieval: query parsing, lexical and hybrid search, and retrieval for Ask Pigeon, against mailbox records rather than Chrome UI. |
+| `packages/ai` | AI providers and prompts: the `AIProvider` interface, on-device, Gemini Nano, Ollama and BYOK providers, and summary, draft and compact prompts. Does not decide Local vs Cloud. |
+| `packages/agent` | Higher-level AI behavior: classify, summarize, draft, decide the next action and run permitted operations, using an `AIProvider` and the mailbox. |
+| `packages/tracking` | Tracking domain logic: tracking IDs, pixel lifecycle, open classification and self-open filtering. |
+| `packages/api-contract` | The public contract between `pigeonbox` and `pigeonbox-cloud`: Zod request/response schemas, route definitions, capabilities, the `ThreadIntel` DTO and the protocol version. |
+| `packages/cloud-client` | The only public package that talks to PigeonBox Cloud: HTTP, auth headers, request/response validation, `PigeonBoxCloudClient` and the Cloud `AIProvider` adapter. |
+| `workers/tracker` | The self-hostable open-tracking Worker (tracker protocol v3). |
+
+## Extension layout
+
+```
+apps/extension/src/
+├── background/              service worker (entry: index.ts)
+│   ├── index.ts             message routing, agent loop, alarms, orchestration
+│   ├── messaging.ts         who may send which message; storage hardening
+│   ├── owner.ts             which addresses belong to the mailbox owner
+│   ├── release-updates.ts   GitHub release check for source installs
+│   ├── ai/                  provider-router.ts (picks the AIProvider), on-device.ts, chatgpt-login.ts
+│   ├── cloud/               client.ts (Cloud client + state), session.ts (PKCE sign-in),
+│   │                        thread-state.ts (Cloud thread state), page-calls.ts (allowlisted
+│   │                        page → Cloud calls), notifications.ts (Cloud desktop notifications)
+│   ├── search/              ask-pigeon.ts (answers Ask Pigeon from the local index)
+│   └── tracking/            tracked-mail.ts, notifications.ts (open notifications)
+├── content/                 Gmail content script (entry: index.ts → gmail.js)
+│   ├── index.ts             InboxSDK/Gmail integration and wiring
+│   ├── commands.ts          command palette
+│   ├── thread/              ThreadPanel.tsx, CloudCompanion.tsx, chips.ts
+│   ├── tracking/            compose tracking, tracking session, sent status, self-view detection
+│   └── shell/               shadow-DOM surface, floating drag, toasts, placeholder send guard
+├── local-model/             WebGPU / Gemini Nano runtime (offscreen)
+├── main-world/  offscreen/  onboarding/  popup/  settings/  setup/  sidepanel/  ui/  preview/
 ```
 
 ## Runtime contexts
@@ -31,19 +109,19 @@ extension (public)
 - Gmail content scripts may send only the Gmail-integration messages they need (ingest, summaries, drafts, tracking lifecycle). Settings writes, Cloud sign-in, run-mode changes, index clearing, Gmail actions and model downloads are refused.
 - `chrome.storage.local` and `.session` are set to `TRUSTED_CONTEXTS`, so content scripts cannot read settings (BYOK key, tracker token) or the Cloud refresh token. The worker pushes public settings and tracked-email lists to Gmail tabs with messages instead.
 
-### Cloud intelligence in the extension
+### Cloud thread state in the extension
 
-`background/cloud-intel.ts` connects the extension to PigeonBox Cloud's always-on service. It is active only in Cloud mode, signed in, with `cloud_mail_sync`; Local mode never calls it.
+`background/cloud/` connects the extension to PigeonBox Cloud's always-on service (`thread-state.ts`, `page-calls.ts`, `notifications.ts`). This is an optional Cloud capability of the same extension, not a separate application. It is active only in Cloud mode, signed in, with `cloud_mail_sync`; Local mode never calls it.
 
-- `CLOUD_THREAD_INTEL` (the only new content-script message) returns read-only thread state for the thread card: state and next action, deadline, promises, follow-up stage and the prepared draft with its sources and placeholders. Results are batched and cached for 20 seconds (`InflightCache`), and the card renders local data first so Cloud latency never blocks it.
+- `CLOUD_THREAD_INTEL` (the only Cloud message a content script may send) returns read-only thread state for the thread card: state and next action, deadline, promises, follow-up stage and the prepared draft with its sources and placeholders. Results are batched and cached for 20 seconds (`InflightCache`), and the card renders local data first so Cloud latency never blocks it.
 - `CLOUD_CALL` (extension pages only) calls an allowlisted contract route: approvals, Focus Queue, Ask Pigeon, connections and preferences. Billing, account deletion and token management are not on the list.
 - A two-minute alarm polls Cloud notifications and shows approvals, due follow-ups, mentions, assignments and sync problems as desktop notifications when enabled.
 - The side panel's Cloud tab holds the approval queue (edit, approve, reject; approval is blocked while placeholders remain), the Cloud Focus Queue and Ask Pigeon with source chips. Settings shows the Google connection, which is made on Google's consent screen; credentials stay in Cloud.
-- In every mode, `content/placeholder-guard.ts` stops a message that still contains `[… NEEDED]` or `[CONFIRM …]` from sending unless the person confirms.
+- In every mode, `content/shell/placeholder-guard.ts` stops a message that still contains `[… NEEDED]` or `[CONFIRM …]` from sending unless the person confirms.
 
 ## Run mode and capabilities
 
-`@pigeonbox/core` defines `PigeonBoxMode = 'local' | 'cloud'` and uses the capability list from `@pigeonbox/api-contract` (`local_ai`, `ask_inbox`, and Cloud capabilities such as `cloud_ai`, `cloud_tracking`, `cloud_mail_sync`, `cloud_auto_drafts`, `cloud_automations`, `cloud_calendar`, `cloud_semantic_search`, `cloud_relationships`, `cloud_documents`, `cloud_team`, `cloud_mcp`, `cloud_sequences`).
+`@pigeonbox/core` defines `PigeonBoxMode = 'local' | 'cloud'` and uses the capability list from `@pigeonbox/api-contract` (`local_ai`, `ask_inbox` (Ask Pigeon; the wire name is historical), and Cloud capabilities such as `cloud_ai`, `cloud_tracking`, `cloud_mail_sync`, `cloud_auto_drafts`, `cloud_automations`, `cloud_calendar`, `cloud_semantic_search`, `cloud_relationships`, `cloud_documents`, `cloud_team`, `cloud_mcp`, `cloud_sequences`).
 
 - **Local capabilities** are computed on the device from settings. They never depend on Cloud state, so a Cloud outage, an expired subscription, or signing out cannot change what Local does.
 - **Cloud capabilities** come from `GET /v1/capabilities`, which the server derives from the account's entitlements. The client drops names it does not know.
@@ -51,9 +129,9 @@ extension (public)
 
 The run mode is stored as `settings.runMode` and changes only through an explicit user action (`SET_RUN_MODE`). Choosing Cloud records `cloudConsentAt`; Cloud without recorded consent is invalid and migrates back to Local.
 
-## Intelligence providers
+## AI providers
 
-The existing `AIProvider` interface in `packages/ai` is the intelligence interface:
+The `AIProvider` interface in `packages/ai` is the one AI interface:
 
 ```ts
 interface AIProvider {
@@ -62,7 +140,7 @@ interface AIProvider {
 }
 ```
 
-`apps/extension/src/background/intelligence.ts` is the only place that picks an implementation:
+`apps/extension/src/background/ai/provider-router.ts` (`resolveAIProvider`) is the only place that picks an implementation:
 
 | Setting | Provider |
 |---|---|
@@ -73,7 +151,7 @@ interface AIProvider {
 | Local, ChatGPT web session | Experimental, source builds only |
 | AI off | `null`; heuristics and rules still sort mail |
 
-The agent, Ask Inbox, Write with AI and the Gmail UI only see an `AIProvider`. In Cloud mode the worker also presents an "effective" settings view to the agent (AI on, BYOK key blanked) without changing the saved Local configuration.
+The agent, Ask Pigeon, Write with AI and the Gmail UI only see an `AIProvider`. In Cloud mode the worker also presents an "effective" settings view to the agent (AI on, BYOK key blanked) without changing the saved Local configuration.
 
 **Cloud never falls back.** If Cloud cannot serve a request, the provider throws a user-facing error ("PigeonBox Cloud is unavailable. Nothing was sent to another provider."). On-device heuristics and the extractive local summary keep working. The user can switch to Local explicitly.
 
@@ -81,7 +159,7 @@ Additional provider interfaces (search, sync, calendar, attachments) are deliber
 
 ## Cloud session
 
-`background/cloud-session.ts`:
+`background/cloud/session.ts`:
 
 - Sign-in is Authorization Code + PKCE through `chrome.identity.launchWebAuthFlow`, with `chrome.identity.getRedirectURL('cloud')` as the redirect. The API brokers the identity provider (Supabase Auth); the extension holds no Supabase key and needs no Gmail permission to sign in.
 - The refresh token is the only long-lived secret: `chrome.storage.local` (trusted contexts only). The access token lives in memory and `chrome.storage.session`.
@@ -93,12 +171,12 @@ Additional provider interfaces (search, sync, calendar, attachments) are deliber
 
 | Store | Name | Notes |
 |---|---|---|
-| IndexedDB | `gi_mailbox_v1` (Dexie, schema v4) | Name kept from before the rename so existing indexes survive. |
+| IndexedDB | `gi_mailbox_v1` (Dexie, schema v4) | Legacy name ("Gmail Intelligence") kept on purpose so existing indexes survive; renaming needs a data migration. |
 | `chrome.storage.local` | `settings`, `publicSettings`, `trackedEmails`, `onboardingComplete`, `chatgptSession`, `cloudSession` | Keys unchanged; `settings` carries `settingsVersion` and is migrated by `migrateSettings()`. |
 | `chrome.storage.session` | `cloudAccess`, `cloudState`, `gmailRuntime`, `panelState`, diagnostics | Cleared when the browser closes. |
 | OPFS | `model-files/` | Downloaded model weights (data, not code). |
 
-## Packages
+## Builds
 
 `apps/extension` is the only extension. There are no separate local and cloud builds; a release build differs from a source build only in build-time flags (`PIGEONBOX_RELEASE=1`: no source maps, experimental features off, no machine-local tracker config).
 
@@ -110,4 +188,19 @@ See [tracking.md](tracking.md). The protocol-v3 classification logic exists in t
 
 ## PigeonBox Cloud (private)
 
+Cloud mode extends the same extension; it never loads a separate application. `apps/web` in the Cloud repository is the account and control plane (sign-in, billing, connected Google accounts, privacy controls, approvals), not another mail client.
+
 The private repository is a modular monolith on Cloudflare Workers (`api` and `tracker`) with Supabase (Auth, Postgres with RLS, later pgvector, Storage, Queues, Cron) and Stripe. It consumes the public packages it needs (`api-contract`, `shared`, `ai`, `tracking`, and the tracker handler) through a pinned, hash-checked vendor sync. See [cloud-protocol.md](cloud-protocol.md) for the interface.
+
+## Legacy identifiers kept on purpose
+
+These predate the PigeonBox name and are kept because renaming them would break installs, registrations or the Cloud protocol:
+
+| Identifier | Where | Why it stays |
+|---|---|---|
+| `sdk_Intelligence_c698f940a0` | `INBOX_SDK_APP_ID` in `packages/shared` | Externally registered InboxSDK app ID. |
+| `gi_mailbox_v1` | IndexedDB name, `packages/mailbox` | Existing installs keep their indexed mail under it. |
+| `gi-*` CSS classes | extension UI and Gmail overlays | Internal prefix that avoids clashes with Gmail's CSS; no user impact. |
+| `ask_inbox` | capability in `packages/api-contract` | Wire value Cloud grants; the feature is called Ask Pigeon. |
+| `ASK_INBOX`, `CLOUD_THREAD_INTEL`, `CLOUD_INTEL_STATE`, `GET_THREAD_INTEL*`, `THREAD_INTELLIGENCE_UPDATED` | extension runtime messages | Message protocol names; `ThreadIntel` is the contract's thread-state DTO. |
+| `threadsIntel`, `ThreadIntel*` schemas | `packages/api-contract` | Cloud API route and DTO names. |

@@ -1,4 +1,4 @@
-import { ensureSurface } from './surface';
+import { ensureSurface } from '../shell/surface';
 
 const LABELS: Record<string, string> = {
   RESPOND: 'Respond',

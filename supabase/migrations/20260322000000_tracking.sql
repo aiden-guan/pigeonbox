@@ -1,4 +1,4 @@
--- Gmail Intelligence tracking schema
+-- PigeonBox tracking schema
 -- Mailbox contents are NEVER stored here.
 
 create extension if not exists "pgcrypto";

@@ -56,8 +56,8 @@ import {
   type TrackingSendReport,
 } from '@pigeonbox/tracking';
 import { refreshGmailTabsAfterRestart } from '../reload-extension';
-import { patchTrackedEmail, readTrackedEmails, upsertTrackedEmail, writeTrackedEmails } from './tracked-mail';
-import { answerAskInbox, type AskDraft } from './ask-inbox';
+import { patchTrackedEmail, readTrackedEmails, upsertTrackedEmail, writeTrackedEmails } from './tracking/tracked-mail';
+import { answerAskPigeon, type AskDraft } from './search/ask-pigeon';
 import { createOwnerMatcher, isPlaceholderAddress } from './owner';
 import {
   forceRefreshChatGpt,
@@ -68,15 +68,17 @@ import {
   rememberChatGptError,
   setChatGptSignedInHandler,
   startChatGptLogin,
-} from './chatgpt-login';
-import { completeOnDevice, downloadOnDevice, warmOnDevice } from './on-device';
-import { effectiveSettings, resolveIntelligence } from './intelligence';
-import { clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud';
-import { cloudIntelAvailable, forgetThreadIntel, NOTIFICATION_ALARM, pageCall, pollNotifications, threadIntel } from './cloud-intel';
+} from './ai/chatgpt-login';
+import { completeOnDevice, downloadOnDevice, warmOnDevice } from './ai/on-device';
+import { effectiveSettings, resolveAIProvider } from './ai/provider-router';
+import { clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud/client';
+import { cloudThreadStateAvailable, forgetThreadIntel, threadIntel } from './cloud/thread-state';
+import { pageCall } from './cloud/page-calls';
+import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, senderMaySend } from './messaging';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
 import { EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl } from '../config';
-import { TrackingNotificationHistory } from './tracking-notifications';
+import { TrackingNotificationHistory } from './tracking/notifications';
 
 const db = getMailboxDb();
 const queue = new AIJobQueue();
@@ -167,13 +169,13 @@ async function saveSettings(partial: Partial<ExtensionSettings>): Promise<Extens
  * failures are ignored and retried on the next save.
  */
 async function syncVoiceToCloud(): Promise<void> {
-  const client = await cloudIntelClient().catch(() => null);
+  const client = await cloudSyncClient().catch(() => null);
   if (!client) return;
   await client.call('preferencesUpdate', { preferences: { voice: settings.voiceProfile } }).catch(() => undefined);
 }
 
 function getAI() {
-  return resolveIntelligence(settings, {
+  return resolveAIProvider(settings, {
     completeChatGpt,
     completeOnDevice: (modelId: string, system: string, user: string, options?: PromptOptions) =>
       completeOnDevice(modelId, system, user, options),
@@ -291,7 +293,7 @@ async function rebuildSearchIndex(docs?: SearchDocumentRow[]): Promise<void> {
   }
 }
 
-async function handleAskInbox(query: string) {
+async function handleAskPigeon(query: string) {
   const [coverage, threads, messages, searchDocuments, tracked, owner, ownerAliases] = await Promise.all([
     ingestor.getCoverage(),
     db.threads.toArray(),
@@ -304,7 +306,7 @@ async function handleAskInbox(query: string) {
   await rebuildSearchIndex(searchDocuments);
   const ai = effectiveSettings(settings).aiMode === 'disabled' ? null : getAI();
   try {
-    return await answerAskInbox({
+    return await answerAskPigeon({
       query,
       threads,
       messages,
@@ -322,7 +324,7 @@ async function handleAskInbox(query: string) {
 }
 
 /**
- * Opens an Ask Inbox draft in the user's Gmail tab (not the pinned worker tab).
+ * Opens an Ask Pigeon draft in the user's Gmail tab (not the pinned worker tab).
  * Falls back to Gmail's own compose page when the tab cannot open it.
  */
 async function openComposeDraft(draft: AskDraft): Promise<{ opened: boolean; reason?: string }> {
@@ -920,7 +922,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     await loadSettings();
     if (!agent) rebuildAgent();
 
-    const cloudResponse = await handleCloudIntelMessage(message, sender);
+    const cloudResponse = await handleCloudMessage(message, sender);
     if (cloudResponse !== undefined) {
       sendResponse(cloudResponse);
       return;
@@ -1445,7 +1447,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse(await runDiagnostics());
         break;
       case 'ASK_INBOX':
-        sendResponse(await handleAskInbox(msg.query));
+        sendResponse(await handleAskPigeon(msg.query));
         break;
       case 'OPEN_COMPOSE_DRAFT':
         sendResponse(await openComposeDraft(msg.draft));
@@ -1750,22 +1752,23 @@ function cloudWebUrl(section = 'overview'): string | null {
   return base ? `${new URL(base).origin}/app#${/^[a-z]{2,20}$/.test(section) ? section : 'overview'}` : null;
 }
 
-async function cloudIntelClient() {
+/** A Cloud client only when Cloud's always-on features (`cloud_mail_sync`) are available; null in Local mode. */
+async function cloudSyncClient() {
   const client = getCloudClient(settings);
   if (!client) return null;
   const state = await readCloudState(settings);
-  return cloudIntelAvailable(state, settings.runMode) ? client : null;
+  return cloudThreadStateAvailable(state, settings.runMode) ? client : null;
 }
 
 /**
- * PigeonBox Cloud intelligence messages. Content scripts may only send
- * CLOUD_THREAD_INTEL (read-only); the rest need an extension page (enforced by
- * `senderMaySend`). Returns undefined for any other message.
+ * PigeonBox Cloud messages (thread state, page calls, opening the web app).
+ * Content scripts may only send CLOUD_THREAD_INTEL (read-only); the rest need
+ * an extension page (enforced by `senderMaySend`). Returns undefined for any other message.
  */
-async function handleCloudIntelMessage(message: { type?: unknown; [key: string]: unknown }, sender: chrome.runtime.MessageSender): Promise<unknown> {
+async function handleCloudMessage(message: { type?: unknown; [key: string]: unknown }, sender: chrome.runtime.MessageSender): Promise<unknown> {
   switch (message?.type) {
     case 'CLOUD_THREAD_INTEL': {
-      const client = await cloudIntelClient();
+      const client = await cloudSyncClient();
       if (!client) return { ok: true, available: false, threads: {} };
       const ids = Array.isArray(message.threadIds) ? message.threadIds.filter((id): id is string => typeof id === 'string') : [];
       const mailbox = typeof message.mailbox === 'string' && EMAIL_PATTERN.test(message.mailbox) ? message.mailbox : undefined;
@@ -1777,11 +1780,11 @@ async function handleCloudIntelMessage(message: { type?: unknown; [key: string]:
     }
     case 'CLOUD_INTEL_STATE': {
       const state = await readCloudState(settings);
-      return { ok: true, available: cloudIntelAvailable(state, settings.runMode), capabilities: state.capabilities, webUrl: cloudWebUrl() };
+      return { ok: true, available: cloudThreadStateAvailable(state, settings.runMode), capabilities: state.capabilities, webUrl: cloudWebUrl() };
     }
     case 'CLOUD_CALL': {
       if (!isExtensionPageSender(sender)) return { ok: false, code: 'forbidden', reason: 'This request is only accepted from PigeonBox pages.' };
-      const client = await cloudIntelClient();
+      const client = await cloudSyncClient();
       if (!client) return { ok: false, code: 'not_configured', reason: 'Turn on PigeonBox Cloud and connect Google to use this.' };
       return pageCall(client, message.route, message.body);
     }
@@ -1798,7 +1801,7 @@ async function handleCloudIntelMessage(message: { type?: unknown; [key: string]:
 }
 
 async function pollCloudNotifications(): Promise<void> {
-  const client = await cloudIntelClient().catch(() => null);
+  const client = await cloudSyncClient().catch(() => null);
   if (!client) return;
   await pollNotifications(client, chrome.storage.local, (id, _kind, title, body) => {
     void Promise.resolve(chrome.notifications.create(id, { type: 'basic', iconUrl: chrome.runtime.getURL('icons/icon128.png'), title, message: body })).catch(() => undefined);

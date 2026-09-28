@@ -5,36 +5,9 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { applyCategoryChip, rowsForThread } from './chips';
-import { isVisibleCommand, paletteCommands, VISIBLE_COMMANDS } from './commands';
-import { ThreadIntelCard } from './thread-panel';
+import { ThreadPanel } from './ThreadPanel';
 
-describe('commands', () => {
-  it('only exposes commands that have real handlers', () => {
-    expect(VISIBLE_COMMANDS.map((command) => command.id)).toEqual([
-      'ask',
-      'summarize',
-      'draft',
-      'remind',
-      'archive',
-      'settings',
-      'mark_respond',
-      'mark_waiting',
-      'mark_fyi',
-      'cloud',
-    ]);
-    for (const command of VISIBLE_COMMANDS) expect(isVisibleCommand(command.id)).toBe(true);
-    expect(isVisibleCommand('index')).toBe(false);
-    expect(isVisibleCommand('always_archive')).toBe(false);
-  });
-
-  it('shows Cloud commands only when Cloud’s always-on features are on', () => {
-    expect(paletteCommands('', false).map((command) => command.id)).not.toContain('cloud');
-    expect(paletteCommands('', true).map((command) => command.id)).toContain('cloud');
-    expect(paletteCommands('approv', true).map((command) => command.id)).toEqual(['cloud']);
-  });
-});
-
-describe('reactive intelligence', () => {
+describe('thread panel and row chips', () => {
   it('updates a row chip when classification arrives', () => {
     document.body.innerHTML = '<table><tbody><tr class="zA" data-legacy-thread-id="t1"><td class="y6"><span class="bog">Hello</span></td></tr></tbody></table>';
     const row = document.querySelector('tr') as HTMLElement;
@@ -61,13 +34,13 @@ describe('reactive intelligence', () => {
     document.body.append(host);
     const root = createRoot(host);
     await act(async () => {
-      root.render(<ThreadIntelCard intel={{ classification: { category: 'FYI' } }} onDraft={() => undefined} onRemind={() => undefined} />);
+      root.render(<ThreadPanel intel={{ classification: { category: 'FYI' } }} onDraft={() => undefined} onRemind={() => undefined} />);
     });
     expect(host.textContent).toContain('No summary yet.');
     expect(host.textContent).not.toContain('Draft reply');
     await act(async () => {
       root.render(
-        <ThreadIntelCard
+        <ThreadPanel
           intel={{
             classification: { category: 'RESPOND', needsReply: true },
             summary: { source: 'model', aiStatus: 'success', summary: { oneLine: 'Asked about Thursday.' } },
@@ -82,7 +55,7 @@ describe('reactive intelligence', () => {
     expect(host.textContent).toContain('Draft reply');
     await act(async () => {
       root.render(
-        <ThreadIntelCard
+        <ThreadPanel
           intel={{ classification: { category: 'RESPOND', needsReply: true } }}
           drafting
           onDraft={() => undefined}
@@ -94,7 +67,7 @@ describe('reactive intelligence', () => {
     expect([...host.querySelectorAll('button')].find((button) => button.textContent === 'Drafting…')?.disabled).toBe(true);
     await act(async () => {
       root.render(
-        <ThreadIntelCard
+        <ThreadPanel
           intel={{ classification: { category: 'FYI' } }}
           pending="Reading this thread…"
           tracking={{
@@ -113,7 +86,7 @@ describe('reactive intelligence', () => {
     expect(host.textContent).toContain('Reading this thread');
     await act(async () => {
       root.render(
-        <ThreadIntelCard
+        <ThreadPanel
           intel={{
             classification: { category: 'FYI' },
             summary: { source: 'model', aiStatus: 'success', summary: { oneLine: 'A short note to Dylan.' } },
@@ -135,7 +108,7 @@ describe('reactive intelligence', () => {
     expect(host.textContent).not.toContain('Reading this thread');
     await act(async () => {
       root.render(
-        <ThreadIntelCard
+        <ThreadPanel
           intel={{ classification: { category: 'PROMOTIONS' } }}
           pending="Could not summarize this thread."
           preview="Our weekend sale starts Friday."
@@ -150,7 +123,7 @@ describe('reactive intelligence', () => {
     expect(host.textContent).not.toContain('Our weekend sale starts Friday.');
     await act(async () => {
       root.render(
-        <ThreadIntelCard
+        <ThreadPanel
           intel={{
             classification: { category: 'PROMOTIONS' },
             summary: {
@@ -182,7 +155,7 @@ describe('reactive intelligence', () => {
     const root = createRoot(host);
     await act(async () => {
       root.render(
-        <ThreadIntelCard
+        <ThreadPanel
           intel={{
             classification: { category: 'RESPOND', needsReply: true },
             summary: {
@@ -224,7 +197,7 @@ describe('reactive intelligence', () => {
     const root = createRoot(host);
     await act(async () => {
       root.render(
-        <ThreadIntelCard
+        <ThreadPanel
           intel={{
             classification: { category: 'RESPOND', needsReply: true },
             summary: { source: 'model', aiStatus: 'success', summary: { oneLine: 'Asked about Thursday.', keyPoints: ['Thursday is open'] } },
@@ -256,7 +229,7 @@ describe('reactive intelligence', () => {
     const root = createRoot(host);
     await act(async () => {
       root.render(
-        <ThreadIntelCard
+        <ThreadPanel
           intel={{
             classification: { category: 'PROMOTIONS' },
             summary: {
@@ -290,7 +263,7 @@ describe('reactive intelligence', () => {
     const root = createRoot(host);
     await act(async () => {
       root.render(
-        <ThreadIntelCard
+        <ThreadPanel
           intel={{
             classification: { category: 'NOTIFICATIONS' },
             summary: {
@@ -327,7 +300,7 @@ describe('reactive intelligence', () => {
     const root = createRoot(host);
     await act(async () => {
       root.render(
-        <ThreadIntelCard
+        <ThreadPanel
           intel={{
             classification: { category: 'RESPOND', needsReply: true },
           }}

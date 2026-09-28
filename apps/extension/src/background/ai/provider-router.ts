@@ -1,3 +1,12 @@
+/**
+ * Extension-level AI provider selection.
+ *
+ * This module does not implement "PigeonBox Intelligence" as a separate
+ * service. It chooses the `AIProvider` used by the rest of PigeonBox from the
+ * run mode (Local or Cloud), settings and build capabilities:
+ * on-device (WebGPU Qwen, Gemini Nano), Ollama, BYOK, the experimental ChatGPT
+ * session, or PigeonBox Cloud via `@pigeonbox/cloud-client`.
+ */
 import {
   CHATGPT_DEFAULT_MODEL,
   createAIProvider,
@@ -9,7 +18,7 @@ import {
 import { CloudApiError, cloudErrorMessage, createCloudAIProvider, type PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
 import type { ExtensionSettings } from '@pigeonbox/shared';
 
-export type IntelligenceDeps = {
+export type AIProviderRouterDeps = {
   completeChatGpt: (model: string, system: string, user: string) => ReturnType<PromptComplete>;
   completeOnDevice: (modelId: string, ...args: Parameters<PromptComplete>) => ReturnType<PromptComplete>;
   /** Null when this build has no Cloud URL. */
@@ -19,8 +28,8 @@ export type IntelligenceDeps = {
 };
 
 /**
- * The single place that decides which intelligence provider serves a request.
- * Everything downstream (agent, Ask Inbox, Write with AI, Gmail UI) only sees an
+ * The single place that decides which `AIProvider` serves a request.
+ * Everything downstream (agent, Ask Pigeon, Write with AI, Gmail UI) only sees an
  * `AIProvider` and cannot tell Qwen, Gemini Nano, Ollama, a BYOK key or
  * PigeonBox Cloud apart.
  *
@@ -28,12 +37,12 @@ export type IntelligenceDeps = {
  * serve a request, the caller gets a clear error and on-device heuristics keep
  * working.
  */
-export function resolveIntelligence(settings: ExtensionSettings, deps: IntelligenceDeps): AIProvider | null {
-  if (settings.runMode === 'cloud') return cloudIntelligence(deps.cloudClient());
-  return localIntelligence(settings, deps);
+export function resolveAIProvider(settings: ExtensionSettings, deps: AIProviderRouterDeps): AIProvider | null {
+  if (settings.runMode === 'cloud') return cloudProvider(deps.cloudClient());
+  return resolveLocalProvider(settings, deps);
 }
 
-export function localIntelligence(settings: ExtensionSettings, deps: IntelligenceDeps): AIProvider | null {
+export function resolveLocalProvider(settings: ExtensionSettings, deps: AIProviderRouterDeps): AIProvider | null {
   if (settings.aiMode === 'disabled') return null;
   if (settings.aiProvider === 'chatgpt') {
     if (!deps.experimental) return null;
@@ -64,7 +73,7 @@ export function localIntelligence(settings: ExtensionSettings, deps: Intelligenc
   });
 }
 
-function cloudIntelligence(client: PigeonBoxCloudClient | null): AIProvider {
+function cloudProvider(client: PigeonBoxCloudClient | null): AIProvider {
   if (!client) return failingProvider(new CloudApiError({ code: 'not_configured', message: 'PigeonBox Cloud is not available in this build.' }));
   return withFriendlyErrors(createCloudAIProvider(client));
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TrackingEvent } from '@pigeonbox/tracking';
-import { TrackingNotificationHistory } from './tracking-notifications';
+import { TrackingNotificationHistory } from './notifications';
 
 function memoryStorage() {
   const data = new Map<string, unknown>();

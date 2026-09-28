@@ -208,7 +208,7 @@ export function createPromptBackedProvider(
       return { result: data, usage };
     },
     async embed(): Promise<{ vectors: number[][] }> {
-      throw new Error('This model does not create embeddings. Ask Inbox still searches the local index.');
+      throw new Error('This model does not create embeddings. Ask Pigeon still searches the local index.');
     },
   };
 }

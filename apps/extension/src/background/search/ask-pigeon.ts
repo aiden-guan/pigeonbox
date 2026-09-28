@@ -1,8 +1,12 @@
+/**
+ * Ask Pigeon: answers questions about mail from the local index (and, when AI
+ * is on, the selected `AIProvider`). Runs entirely on this computer in Local mode.
+ */
 import type { AskInput, AskOutput } from '@pigeonbox/ai';
 import type { IndexCoverage, MessageRow, SearchDocumentRow, ThreadRow } from '@pigeonbox/mailbox';
 import { formatCoverageWarning, inAskWindow, parseAskQuery, parseComposeRequest, type AskQuery, type LexicalSearchIndex } from '@pigeonbox/search';
 import { isDeliveredTrackedEmail as isDelivered, normalizeGmailId, type TrackedEmailSummary } from '@pigeonbox/tracking';
-import { createOwnerMatcher, isPlaceholderAddress, type OwnerMatcher } from './owner';
+import { createOwnerMatcher, isPlaceholderAddress, type OwnerMatcher } from '../owner';
 
 /** One row of a list answer. `threadId` is missing for tracked mail PigeonBox has not indexed. */
 export type AskItem = {
@@ -32,7 +36,7 @@ export type AskResponse = {
   incompleteIndex: boolean;
 };
 
-export type AskInboxInput = {
+export type AskPigeonInput = {
   query: string;
   now?: Date;
   threads: ThreadRow[];
@@ -66,7 +70,7 @@ type ThreadView = {
 
 const MODEL_CHUNKS = 8;
 
-export async function answerAskInbox(input: AskInboxInput): Promise<AskResponse> {
+export async function answerAskPigeon(input: AskPigeonInput): Promise<AskResponse> {
   const now = input.now ?? new Date();
   const query = parseAskQuery(input.query, now);
   const coverageNote = coverageFor(input.coverage, query, input.threads.length);
@@ -153,7 +157,7 @@ export async function answerAskInbox(input: AskInboxInput): Promise<AskResponse>
 }
 
 async function composeDraft(
-  input: AskInboxInput,
+  input: AskPigeonInput,
   query: AskQuery,
   views: ThreadView[],
   isOwner: OwnerMatcher,
@@ -237,7 +241,7 @@ export function splitDraft(text: string, ownerFirstName: string): { subject: str
 type ContactHit = { email: string; name?: string; count: number; latest: string };
 
 /** The person the user named, from everyone PigeonBox has seen them write to or hear from. */
-function findContact(hint: string, input: AskInboxInput, isOwner: OwnerMatcher): { email: string; name?: string } | null {
+function findContact(hint: string, input: AskPigeonInput, isOwner: OwnerMatcher): { email: string; name?: string } | null {
   if (/^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(hint)) return { email: hint.toLowerCase() };
   const words = hint.toLowerCase().split(/\s+/).filter((word) => word.length > 1);
   if (!words.length) return null;
@@ -285,7 +289,7 @@ function involves(view: ThreadView, email: string): boolean {
   );
 }
 
-function buildViews(input: AskInboxInput, isOwner: OwnerMatcher, query: AskQuery): ThreadView[] {
+function buildViews(input: AskPigeonInput, isOwner: OwnerMatcher, query: AskQuery): ThreadView[] {
   const byThread = new Map<string, MessageRow[]>();
   for (const message of input.messages) {
     const list = byThread.get(message.threadId) ?? [];
@@ -571,7 +575,7 @@ function turnLine(view: ThreadView): string {
   return 'Status: unknown who wrote last.';
 }
 
-function ownerMatcher(input: AskInboxInput): OwnerMatcher {
+function ownerMatcher(input: AskPigeonInput): OwnerMatcher {
   return createOwnerMatcher({
     owner: input.owner,
     aliases: [...(input.ownerAliases ?? []), ...input.tracked.map((email) => email.sender || '')],

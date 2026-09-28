@@ -10,7 +10,7 @@ import {
   type TrackedEmailPatch,
 } from '@pigeonbox/tracking';
 import { findSendButton } from '@pigeonbox/gmail';
-import { ensureSurface } from './surface';
+import { ensureSurface } from '../shell/surface';
 import {
   composeTrackingLabel,
   createTrackingSession,

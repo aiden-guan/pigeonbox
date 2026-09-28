@@ -1,6 +1,7 @@
 {
   "name": "@pigeonbox/tracking",
   "version": "0.3.1",
+  "description": "Open-tracking domain logic: tracking IDs, pixel lifecycle, open classification and self-open filtering.",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",

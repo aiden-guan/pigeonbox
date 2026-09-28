@@ -45,6 +45,11 @@ export class MailboxDatabase extends Dexie {
   thread_overrides!: Table<ThreadOverrideRow, string>;
   ai_jobs!: Table<AIJobRow, string>;
 
+  /**
+   * `gi_mailbox_v1` is the legacy ("Gmail Intelligence") IndexedDB name. It
+   * must not change: existing installs keep their indexed mail under it, and
+   * renaming it would need an explicit data migration.
+   */
   constructor(name = 'gi_mailbox_v1') {
     super(name);
     this.version(1).stores({

@@ -25,7 +25,11 @@ export const KNOWN_CAPABILITIES = [
   'local_ai',
   /** Hosted inference for the extension's AI operations. */
   'cloud_ai',
-  /** Ask questions about mail. Always available; Local answers from the on-device index. */
+  /**
+   * Ask Pigeon: ask questions about mail. Always available; Local answers from
+   * the on-device index. The wire name predates the "Ask Pigeon" feature name
+   * and stays `ask_inbox` because Cloud grants it by this string.
+   */
   'ask_inbox',
   /** Hosted open and click tracking (tracker protocol v3). */
   'cloud_tracking',
