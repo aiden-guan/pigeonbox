@@ -222,12 +222,14 @@ function rebuildAgent(): void {
     settings: () => effectiveSettings(settings),
     archiveViaGmail: async (threadId) => {
       try {
-        const res = (await workerTabs.runExclusive((tabId) =>
-          sendToTab(tabId, {
-            type: 'PERFORM_ACTION',
-            context: 'background',
-            action: { kind: 'ARCHIVE_THREAD', threadId },
-          }),
+        const res = (await workerTabs.runExclusive(
+          (tabId) =>
+            sendToTab(tabId, {
+              type: 'PERFORM_ACTION',
+              context: 'background',
+              action: { kind: 'ARCHIVE_THREAD', threadId },
+            }),
+          { create: false },
         )) as { success?: boolean; verified?: boolean; error?: string; reason?: string };
         const verified = Boolean(res?.success && res.verified);
         return { success: verified, error: verified ? undefined : res?.reason || res?.error || 'Archive was not confirmed' };
@@ -237,13 +239,15 @@ function rebuildAgent(): void {
     },
     insertDraftViaGmail: async (threadId, body) => {
       try {
-        const res = (await workerTabs.runExclusive((tabId) =>
-          sendToTab(tabId, {
-            type: 'PERFORM_ACTION',
-            context: 'background',
-            action: { kind: 'CREATE_REPLY_DRAFT', threadId },
-            insertText: body,
-          }),
+        const res = (await workerTabs.runExclusive(
+          (tabId) =>
+            sendToTab(tabId, {
+              type: 'PERFORM_ACTION',
+              context: 'background',
+              action: { kind: 'CREATE_REPLY_DRAFT', threadId },
+              insertText: body,
+            }),
+          { create: false },
         )) as { success?: boolean; verified?: boolean; error?: string; reason?: string };
         if (!res?.success || res.verified === false) {
           return { success: false, localOnly: true, error: res?.reason || res?.error || 'Draft was not confirmed' };
@@ -678,8 +682,11 @@ async function classifyIngested(thread: IngestThread, fingerprint: string, quali
     direction: direction === 'outbound' ? 'outbound' : 'inbound',
     userIsLatestMeaningfulSender: userWroteLast,
     quality: quality || 'ROW_STUB',
+    owner: owner ?? undefined,
     messages: (thread.messages || []).map((message) => ({
-      sender: message.sender.email,
+      sender: message.sender.name && !message.sender.name.includes('@')
+        ? `${message.sender.name} <${message.sender.email}>`
+        : message.sender.email,
       bodyText: message.bodyText,
       timestamp: message.timestamp || '',
     })),
@@ -1052,7 +1059,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           fingerprint: snapshot.fingerprint || thread?.contentFingerprint || `page:${threadId}`,
           subject: snapshot.subject,
           messages: snapshot.messages.map((m) => ({
-            sender: message.type === 'REQUEST_DRAFT' ? withSenderName(m.sender, senderNames) : m.sender,
+            sender: withSenderName(m.sender, senderNames),
             bodyText: m.bodyText,
             timestamp: m.timestamp,
           })),
@@ -1115,7 +1122,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           fingerprint: snapshot.fingerprint || thread?.contentFingerprint || `page:${threadId}`,
           subject: snapshot.subject,
           messages: snapshot.messages.map((m) => ({
-            sender: message.type === 'DRAFT_REPLY' ? withSenderName(m.sender, senderNames) : m.sender,
+            sender: withSenderName(m.sender, senderNames),
             bodyText: m.bodyText,
             timestamp: m.timestamp,
           })),

@@ -56,6 +56,7 @@ export const ClassifyInputSchema = z.object({
 export const SummarizeInputSchema = z.object({
   subject: text(AI_LIMITS.subjectChars),
   messages: z.array(ThreadMessageSchema).min(1).max(AI_LIMITS.messages),
+  owner: z.object({ email: text(320), name: text(120).optional() }).optional(),
 });
 
 export const DraftInputSchema = z.object({

@@ -19,7 +19,7 @@ import {
   type HeuristicInput,
 } from './classify.js';
 
-const SUMMARY_VERSION = 'sum7';
+const SUMMARY_VERSION = 'sum8';
 
 export type AgentLoopDeps = {
   db: MailboxDatabase;
@@ -76,6 +76,7 @@ export class AgentLoop {
     fingerprint: string;
     subject: string;
     quality?: 'ROW_STUB' | 'THREAD_PARTIAL' | 'THREAD_COMPLETE';
+    owner?: MailboxOwner;
     messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
   }): Promise<void> {
     const settings = this.deps.settings();
@@ -261,6 +262,7 @@ export class AgentLoop {
     fingerprint: string;
     subject: string;
     messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
+    owner?: MailboxOwner;
     force?: boolean;
   }): Promise<{
     ok: boolean;
@@ -349,6 +351,7 @@ export class AgentLoop {
             this.deps.ai!.summarizeThread({
               subject: input.subject,
               messages: input.messages,
+              owner: input.owner,
             }),
           { bypassCache: Boolean(input.force), timeoutMs: this.deps.settings().aiProvider === 'local' ? 300_000 : 25_000 },
         );
@@ -542,6 +545,7 @@ export class AgentLoop {
     fingerprint: string;
     subject: string;
     messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
+    owner?: MailboxOwner;
     force?: boolean;
   }): Promise<{ ok: boolean; oneLine?: string; source?: 'model' | 'message'; aiStatus?: 'queued' | 'running' | 'success' | 'failed'; reason?: string; error?: string }> {
     if (!input.messages.some((message) => message.bodyText.trim())) {
@@ -616,6 +620,7 @@ export class AgentLoop {
     fingerprint: string;
     subject: string;
     messages: Array<{ sender?: string; bodyText: string; timestamp?: string }>;
+    owner?: MailboxOwner;
   }): Promise<void> {
     const launched = await this.startSummaryJob({
       threadId: input.threadId,
@@ -626,6 +631,7 @@ export class AgentLoop {
         bodyText: m.bodyText,
         timestamp: m.timestamp || '',
       })),
+      owner: input.owner,
     });
     if (launched.status === 'queued') {
       const fingerprint = `${input.fingerprint}:${SUMMARY_VERSION}`;
@@ -641,6 +647,7 @@ export class AgentLoop {
       fingerprint: string;
       subject: string;
       messages: Array<{ sender?: string; bodyText: string; timestamp?: string }>;
+      owner?: MailboxOwner;
     },
     autoInsert = false,
   ): Promise<void> {
@@ -653,6 +660,7 @@ export class AgentLoop {
         bodyText: m.bodyText,
         timestamp: m.timestamp || '',
       })),
+      owner: input.owner,
       insertIntoGmail: autoInsert,
     });
     if (launched.status === 'queued') {

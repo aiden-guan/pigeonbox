@@ -62,6 +62,45 @@ describe('compact provider', () => {
     expect(calls[0]!.maxTokens).toBeLessThanOrEqual(200);
   });
 
+  it('gives the model earlier context and says which messages are the reader\'s', async () => {
+    const users: string[] = [];
+    const provider = createPromptBackedProvider(
+      'local',
+      async (_system, user) => {
+        users.push(user);
+        return { text: 'Summary: Jordan sent HR your contact info.\nPoints: none\nDates: none\nTo do: Provide Aiden Guan with the contact information | Meet HR for Section 2' };
+      },
+      { summaryStyle: 'compact', repairInvalidJson: false },
+    );
+    const { result } = await provider.summarizeThread({
+      subject: 'I-9 verification',
+      owner: { email: 'aiden@gmail.com', name: 'Aiden Guan' },
+      messages: [
+        { sender: 'Aiden Guan <aiden@gmail.com>', bodyText: 'Can you send HR my contact info?', timestamp: '1' },
+        {
+          sender: 'Jordan Park <jordan@example.com>',
+          bodyText: 'I just emailed them your contact info.\n\nOn Mon, Sep 28, 2026 Aiden Guan wrote:\n> Can you send HR my contact info?',
+          timestamp: '2',
+        },
+      ],
+    });
+    expect(users[0]).toBe(
+      'Subject: I-9 verification\nEarlier:\n- me: Can you send HR my contact info?\nNewest message, from Jordan Park to me:\n"""\nI just emailed them your contact info.\n"""\nSummarize this for me.',
+    );
+    expect(result.actionItems).toEqual(['Meet HR for Section 2']);
+  });
+
+  it('notes when the reader wrote the newest message', async () => {
+    const { compactSummaryUser } = await import('./compact-prompts.js');
+    const user = compactSummaryUser({
+      subject: 'Invoice',
+      owner: { email: 'aiden@gmail.com' },
+      messages: [{ sender: 'aiden@gmail.com', bodyText: 'Attached is the invoice for September.' }],
+    });
+    expect(user).toContain('Newest message, from me:');
+    expect(user.endsWith('I wrote the newest message.')).toBe(true);
+  });
+
   it('still accepts a JSON summary from a model that prefers it', async () => {
     const provider = createPromptBackedProvider(
       'local',

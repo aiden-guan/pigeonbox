@@ -36,6 +36,7 @@ import {
   cleanCompactText,
   compactRewritePrompt,
   compactSummaryUser,
+  dropOwnerTodos,
   parseCompactSummary,
 } from './compact-prompts.js';
 
@@ -141,18 +142,17 @@ export function createPromptBackedProvider(
       return { result: data, usage };
     },
     async summarizeThread(input: SummarizeInput) {
+      if (summaryStyle === 'compact') return compactSummary(complete, input, maxUserChars);
       const readable = input.messages.filter((message) => message.bodyText.trim());
-      const selected = summaryStyle === 'compact' ? readable.slice(-1) : readable.slice(-8);
       const formatted = formatThreadForSummary({
         subject: input.subject,
-        includeOlder: summaryStyle !== 'compact',
-        messages: selected.map((message) => ({
+        owner: input.owner,
+        messages: readable.slice(-8).map((message) => ({
           sender: message.sender,
           timestamp: message.timestamp,
           bodyText: clip(message.bodyText, Math.max(800, Math.floor(maxUserChars / 8))),
         })),
       });
-      if (summaryStyle === 'compact') return compactSummary(complete, formatted, maxUserChars);
       const { data, usage } = await chatJson(
         EMAIL_SUMMARY_SYSTEM_PROMPT,
         summaryUserContent(formatted),
@@ -272,16 +272,19 @@ async function compactDraft(
 /** Labeled plain-text summary for small models. JSON is still accepted if a model sends it. */
 async function compactSummary(
   complete: PromptComplete,
-  formatted: string,
+  input: SummarizeInput,
   maxUserChars: number,
 ): Promise<{ result: ThreadSummary; usage?: UsageStats }> {
-  const completion = await complete(COMPACT_SUMMARY_SYSTEM_PROMPT, clip(compactSummaryUser(formatted), maxUserChars), {
+  const completion = await complete(COMPACT_SUMMARY_SYSTEM_PROMPT, compactSummaryUser(input, maxUserChars), {
     examples: COMPACT_SUMMARY_EXAMPLES,
     maxTokens: 160,
   });
   const parsed = ThreadSummarySchema.safeParse(coerceThreadSummary(jsonOrNull(completion.text) ?? parseCompactSummary(completion.text)));
   if (!parsed.success) throw new Error('On-device model did not return a summary. Try again or choose a larger model.');
-  return { result: parsed.data, usage: completion.usage };
+  return {
+    result: { ...parsed.data, actionItems: dropOwnerTodos(parsed.data.actionItems, input.owner) },
+    usage: completion.usage,
+  };
 }
 
 /** Small models cannot cite reliably in JSON, so answer in text and cite the retrieved threads. */

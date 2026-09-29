@@ -1,4 +1,6 @@
 import { splitSuperseded } from '@pigeonbox/shared';
+import { isOwnMessage } from './draft-prompt.js';
+import type { MailboxOwner } from './index.js';
 
 /**
  * Shared instructions for every selected model (ChatGPT, API models, on-device).
@@ -41,11 +43,16 @@ export function formatThreadForSummary(input: {
   subject: string;
   messages: Array<{ sender: string; bodyText: string; timestamp?: string }>;
   includeOlder?: boolean;
+  owner?: MailboxOwner;
 }): string {
   const messages = input.messages.filter((m) => m.bodyText.trim().length > 0);
   const latestCurrent = splitSuperseded(messages.at(-1)?.bodyText || '').current;
   const subject = input.includeOlder === false ? currentSubject(input.subject, latestCurrent) : input.subject;
   const parts: string[] = [`Subject: ${subject || '(no subject)'}`];
+  if (input.owner?.email) {
+    const who = input.owner.name ? `${input.owner.name} <${input.owner.email}>` : input.owner.email;
+    parts.push(`Reader: ${who}. Messages marked (me) were written by the reader. Write "you" for the reader, never their name.`);
+  }
   if (!messages.length) {
     parts.push('\n[No message body content]');
     return parts.join('\n');
@@ -53,7 +60,8 @@ export function formatThreadForSummary(input: {
 
   messages.forEach((msg, idx) => {
     const time = msg.timestamp ? ` at ${msg.timestamp}` : '';
-    const sender = msg.sender ? ` from ${msg.sender}` : '';
+    const mine = isOwnMessage(msg.sender, input.owner) ? ' (me)' : '';
+    const sender = msg.sender ? ` from ${msg.sender}${mine}` : '';
     parts.push(`\n--- Message ${idx + 1}${sender}${time} ---`);
     const { current, older } = splitSuperseded(msg.bodyText);
     parts.push(current.trim());

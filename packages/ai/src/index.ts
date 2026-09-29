@@ -26,7 +26,9 @@ export type ClassifyInput = {
 
 export type SummarizeInput = {
   subject: string;
+  /** `sender` is an address or `Name <address>`. */
   messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
+  owner?: MailboxOwner;
 };
 
 /** The Gmail account the draft is written from. */
@@ -176,6 +178,7 @@ export abstract class OpenAICompatibleProvider implements AIProvider {
         timestamp: message.timestamp,
         bodyText: message.bodyText.slice(0, 4000),
       })),
+      owner: input.owner,
     });
     const { data, usage } = await this.chatJson(
       EMAIL_SUMMARY_SYSTEM_PROMPT,

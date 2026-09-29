@@ -174,8 +174,11 @@ function formatContact(contact: MailboxOwner): string {
   return contact.name ? `${contact.name} <${contact.email}>` : contact.email;
 }
 
-function isOwnMessage(sender: string, owner?: MailboxOwner): boolean {
-  return Boolean(owner?.email) && parseContact(sender).email === owner!.email.toLowerCase();
+export function isOwnMessage(sender: string, owner?: MailboxOwner): boolean {
+  if (!owner) return false;
+  const contact = parseContact(sender);
+  if (contact.email) return Boolean(owner.email) && contact.email === owner.email.toLowerCase();
+  return Boolean(owner.name && contact.name && contact.name.toLowerCase() === owner.name.trim().toLowerCase());
 }
 
 function isAutomatedAddress(address: string): boolean {

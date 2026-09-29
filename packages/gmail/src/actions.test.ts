@@ -54,6 +54,27 @@ describe('action verification', () => {
     expect(created[0]).toMatchObject({ active: false, pinned: true });
   });
 
+  it('never opens a tab for automatic work, but reuses one that is already open', async () => {
+    let created = 0;
+    const open = new Map<number, { id: number; url: string }>();
+    const tabs = new WorkerTabController({
+      query: async () => [],
+      create: async () => {
+        created += 1;
+        return { id: 44 };
+      },
+      update: async () => undefined,
+      get: async (id) => open.get(id),
+    });
+    await expect(tabs.runExclusive(async (id) => id, { create: false })).rejects.toThrow(/No Gmail worker tab/);
+    expect(created).toBe(0);
+
+    open.set(44, { id: 44, url: 'https://mail.google.com/mail/u/0/#inbox' });
+    tabs.adopt(44);
+    expect(await tabs.runExclusive(async (id) => id, { create: false })).toBe(44);
+    expect(created).toBe(0);
+  });
+
   it('does not treat an open thread missing from the list as archived', () => {
     expect(verifyArchive({
       toastText: null,

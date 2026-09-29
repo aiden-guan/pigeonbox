@@ -23,18 +23,12 @@ export class WorkerTabController {
   ) {}
 
   async ensureTab(opts: { pinned?: boolean; active?: boolean } = {}): Promise<number> {
-    if (this.tabId != null) {
-      try {
-        const existing = await this.chromeTabs.get(this.tabId);
-        if (existing?.id != null && existing.url?.includes('mail.google.com')) {
-          if (opts.pinned && existing.pinned !== true) {
-            await this.chromeTabs.update(existing.id, { pinned: true, active: false });
-          }
-          return existing.id;
-        }
-      } catch {
-        this.tabId = null;
+    const existing = await this.existingTab();
+    if (existing) {
+      if (opts.pinned && existing.pinned !== true) {
+        await this.chromeTabs.update(existing.id, { pinned: true, active: false });
       }
+      return existing.id;
     }
     const created = await this.chromeTabs.create({
       url: this.gmailUrl,
@@ -44,6 +38,18 @@ export class WorkerTabController {
     if (created.id == null) throw new Error('failed to create worker tab');
     this.tabId = created.id;
     return created.id;
+  }
+
+  private async existingTab(): Promise<{ id: number; pinned?: boolean } | null> {
+    if (this.tabId == null) return null;
+    try {
+      const tab = await this.chromeTabs.get(this.tabId);
+      if (tab?.id != null && tab.url?.includes('mail.google.com')) return { id: tab.id, pinned: tab.pinned };
+    } catch {
+      /* The tab was closed. */
+    }
+    this.tabId = null;
+    return null;
   }
 
   getTabId(): number | null {
@@ -59,11 +65,17 @@ export class WorkerTabController {
     return this.busy;
   }
 
-  async runExclusive<T>(fn: (tabId: number) => Promise<T>): Promise<T> {
+  /**
+   * `create: false` is for work nobody asked for (automatic drafts, auto-archive):
+   * it reuses the worker tab if one is open and otherwise fails instead of opening a tab.
+   */
+  async runExclusive<T>(fn: (tabId: number) => Promise<T>, opts: { create?: boolean } = {}): Promise<T> {
     const run = this.chain.then(async () => {
       this.busy = true;
       try {
-        const tabId = await this.ensureTab({ active: false, pinned: true });
+        const tabId =
+          opts.create === false ? (await this.existingTab())?.id : await this.ensureTab({ active: false, pinned: true });
+        if (tabId == null) throw new Error('No Gmail worker tab is open');
         return await fn(tabId);
       } finally {
         this.busy = false;
