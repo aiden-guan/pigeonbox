@@ -280,6 +280,56 @@ export function planPageReloadProxy(
   };
 }
 
+/**
+ * Gmail renders a reply in the thread as soon as it is sent, so GoogleImageProxy fetches the
+ * pixel for the first time right then. That fetch often reaches the backend before the
+ * sender's SELF_VIEW claim does, so the live proxy suppression never sees it.
+ */
+export const JUST_SENT_SELF_VIEW_MS = 30_000;
+
+export type JustSentProxyPlan = {
+  reclassifyEventIds: string[];
+  proxyConsumedByEventId: string;
+  proxyConsumedAt: string;
+};
+
+/**
+ * Pick the sender's own GoogleImageProxy render of a message they just sent: the earliest
+ * PROXY_LIKELY proxy open around the self-view, plus its duplicate burst. Returns null when the
+ * self-view is not right after send, or the claim already spent its proxy slot.
+ */
+export function planJustSentProxy(
+  events: PageReloadProxyEvent[],
+  opts: { sentAtMs: number | null; selfViewMs: number; proxySlotConsumed: boolean },
+): JustSentProxyPlan | null {
+  const { sentAtMs, selfViewMs } = opts;
+  if (opts.proxySlotConsumed) return null;
+  if (sentAtMs == null || !Number.isFinite(sentAtMs) || !Number.isFinite(selfViewMs)) return null;
+  if (Math.abs(selfViewMs - sentAtMs) > JUST_SENT_SELF_VIEW_MS) return null;
+  const windowStart = selfViewMs - SELF_VIEW_PRE_WINDOW_MS;
+  const windowEnd = selfViewMs + PAGE_RELOAD_PROXY_WINDOW_MS;
+  const proxies = events
+    .filter((evt) => {
+      if (evt.type !== "OPEN" || !pageReloadEventKey(evt)) return false;
+      if (detectOpenRequestSource(evt.userAgent ?? evt.user_agent ?? null) !== "google_image_proxy") return false;
+      const ts = Date.parse(evt.timestamp);
+      return Number.isFinite(ts) && ts >= windowStart && ts <= windowEnd;
+    })
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+  const first = proxies[0];
+  // A proxy already marked SELF_LIKELY means this render was handled; later ones are recipients.
+  if (!first || first.classification !== "PROXY_LIKELY") return null;
+  const firstMs = Date.parse(first.timestamp);
+  const reclassifyEventIds = proxies
+    .filter((evt) => evt.classification === "PROXY_LIKELY" && Date.parse(evt.timestamp) - firstMs <= SENDER_PROXY_BURST_MS)
+    .map(pageReloadEventKey);
+  return {
+    reclassifyEventIds,
+    proxyConsumedByEventId: pageReloadEventKey(first),
+    proxyConsumedAt: first.timestamp,
+  };
+}
+
 function machineOpenVerdict(source: OpenRequestSource): {
   classification: OpenClassification;
   suspected: boolean;

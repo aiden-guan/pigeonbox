@@ -8,6 +8,7 @@ import {
   normalizeGmailId,
   normalizeUserAgentFamily,
   openEventMatchesSenderClaim,
+  planJustSentProxy,
   planPageReloadProxy,
   selectSenderProxyClaim,
   senderFingerprintMatches,
@@ -422,6 +423,42 @@ export const recordSelfView = internalMutation({
             consumedIpHash: evt.ipHash,
           });
         }
+      }
+    }
+
+    if (source !== "PAGE_RELOAD" && source !== "ROW_INTERACTION") {
+      const claimRows = await ctx.db
+        .query("selfViewClaims")
+        .withIndex("by_claimId", (q) => q.eq("claimId", claimId))
+        .take(1);
+      const claim = claimRows[0];
+      const sentAtMs = email.sentAt ? Date.parse(email.sentAt) : null;
+      const plan = claim
+        ? planJustSentProxy(
+            events.map((evt) => ({
+              eventId: evt.eventId,
+              type: evt.type,
+              timestamp: evt.timestamp,
+              classification: evt.classification,
+              userAgent: evt.userAgent,
+            })),
+            { sentAtMs, selfViewMs: selfMs, proxySlotConsumed: Boolean(claim.proxyConsumedByEventId) },
+          )
+        : null;
+      if (plan && claim) {
+        for (const evt of events) {
+          if (!plan.reclassifyEventIds.includes(evt.eventId) || evt.classification === "SELF_LIKELY") continue;
+          await ctx.db.patch(evt._id, {
+            classification: "SELF_LIKELY",
+            suspectedSelfOpen: true,
+            confidence: 1,
+          });
+          reclassifiedEventIds.push(evt.eventId);
+        }
+        await ctx.db.patch(claim._id, {
+          proxyConsumedByEventId: plan.proxyConsumedByEventId,
+          proxyConsumedAt: plan.proxyConsumedAt,
+        });
       }
     }
 
