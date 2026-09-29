@@ -39,6 +39,7 @@ import {
   TrackingClient,
   applyRecentOpens,
   deriveTrackingTimeline,
+  describeTrackingNotification,
   detectOpenRequestSource,
   formatSentTrackingBadge,
   formatTrackingReport,
@@ -816,16 +817,12 @@ async function pollTrackingNow(): Promise<void> {
       if (settings.hideSuspectedSelfOpens && ev.suspected_self_open) continue;
       if (!settings.desktopNotifications) continue;
       const email = fresh.find((item) => item.trackingId === ev.tracking_id);
-      const who = email?.recipients.length === 1 ? email.recipients[0] : 'Someone';
-      const subject = email?.subject || 'your email';
+      const { title, message } = describeTrackingNotification(ev, email);
       void Promise.resolve(chrome.notifications.create(ev.id, {
         type: 'basic',
         iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-        title: ev.type === 'OPEN' ? 'Open detected' : 'Link click detected',
-        message:
-          ev.type === 'OPEN'
-            ? `${who} opened “${subject}”`
-            : `${who} clicked a link in “${subject}”`,
+        title,
+        message,
       })).catch(() => undefined);
     }
   } catch (e) {
@@ -1585,6 +1582,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               source,
               selfViewEventId,
               reconcileGmailIds: msg.reconcileGmailIds === true,
+              quotedRender: msg.quotedRender === true,
             });
             lastErr = null;
             break;

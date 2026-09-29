@@ -112,6 +112,21 @@ export function extractTrackingIdsFromMessageBody(body: PixelCandidateRoot, trac
   return ids;
 }
 
+/** Unique tracking ids from images inside a quote in this body (an earlier message this one replies to or forwards). */
+export function extractQuotedTrackingIdsFromMessageBody(body: PixelCandidateRoot, trackerBaseUrl?: string): string[] {
+  const ids: string[] = [];
+  for (const node of body.querySelectorAll('img[src], img[data-src]')) {
+    if (!isQuotedImage(node)) continue;
+    for (const attr of ['src', 'data-src'] as const) {
+      const value = node.getAttribute(attr);
+      if (!value) continue;
+      const id = extractTrackingIdFromCandidateUrl(value, trackerBaseUrl);
+      if (id) pushUnique(ids, id);
+    }
+  }
+  return ids;
+}
+
 /**
  * The tracking id embedded in this exact message body.
  * Returns null when the body has no pixel, or more than one distinct pixel.

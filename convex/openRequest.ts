@@ -294,19 +294,25 @@ export type JustSentProxyPlan = {
 };
 
 /**
- * Pick the sender's own GoogleImageProxy render of a message they just sent: the earliest
- * PROXY_LIKELY proxy open around the self-view, plus its duplicate burst. Returns null when the
- * self-view is not right after send, or the claim already spent its proxy slot.
+ * Pick the sender's own GoogleImageProxy render that beat their self-view claim: the earliest
+ * PROXY_LIKELY proxy open around the self-view, plus its duplicate burst. Applies when the
+ * message was just sent, or when the pixel was rendered inside another message's quote (that
+ * claim is only posted once the quoting message is on screen, so it races the image fetch).
+ * Returns null otherwise, or when the claim already spent its proxy slot.
  */
 export function planJustSentProxy(
   events: PageReloadProxyEvent[],
-  opts: { sentAtMs: number | null; selfViewMs: number; proxySlotConsumed: boolean },
+  opts: { sentAtMs: number | null; selfViewMs: number; proxySlotConsumed: boolean; quotedRender?: boolean },
 ): JustSentProxyPlan | null {
   const { sentAtMs, selfViewMs } = opts;
   if (opts.proxySlotConsumed) return null;
   if (sentAtMs == null || !Number.isFinite(sentAtMs) || !Number.isFinite(selfViewMs)) return null;
-  if (Math.abs(selfViewMs - sentAtMs) > JUST_SENT_SELF_VIEW_MS) return null;
-  const windowStart = selfViewMs - SELF_VIEW_PRE_WINDOW_MS;
+  const justSent = Math.abs(selfViewMs - sentAtMs) <= JUST_SENT_SELF_VIEW_MS;
+  if (!justSent && !opts.quotedRender) return null;
+  // Gmail renders a just-sent reply at send time, which can be well before the first self-view.
+  const windowStart = justSent
+    ? Math.min(selfViewMs - SELF_VIEW_PRE_WINDOW_MS, sentAtMs)
+    : selfViewMs - SELF_VIEW_PRE_WINDOW_MS;
   const windowEnd = selfViewMs + PAGE_RELOAD_PROXY_WINDOW_MS;
   const proxies = events
     .filter((evt) => {

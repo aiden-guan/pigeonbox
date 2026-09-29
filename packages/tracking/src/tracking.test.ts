@@ -9,6 +9,8 @@ import {
   appendTrackingPixel,
   applyTrackingToOutgoingHtml,
   classifyOpenEvent,
+  describeOpenClient,
+  describeTrackingNotification,
   describeTrackingStatus,
   inspectTrackedMime,
   isNotifiableTrackingEvent,
@@ -339,6 +341,24 @@ describe('outgoing html', () => {
     expect(transformOutgoingHtml('', { pixelUrl: pixel, trackOpens: true, trackLinks: false }).html).toContain(pixel);
   });
 
+  it('drops pixels of earlier tracked messages from the quote, including Gmail proxy URLs', () => {
+    const html = [
+      '<div>Following up</div>',
+      '<div class="gmail_quote"><blockquote class="gmail_quote">Earlier:',
+      '<img src="https://track.example/open/trk_old1" width="1" height="1">',
+      '<img src="https://ci3.googleusercontent.com/meips/ADKq_abc=s0-d-e1-ft#https://track.example/open/trk_old2" width="1">',
+      '<img data-src="https://track.example/open/trk_old3.gif">',
+      '<img src="https://example.com/photo.png" alt="photo">',
+      '</blockquote></div>',
+    ].join('');
+    const out = transformOutgoingHtml(html, { pixelUrl: pixel, trackOpens: true, trackLinks: false });
+    expect(out.html).not.toMatch(/trk_old/);
+    expect(out.html).toContain('https://example.com/photo.png');
+    expect(out.html).toContain('Earlier:');
+    expect(out.pixelPresent).toBe(true);
+    expect(transformOutgoingHtml(out.html, { pixelUrl: pixel, trackOpens: true, trackLinks: false }).html).toBe(out.html);
+  });
+
   it('does not count a fetch from before sentAt as a recipient open', () => {
     const sent = Date.parse('2026-09-23T12:00:00.000Z');
     const browserUa = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -478,5 +498,50 @@ describe('outgoing html', () => {
       'ev_proxy',
       'ev_click',
     ]);
+  });
+});
+
+describe('tracking notification text', () => {
+  const proxyUa = 'Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 (via ggpht.com GoogleImageProxy)';
+  const chromeUa = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+  it('names the only recipient of a one-to-one email', () => {
+    expect(
+      describeTrackingNotification(
+        { type: 'OPEN', user_agent: chromeUa },
+        { subject: 'Invoice', recipients: ['sam@example.com'] },
+      ),
+    ).toEqual({ title: 'Open detected', message: 'sam@example.com opened “Invoice”' });
+  });
+
+  it('names the group instead of guessing which recipient opened a shared pixel', () => {
+    const three = ['a@example.com', 'b@example.com', 'c@example.com'];
+    expect(describeTrackingNotification({ type: 'OPEN', user_agent: proxyUa }, { subject: 'Plan', recipients: three }).message)
+      .toBe('One of a@example.com, b@example.com or 1 other opened “Plan” in Gmail');
+    expect(
+      describeTrackingNotification(
+        { type: 'OPEN' },
+        { subject: 'Plan', recipients: [...three, 'd@example.com', 'a@example.com'] },
+      ).message,
+    ).toBe('One of a@example.com, b@example.com or 2 others opened “Plan”');
+    expect(
+      describeTrackingNotification({ type: 'CLICK', user_agent: chromeUa }, { subject: 'Plan', recipients: three.slice(0, 2) }),
+    ).toEqual({ title: 'Link click detected', message: 'One of a@example.com or b@example.com clicked a link in “Plan”' });
+  });
+
+  it('falls back to a generic subject and sender when the email is unknown', () => {
+    expect(describeTrackingNotification({ type: 'OPEN' }, null).message).toBe('Someone opened “your email”');
+  });
+
+  it('recognises common mail apps and stays quiet for plain browsers', () => {
+    expect(describeOpenClient(proxyUa)).toBe('Gmail');
+    expect(describeOpenClient('Microsoft Office/16.0 (Windows NT 10.0; Microsoft Outlook 16.0.17126; Pro)')).toBe('Outlook');
+    expect(describeOpenClient('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)')).toBe('Apple Mail');
+    expect(
+      describeOpenClient('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'),
+    ).toBe('Apple Mail on iOS');
+    expect(describeOpenClient(chromeUa)).toBeNull();
+    expect(describeOpenClient('Mozilla/5.0')).toBeNull();
+    expect(describeOpenClient(undefined)).toBeNull();
   });
 });

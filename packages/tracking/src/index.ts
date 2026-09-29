@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { isCountableOpenEvent, normalizeGmailId } from './lifecycle.js';
+import { detectOpenRequestSource, isCountableOpenEvent, normalizeGmailId } from './lifecycle.js';
+import { extractTrackingIdFromCandidateUrl } from './pixel-identity.js';
 
 /**
  * Tracking client — talks ONLY to the tracker worker.
@@ -148,6 +149,8 @@ export class TrackingClient {
       source?: 'ROW_INTERACTION' | 'MESSAGE_EXPANDED' | 'MESSAGE_LOAD' | 'CACHE_REINSPECTION' | 'PAGE_RELOAD';
       selfViewEventId?: string;
       reconcileGmailIds?: boolean;
+      /** The pixel was rendered inside another message's quote, not its own sent message. */
+      quotedRender?: boolean;
     },
   ): Promise<{
     ok: boolean;
@@ -182,6 +185,27 @@ export function buildTrackingPixelHtml(pixelUrl: string): string {
   const src = escapeAttr(pixelUrl);
   // A table keeps the image when Gmail rewrites the message. Zero-size and display:none are not fetched.
   return `<table role="presentation" width="1" height="1" cellpadding="0" cellspacing="0" border="0" style="width:1px;height:1px;border:0;"><tr><td style="width:1px;height:1px;line-height:0;"><img src="${src}" width="1" height="1" alt="" border="0" referrerpolicy="no-referrer" style="display:block;width:1px;height:1px;border:0;outline:none;" /></td></tr></table>`;
+}
+
+/**
+ * Remove tracking pixels from earlier messages that a reply or forward quotes.
+ * Left in, they load every time anyone (including the sender) views the new
+ * message and count as opens of the old one.
+ */
+export function stripForeignTrackingPixels(html: string, keepPixelUrl?: string | null): { html: string; removed: number } {
+  const keepId = keepPixelUrl ? extractTrackingIdFromCandidateUrl(keepPixelUrl) : null;
+  let removed = 0;
+  const next = html.replace(/<img\b[^>]*>/gi, (tag) => {
+    for (const match of tag.matchAll(/\s(?:src|data-src)\s*=\s*(["'])(.*?)\1/gi)) {
+      const id = extractTrackingIdFromCandidateUrl(decodeHtmlAttr(match[2] || ''));
+      if (id && id !== keepId) {
+        removed += 1;
+        return '';
+      }
+    }
+    return tag;
+  });
+  return { html: next, removed };
 }
 
 export function appendTrackingPixel(html: string, pixelUrl: string): string {
@@ -252,7 +276,7 @@ export function transformOutgoingHtml(
 ): OutgoingTransform {
   const linkMap = opts.linkMap || new Map<string, string>();
   let linksRewritten = 0;
-  let next = html;
+  let next = stripForeignTrackingPixels(html, opts.pixelUrl).html;
   if (opts.trackLinks) {
     next = next.replace(/href=(["'])(.*?)\1/gi, (full, quote: string, raw: string) => {
       const decoded = decodeHtmlAttr(raw);
@@ -486,6 +510,51 @@ export function isNotifiableTrackingEvent(event: {
   if (event.type === 'OPEN') return isCountableOpenEvent(event);
   if (event.type === 'CLICK') return event.classification !== 'PROXY_LIKELY';
   return false;
+}
+
+/**
+ * The mail app behind a pixel fetch, for display only. Null when the user agent
+ * says nothing useful (a generic browser, or none at all).
+ */
+export function describeOpenClient(userAgent?: string | null): string | null {
+  const ua = (userAgent || '').trim();
+  if (!ua) return null;
+  if (detectOpenRequestSource(ua) === 'google_image_proxy' || /\bgmail\//i.test(ua)) return 'Gmail';
+  if (/outlook|ms-office|microsoft office|\bmsoffice\b/i.test(ua)) return 'Outlook';
+  if (/yahoo/i.test(ua)) return 'Yahoo Mail';
+  if (/thunderbird/i.test(ua)) return 'Thunderbird';
+  if (/samsung email/i.test(ua)) return 'Samsung Email';
+  if (/iphone|ipad|ipod/i.test(ua)) return /safari\//i.test(ua) ? null : 'Apple Mail on iOS';
+  if (/macintosh/i.test(ua) && /applewebkit/i.test(ua) && !/(safari|chrome|firefox|edg)\//i.test(ua)) return 'Apple Mail';
+  return null;
+}
+
+function formatNotificationRecipients(recipients: string[]): string {
+  const names = [...new Set(recipients.map((value) => value.trim()).filter(Boolean))];
+  if (names.length === 0) return 'Someone';
+  if (names.length === 1) return names[0]!;
+  if (names.length === 2) return `One of ${names[0]} or ${names[1]}`;
+  const others = names.length - 2;
+  return `One of ${names[0]}, ${names[1]} or ${others} other${others === 1 ? '' : 's'}`;
+}
+
+/**
+ * Desktop alert text for a tracked open or click. A message sent to several
+ * people carries one pixel shared by all of them, so a group open cannot be
+ * attributed to a single recipient; the alert names the group instead.
+ */
+export function describeTrackingNotification(
+  event: { type: string; user_agent?: string | null },
+  email: { subject?: string | null; recipients?: string[] | null } | null | undefined,
+): { title: string; message: string } {
+  const who = formatNotificationRecipients(email?.recipients || []);
+  const subject = email?.subject?.trim() || 'your email';
+  const client = describeOpenClient(event.user_agent);
+  const via = client ? ` in ${client}` : '';
+  if (event.type === 'CLICK') {
+    return { title: 'Link click detected', message: `${who} clicked a link in “${subject}”${via}` };
+  }
+  return { title: 'Open detected', message: `${who} opened “${subject}”${via}` };
 }
 
 function threadIdsMatch(stored: string | null, ids: Set<string>): boolean {
@@ -861,6 +930,7 @@ export type {
 export {
   decodeBounded,
   extractTrackingIdFromCandidateUrl,
+  extractQuotedTrackingIdsFromMessageBody,
   extractTrackingIdFromMessageBody,
   extractTrackingIdsFromMessageBody,
 } from './pixel-identity.js';

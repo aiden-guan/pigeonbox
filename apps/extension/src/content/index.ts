@@ -78,6 +78,7 @@ function reportTrackingSelfView(
   observedAt = Date.now(),
   source: SelfViewSource = 'MESSAGE_EXPANDED',
   reconcileGmailIds = false,
+  quotedRender = false,
 ): void {
   const normMessageId = normalizeGmailId(gmailMessageId);
   const normThreadId = normalizeGmailId(gmailThreadId);
@@ -97,6 +98,7 @@ function reportTrackingSelfView(
     source,
     selfViewEventId,
     reconcileGmailIds,
+    quotedRender,
   });
 }
 
@@ -376,6 +378,9 @@ function initMessageSelfView(): MessageSelfViewController {
       onSelfView: (trackingId, threadId, msgId, observedAt, source) => {
         const reconcileGmailIds = pendingReconcile.delete(trackingId);
         reportTrackingSelfView(trackingId, threadId, msgId, observedAt, source, reconcileGmailIds);
+      },
+      onQuotedSelfView: (trackingId, observedAt, source) => {
+        reportTrackingSelfView(trackingId, null, null, observedAt, source, false, true);
       },
       onCollapsed: (trackingId, msgId) => {
         selfViewDeduplicator.clearRecord(trackingId, msgId);

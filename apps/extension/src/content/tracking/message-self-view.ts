@@ -1,4 +1,5 @@
 import {
+  extractQuotedTrackingIdsFromMessageBody,
   extractTrackingIdFromMessageBody,
   normalizeGmailId,
   type TrackedEmailSummary,
@@ -69,6 +70,8 @@ export type ActiveMessageViewState = {
   lastExpandedClaimAt?: number;
   lastLoadedClaimAt?: number;
   pendingPageReload?: boolean;
+  /** `${trackingId}:${source}` → observedAt, for pixels quoted in this message. */
+  quotedReported?: Map<string, number>;
 };
 
 export function createMessageSelfViewHandler(opts: {
@@ -82,12 +85,49 @@ export function createMessageSelfViewHandler(opts: {
     observedAt: number,
     trigger: SelfViewSource,
   ) => void;
+  /**
+   * A tracked pixel from an earlier message sits in this message's quote. The
+   * browser loads it with the message, so it needs its own claim. The Gmail ids
+   * of the viewed message belong to a different message and are not passed.
+   */
+  onQuotedSelfView?: (trackingId: string, observedAt: number, trigger: SelfViewSource) => void;
   onReconcile?: (trackingId: string, gmailThreadId: string | null, gmailMessageId: string | null) => void;
   onDiagnostic?: (info: SelfViewDiagnostic) => void;
   onCollapsed?: (trackingId: string, gmailMessageId: string | null) => void;
 }): MessageSelfViewController {
   const activeMessageViews = new Map<InboxSdkMessageViewLike, ActiveMessageViewState>();
   const pageReloadReported = new Set<string>();
+
+  function reportQuotedPixels(
+    state: ActiveMessageViewState,
+    quotedIds: string[],
+    liveTrackingId: string | null,
+    observedAt: number,
+    source: SelfViewSource,
+  ): void {
+    if (!opts.onQuotedSelfView) return;
+    const reported = (state.quotedReported ??= new Map<string, number>());
+    const navigationStartedAt = opts.pageReload?.navigationStartedAt;
+    for (const id of quotedIds) {
+      if (id === liveTrackingId) continue;
+      if (
+        state.pendingPageReload &&
+        navigationStartedAt != null &&
+        Number.isFinite(navigationStartedAt) &&
+        !pageReloadReported.has(id)
+      ) {
+        pageReloadReported.add(id);
+        opts.onQuotedSelfView(id, navigationStartedAt, 'PAGE_RELOAD');
+      }
+      if (source === 'CACHE_REINSPECTION') {
+        if ([...reported.keys()].some((key) => key.startsWith(`${id}:`))) continue;
+      } else if (reported.get(`${id}:${source}`) === observedAt) {
+        continue;
+      }
+      reported.set(`${id}:${source}`, observedAt);
+      opts.onQuotedSelfView(id, observedAt, source);
+    }
+  }
 
   async function inspectMessageView(
     state: ActiveMessageViewState,
@@ -125,6 +165,8 @@ export function createMessageSelfViewHandler(opts: {
       const trackerBaseUrl = opts.getTrackerBaseUrl?.() || undefined;
       const body = typeof messageView.getBodyElement === 'function' ? messageView.getBodyElement() : null;
       const pixelTrackingId = body ? extractTrackingIdFromMessageBody(body, trackerBaseUrl) : null;
+      const quotedIds = body ? extractQuotedTrackingIdsFromMessageBody(body, trackerBaseUrl) : [];
+      reportQuotedPixels(state, quotedIds, pixelTrackingId, observedAt, source);
 
       let trackingId: string | null = null;
       let identity: 'pixel' | 'message_id' | 'thread' | null = null;
@@ -267,6 +309,7 @@ export function createMessageSelfViewHandler(opts: {
           state.lastLoadedClaimAt = undefined;
           state.lastReportedTrackingId = undefined;
           state.lastReportedMessageId = undefined;
+          state.quotedReported = undefined;
         }
       });
 

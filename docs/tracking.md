@@ -18,6 +18,7 @@ Gmail loads images in your own Sent view and prefetches through its image proxy,
 - **Self-view claims**: when you open your own sent message, the extension posts a short-lived claim (`/api/emails/:id/self-view`) bound to that exact message and to a fingerprint of your browser (salted IP hash + user-agent family). The next matching pixel fetch consumes the claim and is not counted.
 - **Delivery prefetch**: fetches within the delivery window right after sending are not opens.
 - **Gmail image proxy**: `GoogleImageProxy` fetches are handled with one-shot proxy suppression tied to your self-view, and page reloads re-arm it.
+- **Quoted pixels**: replies and forwards drop earlier tracking pixels from the quote before sending. Mail that already carries one (older replies, or someone else's reply quoting yours) still loads it; when you view such a message the extension posts a claim for each quoted pixel with `quotedRender: true`, and Convex also reclassifies a proxy render of it that beat the claim.
 - **Machines**: known scanners and bots are not opens.
 
 The logic lives in `packages/tracking/src/lifecycle.ts` (client), `workers/tracker/src/helpers.ts` (Worker) and `convex/openRequest.ts` (Convex), with regression matrices in each package's tests. Treat any change there as high risk and run the full suite.
@@ -36,6 +37,8 @@ All four speak the same protocol and report `protocolVersion: 3` on `/health`. T
 ## Accuracy
 
 "Open detected" means a counted pixel fetch happened. Apple Mail Privacy Protection preloads images (false opens); many clients block images (missed opens); corporate scanners fetch links. PigeonBox never claims a message was read.
+
+A message sent to several people (To, Cc or Bcc) is one message with one pixel, so an open can't be attributed to a particular recipient. Alerts name the group ("One of a@x, b@y or 2 others opened …") and, when the user agent shows it, the mail app ("in Gmail", "in Outlook").
 
 ## Verifying a real send
 

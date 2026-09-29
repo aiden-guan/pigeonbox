@@ -368,6 +368,7 @@ http.route({
       selfViewEventId?: string;
       reconcileGmailIds?: boolean;
       reconcile_gmail_ids?: boolean;
+      quotedRender?: boolean;
     };
     const ts = body.timestamp && !Number.isNaN(Date.parse(body.timestamp))
       ? new Date(body.timestamp).toISOString()
@@ -388,6 +389,7 @@ http.route({
       gmailMessageId: typeof messageId === "string" ? messageId.slice(0, 128) : null,
       ipHash: await hashIp(clientIp(request)),
       reconcileGmailIds: body.reconcileGmailIds === true || body.reconcile_gmail_ids === true,
+      quotedRender: body.quotedRender === true,
       source: body.source,
     });
 

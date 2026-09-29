@@ -434,6 +434,63 @@ describe('InboxSDK MessageView view-state and self-view integration', () => {
     expect(onSelfView).toHaveBeenCalledWith('trk_A', 'thread_X', 'def456', expect.any(Number), 'MESSAGE_EXPANDED');
   });
 
+  it('claims an older tracked pixel quoted inside the sender\'s newer reply', async () => {
+    const onSelfView = vi.fn();
+    const onQuotedSelfView = vi.fn();
+    const handler = createMessageSelfViewHandler({
+      getEmails: () => [trackedEmailA, trackedEmailB],
+      getTrackerBaseUrl: () => 'https://track.example',
+      onSelfView,
+      onQuotedSelfView,
+    });
+    const mv = createMockMessageView({
+      id: 'def456',
+      loaded: true,
+      state: 'EXPANDED',
+      threadId: 'thread_X',
+      bodyHtml: [
+        '<div>Reply</div><img src="https://track.example/open/trk_B">',
+        '<div class="gmail_quote"><blockquote class="gmail_quote">Earlier',
+        '<img src="https://ci3.googleusercontent.com/meips/x#https://track.example/open/trk_A"></blockquote></div>',
+      ].join(''),
+    });
+    handler.handleMessageView(mv);
+    await vi.waitFor(() => expect(onSelfView).toHaveBeenCalledTimes(1));
+    expect(onSelfView).toHaveBeenCalledWith('trk_B', 'thread_X', 'def456', expect.any(Number), 'MESSAGE_EXPANDED');
+    expect(onQuotedSelfView).toHaveBeenCalledTimes(1);
+    expect(onQuotedSelfView).toHaveBeenCalledWith('trk_A', expect.any(Number), 'MESSAGE_EXPANDED');
+
+    await handler.reinspectActive();
+    expect(onQuotedSelfView).toHaveBeenCalledTimes(1);
+
+    mv.setState('COLLAPSED');
+    mv.setState('EXPANDED');
+    await vi.waitFor(() => expect(onQuotedSelfView).toHaveBeenCalledTimes(2));
+  });
+
+  it('claims the sender\'s pixel quoted in a reply the sender did not write', async () => {
+    const onSelfView = vi.fn();
+    const onQuotedSelfView = vi.fn();
+    const onDiagnostic = vi.fn();
+    const handler = createMessageSelfViewHandler({
+      getEmails: () => [trackedEmailA],
+      getTrackerBaseUrl: () => 'https://track.example',
+      onSelfView,
+      onQuotedSelfView,
+      onDiagnostic,
+    });
+    const mv = createMockMessageView({
+      id: 'their_reply',
+      loaded: true,
+      state: 'EXPANDED',
+      threadId: 'thread_X',
+      bodyHtml: '<div>Thanks!</div><blockquote class="gmail_quote"><img src="https://track.example/open/trk_A"></blockquote>',
+    });
+    handler.handleMessageView(mv);
+    await vi.waitFor(() => expect(onQuotedSelfView).toHaveBeenCalledWith('trk_A', expect.any(Number), 'MESSAGE_EXPANDED'));
+    expect(onSelfView).not.toHaveBeenCalled();
+  });
+
   it('resolves a tracked message from the body pixel when the stored Gmail message id is null', async () => {
     const onSelfView = vi.fn();
     const onReconcile = vi.fn();

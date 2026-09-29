@@ -222,6 +222,7 @@ export const recordSelfView = internalMutation({
     gmailMessageId: v.optional(v.union(v.string(), v.null())),
     ipHash: v.optional(v.union(v.string(), v.null())),
     reconcileGmailIds: v.optional(v.boolean()),
+    quotedRender: v.optional(v.boolean()),
     source: v.optional(
       v.union(
         v.literal("ROW_INTERACTION"),
@@ -442,7 +443,12 @@ export const recordSelfView = internalMutation({
               classification: evt.classification,
               userAgent: evt.userAgent,
             })),
-            { sentAtMs, selfViewMs: selfMs, proxySlotConsumed: Boolean(claim.proxyConsumedByEventId) },
+            {
+              sentAtMs,
+              selfViewMs: selfMs,
+              proxySlotConsumed: Boolean(claim.proxyConsumedByEventId),
+              quotedRender: args.quotedRender === true,
+            },
           )
         : null;
       if (plan && claim) {
@@ -699,6 +705,44 @@ export const recordClick = internalMutation({
       firstClickedAt: stats.firstClickedAt,
       lastClickedAt: stats.lastClickedAt,
     });
+  },
+});
+
+/** Mark specific OPEN events as the sender's own views and recompute their emails. For manual repair from the dashboard or CLI. */
+export const markOpensAsSelf = internalMutation({
+  args: { eventIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const wanted = new Set(args.eventIds);
+    const touched = new Set<string>();
+    const marked: string[] = [];
+    for (const evt of await ctx.db.query("trackingEvents").collect()) {
+      if (!wanted.has(evt.eventId) || evt.type !== "OPEN") continue;
+      touched.add(evt.trackingId);
+      if (evt.classification === "SELF_LIKELY") continue;
+      await ctx.db.patch(evt._id, { classification: "SELF_LIKELY", suspectedSelfOpen: true, confidence: 1 });
+      marked.push(evt.eventId);
+    }
+    const openCounts: Record<string, number> = {};
+    for (const trackingId of touched) {
+      const email = (
+        await ctx.db
+          .query("trackedEmails")
+          .withIndex("by_trackingId", (q) => q.eq("trackingId", trackingId))
+          .take(1)
+      )[0];
+      if (!email) continue;
+      const stats = deriveTrackingStats(await getAllEventsForEmail(ctx, trackingId));
+      await ctx.db.patch(email._id, {
+        openCount: stats.openCount,
+        firstOpenedAt: stats.firstOpenedAt,
+        lastOpenedAt: stats.lastOpenedAt,
+        clickCount: stats.clickCount,
+        firstClickedAt: stats.firstClickedAt,
+        lastClickedAt: stats.lastClickedAt,
+      });
+      openCounts[trackingId] = stats.openCount;
+    }
+    return { marked, openCounts };
   },
 });
 

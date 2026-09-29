@@ -1009,6 +1009,83 @@ describe('Convex tracking mutations and self-view suppression', () => {
     expect(events.find((event: any) => event.eventId === 'evt_reply_recipient').classification).toBe('PROXY_LIKELY');
   });
 
+  it('reclassifies a just-sent render that lands at send time when the first claim arrives several seconds later', async () => {
+    const { ctx } = createMockDb();
+    const sentMs = Date.parse('2026-09-29T02:09:08.952Z');
+    const trackingId = 'trk_late_claim';
+    await seedReloadEmail(ctx, trackingId, new Date(sentMs).toISOString());
+    await callMutation(tracking.recordOpenEvent, ctx, openArgs(trackingId, 'evt_send_render', new Date(sentMs + 489).toISOString(), proxyUa, 'ip_google'));
+    const view = await callMutation(tracking.recordSelfView, ctx, {
+      eventId: 'sv_late_claim',
+      trackingId,
+      timestamp: new Date(sentMs + 7_392).toISOString(),
+      userAgent: browserUa,
+      ipHash: 'ip_sender',
+      gmailMessageId: 'msg_reload',
+      source: 'MESSAGE_EXPANDED',
+    });
+    expect(view.reclassifiedEventIds).toEqual(['evt_send_render']);
+    expect(view.openCount).toBe(0);
+  });
+
+  it('does not count an old tracked pixel quoted in a newer message the sender opens', async () => {
+    const { ctx } = createMockDb();
+    const base = Date.parse('2026-09-29T04:47:58.026Z');
+    const oldId = 'trk_quoted_old';
+    await seedReloadEmail(ctx, oldId, new Date(base - 4 * 24 * 60 * 60_000).toISOString());
+
+    // Claim posted before the quoted pixel loads: live suppression.
+    await callMutation(tracking.recordSelfView, ctx, {
+      eventId: 'sv_quoted_first',
+      trackingId: oldId,
+      timestamp: new Date(base).toISOString(),
+      userAgent: browserUa,
+      ipHash: 'ip_sender',
+      gmailThreadId: null,
+      gmailMessageId: null,
+      source: 'MESSAGE_EXPANDED',
+      quotedRender: true,
+    });
+    await callMutation(tracking.recordOpenEvent, ctx, openArgs(oldId, 'evt_quoted_live', new Date(base + 302).toISOString(), proxyUa, 'ip_google'));
+    expect((await callQuery(tracking.getEmail, ctx, { trackingId: oldId })).openCount).toBe(0);
+    // A quoted claim carries no Gmail ids, so it must not overwrite the old message's ids.
+    expect((await callQuery(tracking.getEmail, ctx, { trackingId: oldId })).gmailMessageId).toBe('msg_reload');
+
+    // Later view where the image fetch beats the claim by a few milliseconds.
+    const later = base + 60 * 60_000;
+    await callMutation(tracking.recordOpenEvent, ctx, openArgs(oldId, 'evt_quoted_race', new Date(later + 20).toISOString(), proxyUa, 'ip_google'));
+    const view = await callMutation(tracking.recordSelfView, ctx, {
+      eventId: 'sv_quoted_race',
+      trackingId: oldId,
+      timestamp: new Date(later).toISOString(),
+      userAgent: browserUa,
+      ipHash: 'ip_sender',
+      gmailThreadId: null,
+      gmailMessageId: null,
+      source: 'MESSAGE_EXPANDED',
+      quotedRender: true,
+    });
+    expect(view.reclassifiedEventIds).toEqual(['evt_quoted_race']);
+    expect(view.openCount).toBe(0);
+
+    // A recipient opening well after the sender's view still counts.
+    await callMutation(tracking.recordOpenEvent, ctx, openArgs(oldId, 'evt_quoted_recipient', new Date(later + 120_000).toISOString(), proxyUa, 'ip_google'));
+    expect((await callQuery(tracking.getEmail, ctx, { trackingId: oldId })).openCount).toBe(1);
+  });
+
+  it('markOpensAsSelf repairs stored self opens and recomputes the count', async () => {
+    const { ctx } = createMockDb();
+    const base = Date.parse('2026-09-29T02:27:06.000Z');
+    const trackingId = 'trk_repair';
+    await seedReloadEmail(ctx, trackingId, new Date(base - 60 * 60_000).toISOString());
+    await callMutation(tracking.recordOpenEvent, ctx, openArgs(trackingId, 'evt_self_a', new Date(base).toISOString(), proxyUa, 'ip_google'));
+    await callMutation(tracking.recordOpenEvent, ctx, openArgs(trackingId, 'evt_real', new Date(base + 60_000).toISOString(), proxyUa, 'ip_google'));
+    expect((await callQuery(tracking.getEmail, ctx, { trackingId })).openCount).toBe(2);
+    const result = await callMutation(tracking.markOpensAsSelf, ctx, { eventIds: ['evt_self_a', 'evt_missing'] });
+    expect(result.marked).toEqual(['evt_self_a']);
+    expect(result.openCounts[trackingId]).toBe(1);
+  });
+
   it('does not reclassify an earlier recipient proxy when the self-view is not right after send', async () => {
     const { ctx } = createMockDb();
     const base = Date.parse('2026-09-28T11:00:00.000Z');

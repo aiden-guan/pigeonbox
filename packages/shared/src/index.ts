@@ -265,6 +265,7 @@ export const RuntimeMessageSchema = z.discriminatedUnion('type', [
       .optional(),
     selfViewEventId: z.string().optional(),
     reconcileGmailIds: z.boolean().optional(),
+    quotedRender: z.boolean().optional(),
   }),
   z.object({
     type: z.literal('REQUEST_SUMMARY'),

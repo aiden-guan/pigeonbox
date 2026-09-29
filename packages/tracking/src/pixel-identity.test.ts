@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  extractQuotedTrackingIdsFromMessageBody,
   extractTrackingIdFromCandidateUrl,
   extractTrackingIdFromMessageBody,
   senderFingerprintMatches,
@@ -70,6 +71,17 @@ describe('extractTrackingIdFromMessageBody', () => {
         tracker,
       ),
     ).toBeNull();
+  });
+
+  it('lists quoted pixels separately from the live one', () => {
+    const root = body([
+      img({ src: 'https://track.example/open/trk_live' }),
+      img({ src: 'https://ci3.googleusercontent.com/meips/x#https://track.example/open/trk_q1' }, true),
+      img({ src: 'https://track.example/open/trk_q2.gif' }, true),
+      img({ src: 'https://evil.example/open/trk_foreign' }, true),
+    ]);
+    expect(extractQuotedTrackingIdsFromMessageBody(root, tracker)).toEqual(['trk_q1', 'trk_q2']);
+    expect(extractTrackingIdFromMessageBody(root, tracker)).toBe('trk_live');
   });
 });
 
