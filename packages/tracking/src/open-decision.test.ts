@@ -316,6 +316,27 @@ describe('open decision order', () => {
     expect(workerSelect([claim], burstAt, 'msg_1')?.mode).toBe('burst');
   });
 
+  it('does not count GoogleImageProxy renders in the delivery window right after send', () => {
+    // trk_7ecb…: Gmail fetched the pixel 0.8 s and 16.8 s after send, before any sender claim existed.
+    for (const offset of [800, 16_800, 20_000]) {
+      expect(sameDecision({ eventTs: sent + offset, sentAt: sent, userAgent: proxyUa, proxySuppression: 'none' })).toEqual({
+        classification: 'MACHINE_LIKELY',
+        countsAsOpen: false,
+        consumeClaim: false,
+        consumeProxySuppression: false,
+      });
+    }
+    expect(
+      sameDecision({ eventTs: sent + 20_001, sentAt: sent, userAgent: proxyUa, proxySuppression: 'none' }),
+    ).toMatchObject({ classification: 'PROXY_LIKELY', countsAsOpen: true });
+    expect(
+      sameDecision({ eventTs: sent + 5_000, sentAt: sent, userAgent: proxyUa, proxySuppression: 'consume' }),
+    ).toMatchObject({ classification: 'SELF_LIKELY', consumeProxySuppression: true });
+    expect(
+      sameDecision({ eventTs: sent + 5_000, sentAt: sent, userAgent: browserUa, ipHash: 'ip_recipient' }).classification,
+    ).toBe('RECIPIENT_LIKELY');
+  });
+
   it('classifies pre-send proxy fetches as self and does not consume suppression', () => {
     expect(
       sameDecision({

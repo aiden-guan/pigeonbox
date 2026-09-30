@@ -526,7 +526,7 @@ describe('local memory tracker', () => {
       new Request(`http://127.0.0.1:8787/api/emails/${tracking_id}`, {
         method: 'PATCH',
         headers: authHeaders(),
-        body: JSON.stringify({ status: 'SENT', sent_at: new Date(Date.now() - 1000).toISOString() }),
+        body: JSON.stringify({ status: 'SENT', sent_at: new Date(Date.now() - 60_000).toISOString() }),
       }),
       env,
     );

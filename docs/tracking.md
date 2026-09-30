@@ -16,7 +16,7 @@ For recipient opens from another device, use a public HTTPS tracker you own, suc
 Gmail loads images in your own Sent view and prefetches through its image proxy, which would otherwise look like opens. The tracker classifies each fetch as `RECIPIENT_LIKELY`, `SELF_LIKELY`, `PROXY_LIKELY`, `MACHINE_LIKELY` or `UNKNOWN`:
 
 - **Self-view claims**: when you open your own sent message, the extension posts a short-lived claim (`/api/emails/:id/self-view`) bound to that exact message and to a fingerprint of your browser (salted IP hash + user-agent family). The next matching pixel fetch consumes the claim and is not counted.
-- **Delivery prefetch**: fetches within the delivery window right after sending are not opens.
+- **Delivery prefetch**: `GoogleImageProxy` fetches within 20 seconds of sending are not opens. Gmail renders the message in your own session as it sends (even if it takes you straight back to the inbox), and prefetches it on delivery to a recipient who has Gmail open.
 - **Gmail image proxy**: `GoogleImageProxy` fetches are handled with one-shot proxy suppression tied to your self-view, and page reloads re-arm it.
 - **Quoted pixels**: replies and forwards drop earlier tracking pixels from the quote before sending. Mail that already carries one (older replies, or someone else's reply quoting yours) still loads it; when you view such a message the extension posts a claim for each quoted pixel with `quotedRender: true`, and Convex also reclassifies a proxy render of it that beat the claim.
 - **Machines**: known scanners and bots are not opens.

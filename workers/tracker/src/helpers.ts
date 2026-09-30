@@ -134,6 +134,13 @@ export function openEventMatchesSenderClaim(opts: {
 /** Duplicate Google proxy renders of one sender view, not the 25s claim TTL. */
 export const SENDER_PROXY_BURST_MS = 2_000;
 
+/**
+ * GoogleImageProxy fetches this soon after send are Gmail rendering the message in the sender's
+ * own session as it sends, or prefetching it on delivery to a recipient with Gmail open. Neither
+ * is someone reading it, and the sender's claim often arrives too late to cover them.
+ */
+export const DELIVERY_PROXY_WINDOW_MS = 20_000;
+
 export type ProxySuppressionMode = 'consume' | 'burst' | 'none';
 
 export type ProxyClaimCandidate = {
@@ -426,6 +433,16 @@ export function decideTrackedOpen(opts: {
         source,
         consumeClaim: false,
         consumeProxySuppression: mode === 'consume',
+      };
+    }
+    if (opts.now - sentMs <= DELIVERY_PROXY_WINDOW_MS) {
+      return {
+        classification: 'MACHINE_LIKELY',
+        suspected: true,
+        confidence: 0.9,
+        countsAsOpen: false,
+        source,
+        ...idle,
       };
     }
     return {

@@ -976,7 +976,7 @@ describe('Convex tracking mutations and self-view suppression', () => {
     // Gmail inserts the sent reply into the open thread; its proxy fetch lands first.
     await callMutation(tracking.recordOpenEvent, ctx, openArgs(trackingId, 'evt_reply_proxy', new Date(sentMs + 1_500).toISOString(), proxyUa, 'ip_google'));
     await callMutation(tracking.recordOpenEvent, ctx, openArgs(trackingId, 'evt_reply_proxy_dup', new Date(sentMs + 2_000).toISOString(), proxyUa, 'ip_google'));
-    expect((await callQuery(tracking.getEmail, ctx, { trackingId })).openCount).toBe(1);
+    expect((await callQuery(tracking.getEmail, ctx, { trackingId })).openCount).toBe(0);
 
     const view = await callMutation(tracking.recordSelfView, ctx, {
       eventId: 'sv_reply_race',
@@ -987,7 +987,7 @@ describe('Convex tracking mutations and self-view suppression', () => {
       gmailMessageId: 'msg_reload',
       source: 'MESSAGE_EXPANDED',
     });
-    expect(view.reclassifiedEventIds).toEqual(['evt_reply_proxy', 'evt_reply_proxy_dup']);
+    expect(view.reclassifiedEventIds).toEqual([]);
     expect(view.openCount).toBe(0);
 
     // The follow-up MESSAGE_LOAD must not spend anything else.
@@ -1003,13 +1003,14 @@ describe('Convex tracking mutations and self-view suppression', () => {
     const claim = (await db.query('selfViewClaims').collect()).find((row) => row.trackingId === trackingId);
     expect(claim?.proxyConsumedByEventId).toBe('evt_reply_proxy');
 
-    await callMutation(tracking.recordOpenEvent, ctx, openArgs(trackingId, 'evt_reply_recipient', new Date(sentMs + 6_000).toISOString(), proxyUa, 'ip_google'));
+    // Still inside the refreshed claim TTL: the spent slot must not swallow the recipient.
+    await callMutation(tracking.recordOpenEvent, ctx, openArgs(trackingId, 'evt_reply_recipient', new Date(sentMs + 25_000).toISOString(), proxyUa, 'ip_google'));
     expect((await callQuery(tracking.getEmail, ctx, { trackingId })).openCount).toBe(1);
     const events = await callQuery(tracking.listEvents, ctx, { trackingId });
     expect(events.find((event: any) => event.eventId === 'evt_reply_recipient').classification).toBe('PROXY_LIKELY');
   });
 
-  it('reclassifies a just-sent render that lands at send time when the first claim arrives several seconds later', async () => {
+  it('does not count a just-sent render that lands at send time when the first claim arrives several seconds later', async () => {
     const { ctx } = createMockDb();
     const sentMs = Date.parse('2026-09-29T02:09:08.952Z');
     const trackingId = 'trk_late_claim';
@@ -1024,8 +1025,21 @@ describe('Convex tracking mutations and self-view suppression', () => {
       gmailMessageId: 'msg_reload',
       source: 'MESSAGE_EXPANDED',
     });
-    expect(view.reclassifiedEventIds).toEqual(['evt_send_render']);
+    expect(view.reclassifiedEventIds).toEqual([]);
     expect(view.openCount).toBe(0);
+  });
+
+  it('does not count Gmail renders right after send when the sender opens the thread much later', async () => {
+    const { ctx } = createMockDb();
+    // trk_7ecb…: sent from the thread, Gmail returned to the inbox, first self-view 86 s later.
+    const sentMs = Date.parse('2026-09-29T06:52:59.185Z');
+    const trackingId = 'trk_late_first_view';
+    await seedReloadEmail(ctx, trackingId, new Date(sentMs).toISOString());
+    await callMutation(tracking.recordOpenEvent, ctx, openArgs(trackingId, 'evt_send_render', new Date(sentMs + 796).toISOString(), proxyUa, 'ip_google'));
+    await callMutation(tracking.recordOpenEvent, ctx, openArgs(trackingId, 'evt_delivery', new Date(sentMs + 16_831).toISOString(), proxyUa, 'ip_google'));
+    expect((await callQuery(tracking.getEmail, ctx, { trackingId })).openCount).toBe(0);
+    await callMutation(tracking.recordOpenEvent, ctx, openArgs(trackingId, 'evt_later', new Date(sentMs + 60_000).toISOString(), proxyUa, 'ip_google'));
+    expect((await callQuery(tracking.getEmail, ctx, { trackingId })).openCount).toBe(1);
   });
 
   it('does not count an old tracked pixel quoted in a newer message the sender opens', async () => {
