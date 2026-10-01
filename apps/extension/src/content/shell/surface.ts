@@ -580,6 +580,13 @@ ${orbCss}
   .gi-cmdk-row[data-active="true"]:hover { background: rgba(221, 167, 122, 0.2); }
   .gi-menu-row:hover { background: rgba(255, 255, 255, 0.05); }
 }
+.gi-cloud-context { border-top:1px solid rgba(255,255,255,.08); margin-top:12px; padding-top:10px; font-size:12px; }
+.gi-cloud-context summary { cursor:pointer; color:#dca77c; padding:6px 0; }
+.gi-cloud-context summary:focus-visible { outline:2px solid #dca77c; outline-offset:3px; }
+.gi-cloud-next { border-left:2px solid #dca77c; padding:8px 12px; margin:12px 0; background:rgba(220,167,124,.04); }
+@media (prefers-reduced-motion:no-preference) { .gi-cloud-draft { animation:gi-prepared 200ms ease-out both; } .gi-cmdk-panel { animation:gi-prepared 140ms ease-out both; } }
+@keyframes gi-prepared { from { opacity:0; transform:translateY(3px); } to { opacity:1; transform:none; } }
+
 @media (prefers-reduced-motion: reduce) {
   .gi-shell, .gi-pill, .gi-toast, .gi-action, .gi-icon, .gi-switch-knob {
     animation: none;

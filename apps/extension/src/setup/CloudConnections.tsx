@@ -4,8 +4,9 @@
  * PigeonBox Cloud and never reach the extension.
  */
 import type { MailAccount } from '@pigeonbox/api-contract';
-import { useEffect, useState } from 'react';
-import { cloudCall } from '../sidepanel/CloudView';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { cloudCall } from '../sidepanel/cloud-api';
+import { trackProductEvent } from '../ui/analytics';
 
 const FEATURES: Array<[string, string, string]> = [
   ['mail_read', 'Read and sync mail', 'Required. Keeps triage, follow-ups and drafts current while Gmail is closed.'],
@@ -29,29 +30,46 @@ export function CloudConnections() {
   const [picked, setPicked] = useState<string[]>(['mail_read', 'drafts']);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const loading = useRef(false);
 
-  useEffect(() => {
-    void cloudCall<{ accounts: MailAccount[]; googleConfigured: boolean }>('connections').then((result) => {
-      if (!result.ok) return setError(result.reason);
-      setAccounts(result.data.accounts);
-      setConfigured(result.data.googleConfigured);
-    });
+  const load = useCallback(async () => {
+    if (loading.current) return;
+    loading.current = true;
+    const result = await cloudCall<{ accounts: MailAccount[]; googleConfigured: boolean }>('connections');
+    loading.current = false;
+    if (!result.ok) { setError(result.reason); return; }
+    setError(''); setAccounts(result.data.accounts); setConfigured(result.data.googleConfigured);
+    if (result.data.accounts.length && chrome.storage?.session) {
+      const pending = await chrome.storage.session.get('googleConnectionPending');
+      if (pending.googleConnectionPending) {
+        trackProductEvent('google_connection_completed', { surface: 'settings', mode: 'cloud', outcome: 'success' });
+        await chrome.storage.session.remove('googleConnectionPending');
+      }
+    }
   }, []);
+  useEffect(() => {
+    void load();
+    const refresh = () => { void load(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [load]);
 
   async function connect() {
+    trackProductEvent('google_connection_started', { surface: 'settings', mode: 'cloud' });
     setBusy(true);
     setError('');
     const result = await cloudCall<{ url: string }>('connectStart', { features: picked, returnTo: 'extension' });
     setBusy(false);
     if (!result.ok) return setError(result.reason);
+    if (chrome.storage?.session) await chrome.storage.session.set({ googleConnectionPending: true });
     await chrome.tabs.create({ url: result.data.url });
   }
 
-  if (error) return <p className="mt-3 text-xs gi-danger">{error}</p>;
-  if (!accounts) return null;
+  if (error && !accounts) return <div><p className="mt-3 text-xs gi-danger" role="alert">{error}</p><button type="button" className="gi-text-btn" onClick={() => void load()}>Retry connections</button></div>;
+  if (!accounts) return <p className="gi-muted text-xs" role="status">Checking Google connections…</p>;
   return (
     <div className="mt-4 border-t border-white/10 pt-3">
-      <div className="text-sm font-medium">Always-on with Google</div>
+      <div className="text-sm font-medium">Always-on with Google</div>{error ? <p className="gi-warn" role="alert">{error} Showing the last loaded connections.</p> : null}
       {accounts.length ? (
         <ul className="mt-2 space-y-1 text-xs">
           {accounts.map((account) => (
@@ -95,6 +113,7 @@ export function CloudConnections() {
         </>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" className="gi-text-btn" onClick={() => void load()}>Refresh status</button>
         <button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.sendMessage({ type: 'CLOUD_OPEN', section: 'connections' })}>
           Manage in PigeonBox Cloud ↗
         </button>

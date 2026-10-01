@@ -1,23 +1,26 @@
+import { trackProductEvent } from '../ui/analytics';
 /**
  * PigeonBox Cloud in the side panel: the approval queue, the Focus Queue
  * across connected accounts, and Ask Pigeon with sources. Shown only in Cloud
  * mode with Google connected. Every call goes through the service worker
  * (`CLOUD_CALL`), which holds the session and allows only listed routes.
  */
-import type { Approval, AskPigeonResponse, RouteResponse } from '@pigeonbox/api-contract';
-import { useCallback, useEffect, useState } from 'react';
+import type { Approval, RouteResponse } from '@pigeonbox/api-contract';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Orb } from '../ui/Orb';
 import { relative } from './WaitingView';
+import { CloudOverview } from './CloudOverview';
+import { CloudPreview } from './CloudPreview';
+import { useProductState } from '../ui/product-state';
+import { openCloud, availableCloudFeatures } from '../ui/cloud-features';
+const BriefingsView = lazy(() => import('./BriefingsView').then((m) => ({ default: m.BriefingsView })));
+const RulesView = lazy(() => import('./RulesView').then((m) => ({ default: m.RulesView })));
+const ActivityView = lazy(() => import('./ActivityView').then((m) => ({ default: m.ActivityView })));
+const DocumentsView = lazy(() => import('./DocumentsView').then((m) => ({ default: m.DocumentsView })));
+const ContactsView = lazy(() => import('./ContactsView').then((m) => ({ default: m.ContactsView })));
 
-type CallResult<T> = { ok: true; data: T } | { ok: false; code: string; reason: string };
-
-export function cloudCall<T>(route: string, body?: unknown): Promise<CallResult<T>> {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ type: 'CLOUD_CALL', route, body }, (response?: CallResult<T>) => {
-      resolve(response ?? { ok: false, code: 'network', reason: 'PigeonBox did not respond.' });
-    });
-  });
-}
+export { cloudCall } from './cloud-api';
+import { cloudCall } from './cloud-api';
 
 const PLACEHOLDER = /\[(?:[A-Z][A-Z ]+ NEEDED|CONFIRM [A-Z ]+)\]/g;
 const newKey = () => crypto.randomUUID();
@@ -25,6 +28,8 @@ type FocusQueueResponse = RouteResponse<'focusQueue'>;
 
 function ApprovalCard(props: { approval: Approval; onDone: (message: string) => void }) {
   const { approval } = props;
+  const decisionKeys = useRef({ approve: newKey(), reject: newKey() });
+  const [completed, setCompleted] = useState('');
   const [body, setBody] = useState(approval.preview.body ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -41,14 +46,18 @@ function ApprovalCard(props: { approval: Approval; onDone: (message: string) => 
     }
     setBusy(true);
     const edited = editable && body !== (approval.preview.body ?? '') ? { edits: { body } } : {};
-    const result = await cloudCall<{ approval: Approval }>('approvalDecide', { id: approval.id, decision, idempotencyKey: newKey(), ...edited });
+    const result = await cloudCall<{ approval: Approval }>('approvalDecide', { id: approval.id, decision, idempotencyKey: decisionKeys.current[decision], ...edited });
     setBusy(false);
     if (!result.ok) return setError(result.reason);
+    trackProductEvent('first_approval_decided', { surface: 'sidepanel', outcome: 'success' });
+    setCompleted(decision === 'approve' ? 'Approved.' : 'Rejected. Nothing was done.');
+    await new Promise((resolve) => window.setTimeout(resolve, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200));
     props.onDone(decision === 'approve' ? (approval.kind === 'send_email' ? 'Approved. Sending now.' : 'Approved.') : 'Rejected. Nothing was done.');
   }
 
   return (
-    <li className="gi-approval">
+    <li className="gi-approval" data-complete={Boolean(completed)}>
+      {completed ? <p role="status" className="gi-note">{completed}</p> : null}
       <div className="gi-approval-head">
         <strong>{approval.title}</strong>
         <span className={approval.tier >= 3 ? 'gi-mini is-hot' : 'gi-mini'}>Tier {approval.tier}</span>
@@ -91,10 +100,10 @@ function ApprovalCard(props: { approval: Approval; onDone: (message: string) => 
       {open.length ? <p className="gi-warn">Fill in {open.join(', ')} before approving.</p> : null}
       {error ? <p className="gi-danger" role="alert">{error}</p> : null}
       <div className="mt-2 flex gap-2">
-        <button type="button" className="gi-btn" disabled={busy || open.length > 0} onClick={() => void decide('approve')}>
+        <button type="button" className="gi-btn" disabled={busy || Boolean(completed) || open.length > 0} onClick={() => void decide('approve')}>
           {busy ? 'Working…' : 'Approve'}
         </button>
-        <button type="button" className="gi-btn gi-btn-ghost" disabled={busy} onClick={() => void decide('reject')}>
+        <button type="button" className="gi-btn gi-btn-ghost" disabled={busy || Boolean(completed)} onClick={() => void decide('reject')}>
           Reject
         </button>
       </div>
@@ -119,7 +128,7 @@ function Approvals(props: { onCount: (count: number) => void }) {
     void load();
   }, [load]);
 
-  if (error) return <p className="gi-danger px-4">{error}</p>;
+  if (error) return <div className="px-4"><p className="gi-warn" role="alert">{error}</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => window.location.reload()}>Try again</button></div>;
   if (!items) return <p className="gi-muted gi-orb-line px-4" role="status"><Orb size={16} />Loading approvals…</p>;
   return (
     <section className="px-4">
@@ -137,13 +146,13 @@ function Approvals(props: { onCount: (count: number) => void }) {
   );
 }
 
-function Focus(props: { onOpenThread: (threadId: string) => void }) {
+function Focus(props: { initialSection?: string; onOpenThread: (threadId: string, accountId?: string) => void }) {
   const [queue, setQueue] = useState<FocusQueueResponse | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
     void cloudCall<FocusQueueResponse>('focusQueue', { limit: 40 }).then((result) => (result.ok ? setQueue(result.data) : setError(result.reason)));
   }, []);
-  if (error) return <p className="gi-danger px-4">{error}</p>;
+  if (error) return <div className="px-4"><p className="gi-warn" role="alert">{error}</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => window.location.reload()}>Try again</button></div>;
   if (!queue) return <p className="gi-muted gi-orb-line px-4" role="status"><Orb size={16} />Loading…</p>;
   const sections = queue.sections.filter((section) => section.items.length);
   return (
@@ -155,7 +164,7 @@ function Focus(props: { onOpenThread: (threadId: string) => void }) {
             <ul className="gi-list">
               {section.items.map((item) => (
                 <li key={item.threadId}>
-                  <button type="button" className="gi-mail" onClick={() => props.onOpenThread(item.threadId)}>
+                  <button type="button" className="gi-mail" onClick={() => props.onOpenThread(item.threadId, item.accountId)}>
                     <div className="flex items-baseline justify-between gap-3">
                       <span className="truncate text-[13px] font-semibold tracking-[-0.02em]">{item.who}</span>
                       <span className="gi-time shrink-0">{relative(item.lastMessageAt)}</span>
@@ -176,104 +185,25 @@ function Focus(props: { onOpenThread: (threadId: string) => void }) {
   );
 }
 
-function AskPigeon(props: { onOpenThread: (threadId: string) => void }) {
-  const [query, setQuery] = useState('');
-  const [asked, setAsked] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [answer, setAnswer] = useState<AskPigeonResponse | null>(null);
-  const [error, setError] = useState('');
 
-  async function ask() {
-    const question = query.trim();
-    if (!question || busy) return;
-    setAsked(question);
-    setQuery('');
-    setBusy(true);
-    setError('');
-    setAnswer(null);
-    const result = await cloudCall<AskPigeonResponse>('askPigeon', { query: question, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
-    setBusy(false);
-    if (result.ok) setAnswer(result.data);
-    else setError(result.reason);
-  }
-
-  const sources = new Map((answer?.sources ?? []).map((source) => [source.id, source]));
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-auto px-4 pb-2">
-        {asked ? <p className="gi-asked">{asked}</p> : <p className="gi-muted text-[12px] leading-relaxed">Answers come from everything PigeonBox Cloud has synced, your calendar and your notes, and cite where each part came from.</p>}
-        {busy ? <p className="gi-muted gi-orb-line" role="status"><Orb size={18} />Looking through your mail…</p> : null}
-        {error ? <p className="gi-danger">{error}</p> : null}
-        {answer ? (
-          <>
-            {answer.claims.length ? (
-              <ul className="gi-claims">
-                {answer.claims.map((claim, index) => (
-                  <li key={index}>
-                    <span>{claim.text}</span>
-                    {claim.sourceIds.map((id) => {
-                      const source = sources.get(id);
-                      if (!source) return null;
-                      return source.gmailThreadId ? (
-                        <button key={id} type="button" className="gi-source" onClick={() => props.onOpenThread(source.gmailThreadId!)}>
-                          {source.title}
-                        </button>
-                      ) : (
-                        <span key={id} className="gi-source is-static">{source.title}</span>
-                      );
-                    })}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="whitespace-pre-wrap text-[14px] leading-relaxed">{answer.answer}</p>
-            )}
-            {answer.unverified.length ? <p className="gi-warn">Could not check: {answer.unverified.join('; ')}</p> : null}
-            <p className="gi-muted mt-3 text-[11px] leading-relaxed">{answer.coverage.note}</p>
-          </>
-        ) : null}
-      </div>
-      <form
-        className="gi-composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void ask();
-        }}
-      >
-        <input className="gi-field min-w-0 flex-1" aria-label="Ask Pigeon" placeholder="Who am I waiting on?" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <button type="submit" className="gi-btn shrink-0" disabled={busy || !query.trim()}>
-          Ask
-        </button>
-      </form>
-    </div>
-  );
-}
-
-export function CloudView(props: { onOpenThread: (threadId: string) => void; onApprovalCount: (count: number) => void }) {
-  const [view, setView] = useState<'approvals' | 'focus' | 'ask'>('approvals');
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <nav className="gi-rail" aria-label="Cloud">
-        {(
-          [
-            ['approvals', 'Approvals'],
-            ['focus', 'Focus'],
-            ['ask', 'Ask Pigeon'],
-          ] as const
-        ).map(([id, label]) => (
-          <button key={id} type="button" className="gi-chip-btn" aria-pressed={view === id} data-active={view === id} onClick={() => setView(id)}>
-            {label}
-          </button>
-        ))}
-        <button type="button" className="gi-chip-btn" onClick={() => chrome.runtime.sendMessage({ type: 'CLOUD_OPEN', section: view === 'approvals' ? 'approvals' : 'overview' })}>
-          Web app ↗
-        </button>
-      </nav>
-      {view === 'ask' ? (
-        <AskPigeon onOpenThread={props.onOpenThread} />
-      ) : (
-        <main className="min-h-0 flex-1 overflow-auto pt-2">{view === 'approvals' ? <Approvals onCount={props.onApprovalCount} /> : <Focus onOpenThread={props.onOpenThread} />}</main>
-      )}
-    </div>
-  );
+export function CloudView(props: { initialSection?: string; onOpenThread: (threadId: string, accountId?: string) => void; onApprovalCount: (count: number) => void }) {
+  const product = useProductState();
+  const [view, setView] = useState(props.initialSection ?? 'overview');
+  useEffect(() => { setView(props.initialSection ?? 'overview'); }, [props.initialSection]);
+  const connected = product.state.runMode === 'cloud' && product.state.capabilities.some((capability) => capability.startsWith('cloud_'));
+  const mailSync = product.has('cloud_mail_sync');
+  const allowed = view === 'overview' || view === 'approvals' || (mailSync && (view === 'focus' || view === 'activity')) || availableCloudFeatures(product.state.capabilities).some((feature) => feature.id === view);
+  return <div className="flex min-h-0 flex-1 flex-col">
+    <nav className="gi-rail" aria-label="Cloud">
+      {([['overview', 'Overview'], ['approvals', 'Approvals'], ['activity', 'Activity']] as const).map(([id, label]) => <button key={id} type="button" className="gi-chip-btn" disabled={connected && id === 'activity' && !mailSync} aria-pressed={view === id} data-active={view === id} onClick={() => setView(id)}>{label}</button>)}
+    </nav>
+    <main className="min-h-0 flex-1 overflow-auto pt-2">
+      {!connected ? <CloudPreview product={product} /> : !allowed ? <p className="gi-muted px-4">This tool is not available for your Cloud connection.</p> : <>
+        {!['overview', 'approvals', 'activity'].includes(view) ? <div className="px-4"><button type="button" className="gi-text-btn" onClick={() => setView('overview')}>← Overview</button></div> : null}
+        <Suspense fallback={<p className="gi-orb-line gi-muted px-4" role="status"><Orb size={18} />Opening Cloud tools…</p>}>
+          {view === 'overview' && !mailSync ? <div className="px-4"><CloudPreview product={product} /><div className="gi-feature-grid">{availableCloudFeatures(product.state.capabilities).map((feature) => <button type="button" key={feature.id} onClick={() => setView(feature.id)}>{feature.title}</button>)}</div></div> : view === 'overview' ? <CloudOverview capabilities={product.state.capabilities} account={product.state.cloud.email} onOpenThread={props.onOpenThread} onCount={props.onApprovalCount} onNavigate={setView} /> : view === 'approvals' ? <Approvals onCount={props.onApprovalCount} /> : view === 'focus' ? <Focus onOpenThread={props.onOpenThread} /> : view === 'activity' ? <ActivityView capabilities={product.state.capabilities} onOpenThread={props.onOpenThread} /> : view === 'briefings' ? <BriefingsView onOpenThread={props.onOpenThread} /> : view === 'views' || view === 'automations' ? <RulesView key={view} kind={view} onOpenThread={props.onOpenThread} /> : view === 'documents' ? <DocumentsView /> : view === 'contacts' ? <ContactsView onOpenThread={props.onOpenThread} /> : <button type="button" className="gi-btn" onClick={() => openCloud(view)}>Open in Cloud ↗</button>}
+        </Suspense>
+      </>}
+    </main>
+  </div>;
 }

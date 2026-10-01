@@ -1,3 +1,4 @@
+import { trackProductEvent } from '../../ui/analytics';
 /**
  * PigeonBox Cloud sections of the thread card: what the always-on service
  * knows about this thread (state, next action, deadline, promises, follow-up)
@@ -6,7 +7,8 @@
  * and send. Everything is rendered as text.
  */
 import type { ThreadIntel } from '@pigeonbox/api-contract';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { CloudContext } from './CloudContext';
 
 const STATE_LABEL: Record<string, string> = {
   NEEDS_REPLY: 'Needs your reply',
@@ -48,10 +50,12 @@ function DraftBody({ body }: { body: string }) {
   );
 }
 
-export function CloudCompanion(props: { intel: ThreadIntel; onUseDraft: (body: string) => void }) {
+export function CloudCompanion(props: { intel: ThreadIntel; onUseDraft: (body: string) => void; capabilities?: string[]; mailbox?: string }) {
   const { intel } = props;
   const draft = intel.draft && intel.draft.status !== 'discarded' && intel.draft.status !== 'sent' ? intel.draft : null;
   const [variantIndex, setVariantIndex] = useState(0);
+  useEffect(() => { if (props.intel.draft) trackProductEvent('first_prepared_draft_seen', { surface: 'gmail', mode: 'cloud' }); }, [props.intel.draft]);
+  const [openedAt] = useState(() => Date.now());
   const variant = draft?.variants[Math.min(variantIndex, (draft?.variants.length ?? 1) - 1)] ?? null;
   const open = [...new Set(variant?.body.match(PLACEHOLDER) ?? [])];
   const mine = intel.commitments.filter((item) => item.direction === 'mine' && item.status === 'open');
@@ -63,9 +67,9 @@ export function CloudCompanion(props: { intel: ThreadIntel; onUseDraft: (body: s
       <div className="gi-section-heading">Cloud</div>
       <div className="gi-cloud-state">
         <strong>{STATE_LABEL[state.state] ?? state.state}</strong>
-        {state.nextAction.label ? <span>{state.nextAction.label}</span> : null}
       </div>
       {state.importanceReason ? <p className="gi-cloud-why">{state.importanceReason}</p> : null}
+      {state.nextAction.label ? <div className="gi-cloud-next"><span className="gi-section-heading">Next action</span><strong>{state.nextAction.label}</strong></div> : null}
       {state.deadline ? <span className="gi-date">Due {shortDate(state.deadline.at)}</span> : null}
       {intel.injectionSuspected ? (
         <p className="gi-cloud-warn" role="note">
@@ -75,17 +79,17 @@ export function CloudCompanion(props: { intel: ThreadIntel; onUseDraft: (body: s
 
       {mine.length || theirs.length ? (
         <>
-          <div className="gi-section-heading">Promises</div>
+          <div className="gi-section-heading">Commitments</div>
           <ul className="gi-points">
             {mine.map((item) => (
               <li key={item.id}>
-                You: {item.text}
+                <strong>You promised</strong>: {item.text}
                 {item.dueAt ? ` · ${shortDate(item.dueAt)}` : ''}
               </li>
             ))}
             {theirs.map((item) => (
               <li key={item.id}>
-                {item.owner}: {item.text}
+                <strong>They promised</strong>: {item.text}
                 {item.dueAt ? ` · ${shortDate(item.dueAt)}` : ''}
               </li>
             ))}
@@ -104,9 +108,11 @@ export function CloudCompanion(props: { intel: ThreadIntel; onUseDraft: (body: s
         </>
       ) : null}
 
+      <CloudContext intel={intel} capabilities={props.capabilities ?? []} mailbox={props.mailbox} onInsert={props.onUseDraft} />
       {draft && variant ? (
         <>
           <div className="gi-section-heading">Prepared draft</div>
+          <p className="gi-cloud-why">{Date.parse(draft.freshness.createdAt) < openedAt ? 'Prepared before you opened this thread' : 'Prepared for this conversation'}</p>
           {draft.variants.length > 1 ? (
             <div className="gi-cloud-variants" role="tablist" aria-label="Draft options">
               {draft.variants.map((item, index) => (
@@ -127,13 +133,9 @@ export function CloudCompanion(props: { intel: ThreadIntel; onUseDraft: (body: s
           {draft.status === 'stale' ? <p className="gi-cloud-warn">{draft.freshness.staleReason ?? 'The thread changed since this draft was prepared.'}</p> : null}
           <DraftBody body={variant.body} />
           {open.length ? <p className="gi-cloud-warn">Fill in {open.join(', ')} before sending.</p> : null}
-          {draft.sources.length ? (
-            <p className="gi-cloud-sources">
-              Used to prepare this draft: {draft.sources.slice(0, 4).map((source) => source.title).join(' · ')}
-            </p>
-          ) : null}
+          {draft.sources.length ? <details className="gi-cloud-context"><summary>Used to prepare this draft</summary><ul className="gi-points">{draft.sources.map((source) => <li key={source.id}>{source.gmailThreadId ? <a className="gi-link" target="_blank" rel="noreferrer" href={`https://mail.google.com/mail/?authuser=${encodeURIComponent(props.mailbox || '0')}#all/${encodeURIComponent(source.gmailThreadId)}`}>{source.title}</a> : <span>{source.title}</span>}</li>)}</ul></details> : null}
           <div className="gi-actions">
-            <button type="button" className="gi-action" onClick={() => props.onUseDraft(variant.body)}>
+            <button type="button" className="gi-action" onClick={() => { trackProductEvent('prepared_draft_used', { surface: 'gmail', mode: 'cloud' }); props.onUseDraft(variant.body); }}>
               Use this draft
             </button>
           </div>

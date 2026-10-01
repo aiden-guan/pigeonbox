@@ -1,3 +1,4 @@
+import { mountCommandPalette } from './shell/command-palette';
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { PublicExtensionSettings } from '@pigeonbox/shared';
@@ -33,6 +34,7 @@ import {
   type TrackedEmailSummary,
 } from '@pigeonbox/tracking';
 import { applyCategoryChip, rowsForThread } from './thread/chips';
+import { attachDocumentAction, insertDocumentLink } from './compose/documents';
 import { isVisibleCommand, paletteCommands, type CommandId } from './commands';
 import { attachSdkComposeTracking, type ComposeTrackingSession } from './tracking/compose-tracking';
 import { attachPlaceholderGuard } from './shell/placeholder-guard';
@@ -44,7 +46,7 @@ import {
   type SelfViewSource,
 } from './tracking/message-self-view';
 import { installSentStatus, type SentStatusController } from './tracking/sent-status';
-import { SURFACE_CSS, ensureSurface, floatPanelRightPx, shadowMount } from './shell/surface';
+import { ensureSurface, floatPanelRightPx, shadowMount } from './shell/surface';
 import type { ThreadIntel } from '@pigeonbox/api-contract';
 import { ThreadPanel, type IslandMode, type LocalThreadIntel } from './thread/ThreadPanel';
 import { installFloatDrag, placeFloat, type FloatPos } from './shell/float-drag';
@@ -434,6 +436,7 @@ export function mountSdkUi(
     onComposeView: (composeView) => {
       attachSdkComposeTracking(composeView as any, trackingDeps());
       attachPlaceholderGuard(composeView as any);
+      void cloudBoot.then(() => { if (cloudCapabilities.includes('cloud_documents')) attachDocumentAction(composeView as any, () => cloudAvailable && cloudCapabilities.includes('cloud_documents')); });
     },
   };
 
@@ -559,6 +562,8 @@ async function refreshPanel(el: HTMLElement, threadId: string): Promise<void> {
       onDraft: () => void draftReply(threadId),
       onRemind: () => void remind(threadId),
       cloud,
+      cloudCapabilities,
+      mailbox: mailboxOwner()?.email,
       onUseCloudDraft: (body: string) => void insertDraft(threadId, body).then((result) => {
         if (!result.success) showToast('Could not open a reply here. Open the thread and try again.');
       }),
@@ -702,14 +707,16 @@ const cloudIntel = new Map<string, { value: ThreadIntel | null; at: number }>();
 
 /** PigeonBox Cloud's view of the thread, when Cloud mode is on and Google is connected. Otherwise null. */
 async function getCloudIntel(threadId: string): Promise<ThreadIntel | null> {
-  const res = await send<{ available?: boolean; threads?: Record<string, ThreadIntel> }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [threadId], mailbox: mailboxOwner()?.email });
+  const res = await send<{ available?: boolean; threads?: Record<string, ThreadIntel>; capabilities?: string[] }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [threadId], mailbox: mailboxOwner()?.email });
   cloudAvailable = Boolean(res?.available);
+  cloudCapabilities = res?.capabilities ?? [];
   return res?.available ? (res.threads?.[threadId] ?? null) : null;
 }
 
 /** Whether PigeonBox Cloud's always-on features are on (Cloud mode, Google connected). Learned from the worker. */
 let cloudAvailable = false;
-void send<{ available?: boolean }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [] }).then((res) => (cloudAvailable = Boolean(res?.available)));
+let cloudCapabilities: string[] = [];
+const cloudBoot = send<{ available?: boolean; capabilities?: string[] }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [] }).then((res) => { cloudAvailable = Boolean(res?.available); cloudCapabilities = res?.capabilities ?? []; });
 
 function getIntel(threadId: string): Promise<LocalThreadIntel | undefined> {
   return send<LocalThreadIntel>({ type: 'GET_THREAD_INTEL', threadId });
@@ -760,6 +767,25 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
       if (message?.type === 'TRACKED_EMAILS_CHANGED' && Array.isArray(message.emails)) {
         updateCachedEmails(message.emails as TrackedEmailSummary[]);
         sendResponse({ ok: true });
+        return;
+      }
+      if (message?.type === 'PIGEONBOX_INSERT_DOCUMENT') {
+        sendResponse(insertDocumentLink(message));
+        return;
+      }
+      if (message?.type === 'PIGEONBOX_COMMAND') {
+        const id = message.id === 'summarize' || message.id === 'draft' ? message.id : null;
+        if (!id) {
+          sendResponse({ ok: false, reason: 'That command is not available here.' });
+          return;
+        }
+        const thread = currentThreadId || (await adapter.getCurrentThread()).thread?.threadId;
+        if (!thread) {
+          sendResponse({ ok: false, reason: 'Open a Gmail thread first.' });
+          return;
+        }
+        sendResponse({ ok: true });
+        void runCommand(id);
         return;
       }
       if (message?.type === 'THREAD_INTELLIGENCE_UPDATED' || message?.type === 'THREAD_SUMMARY_READY' || message?.type === 'THREAD_DRAFT_READY') {
@@ -1008,123 +1034,8 @@ function setupCommandPalette(): void {
 }
 
 function openCommandPalette(): void {
-  if (document.querySelector('[data-gi-ui="cmdk"]')) return;
   ensureSurface();
-  const host = document.createElement('div');
-  host.setAttribute('data-gi-ui', 'cmdk');
-  host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;';
-  const shadow = host.attachShadow({ mode: 'open' });
-  const style = document.createElement('style');
-  style.textContent = SURFACE_CSS;
-  const scrim = document.createElement('div');
-  scrim.className = 'gi-cmdk';
-  const panel = document.createElement('div');
-  panel.className = 'gi-cmdk-panel';
-  panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-label', 'Commands');
-  const core = document.createElement('div');
-  core.className = 'gi-cmdk-core';
-  const input = document.createElement('input');
-  input.className = 'gi-cmdk-input';
-  input.placeholder = 'Search commands';
-  input.setAttribute('aria-label', 'Search commands');
-  const list = document.createElement('div');
-  list.className = 'gi-cmdk-list';
-  list.setAttribute('role', 'listbox');
-  const foot = document.createElement('div');
-  foot.className = 'gi-cmdk-foot';
-  foot.innerHTML = '<span><kbd class="gi-kbd">↑↓</kbd> move</span><span><kbd class="gi-kbd">↵</kbd> run</span><span><kbd class="gi-kbd">esc</kbd> close</span>';
-
-  let active = 0;
-  let items: HTMLButtonElement[] = [];
-
-  const close = () => {
-    window.removeEventListener('keydown', onWindowKey, true);
-    host.remove();
-  };
-  const onWindowKey = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
-    event.preventDefault();
-    event.stopPropagation();
-    close();
-  };
-  const choose = (index: number) => {
-    const id = items[index]?.dataset.command;
-    if (!id) return;
-    close();
-    void runCommand(id);
-  };
-  const paintActive = (scroll = false) => {
-    items.forEach((row, index) => {
-      const on = index === active;
-      row.dataset.active = on ? 'true' : 'false';
-      row.setAttribute('aria-selected', on ? 'true' : 'false');
-    });
-    if (scroll) items[active]?.scrollIntoView({ block: 'nearest' });
-  };
-  const render = (filter: string) => {
-    list.replaceChildren();
-    items = [];
-    const commands = paletteCommands(filter, cloudAvailable);
-    if (active >= commands.length) active = 0;
-    if (!commands.length) {
-      const empty = document.createElement('div');
-      empty.className = 'gi-cmdk-empty';
-      empty.textContent = 'No matching commands';
-      list.append(empty);
-      return;
-    }
-    commands.forEach((command, index) => {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'gi-cmdk-row';
-      row.dataset.command = command.id;
-      row.dataset.active = index === active ? 'true' : 'false';
-      row.setAttribute('role', 'option');
-      row.setAttribute('aria-selected', index === active ? 'true' : 'false');
-      row.textContent = command.label;
-      row.onmouseenter = () => {
-        active = index;
-        paintActive();
-      };
-      row.onclick = () => choose(index);
-      items.push(row);
-      list.append(row);
-    });
-  };
-
-  input.oninput = () => {
-    active = 0;
-    render(input.value);
-  };
-  input.onkeydown = (event) => {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      event.stopPropagation();
-      active = Math.min(active + 1, Math.max(items.length - 1, 0));
-      paintActive(true);
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      event.stopPropagation();
-      active = Math.max(active - 1, 0);
-      paintActive(true);
-    } else if (event.key === 'Enter') {
-      event.preventDefault();
-      event.stopPropagation();
-      choose(active);
-    }
-  };
-  scrim.addEventListener('click', (event) => {
-    if (event.target === scrim) close();
-  });
-  render('');
-  core.append(input, list, foot);
-  panel.append(core);
-  scrim.append(panel);
-  shadow.append(style, scrim);
-  document.documentElement.append(host);
-  window.addEventListener('keydown', onWindowKey, true);
-  input.focus();
+  mountCommandPalette((filter) => paletteCommands(filter, cloudAvailable, { thread: Boolean(currentThreadId), capabilities: cloudCapabilities }), (id) => void runCommand(id));
 }
 
 async function runCommand(id: string): Promise<void> {
@@ -1138,8 +1049,9 @@ async function runCommand(id: string): Promise<void> {
     if (!res?.ok) showToast(res?.reason || 'Could not open Ask Pigeon.');
     return;
   }
-  if (command === 'cloud') {
-    const res = await send<{ ok?: boolean; reason?: string }>({ type: 'FOCUS_SIDEPANEL', mode: 'cloud' });
+  if (command === 'cloud' || command.startsWith('cloud_')) {
+    const section = command === 'cloud' ? 'overview' : command.slice(6);
+    const res = await send<{ ok?: boolean; reason?: string }>({ type: 'FOCUS_SIDEPANEL', mode: 'cloud', section });
     if (!res?.ok) showToast(res?.reason || 'Could not open PigeonBox Cloud.');
     return;
   }

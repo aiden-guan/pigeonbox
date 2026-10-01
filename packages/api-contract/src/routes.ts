@@ -91,12 +91,15 @@ import {
 } from './connections.js';
 import {
   DocumentAnalyticsRequestSchema,
+  DocumentCreateRequestSchema,
+  DocumentResponseSchema,
   DocumentAnalyticsResponseSchema,
   DocumentLinkCreateRequestSchema,
   DocumentLinkResponseSchema,
   DocumentLinkRevokeRequestSchema,
   DocumentsResponseSchema,
 } from './documents.js';
+import { CloudOverviewRequestSchema, CloudOverviewResponseSchema } from './overview.js';
 import {
   DraftFeedbackRequestSchema,
   DraftGetRequestSchema,
@@ -201,6 +204,7 @@ export const ROUTES = {
   preferencesUpdate: { method: 'POST', path: '/v1/preferences/update', auth: 'user', request: PreferencesUpdateRequestSchema, response: PreferencesResponseSchema, capability: 'cloud_mail_sync' },
 
   // Thread state, Focus Queue, drafts and follow-ups.
+  cloudOverview: { method: 'POST', path: '/v1/overview', auth: 'user', request: CloudOverviewRequestSchema, response: CloudOverviewResponseSchema, capability: 'cloud_mail_sync' },
   threadsIntel: { method: 'POST', path: '/v1/threads/intel', auth: 'user', request: ThreadsIntelRequestSchema, response: ThreadsIntelResponseSchema, capability: 'cloud_mail_sync' },
   threadStateUpdate: { method: 'POST', path: '/v1/threads/state', auth: 'user', request: ThreadStateUpdateRequestSchema, response: ThreadStateUpdateResponseSchema, capability: 'cloud_mail_sync' },
   focusQueue: { method: 'POST', path: '/v1/focus/queue', auth: 'user', request: FocusQueueRequestSchema, response: FocusQueueResponseSchema, capability: 'cloud_mail_sync' },
@@ -266,6 +270,7 @@ export const ROUTES = {
   snippetRender: { method: 'POST', path: '/v1/snippets/render', auth: 'user', request: SnippetRenderRequestSchema, response: SnippetRenderResponseSchema, capability: 'cloud_ai' },
 
   // Tracked documents.
+  documentCreate: { method: 'POST', path: '/v1/documents/create', auth: 'user', request: DocumentCreateRequestSchema, response: DocumentResponseSchema, capability: 'cloud_documents' },
   documents: { method: 'GET', path: '/v1/documents', auth: 'user', response: DocumentsResponseSchema, capability: 'cloud_documents' },
   documentLinkCreate: { method: 'POST', path: '/v1/documents/links/create', auth: 'user', request: DocumentLinkCreateRequestSchema, response: DocumentLinkResponseSchema, capability: 'cloud_documents' },
   documentLinkRevoke: { method: 'POST', path: '/v1/documents/links/revoke', auth: 'user', request: DocumentLinkRevokeRequestSchema, response: DocumentLinkResponseSchema, capability: 'cloud_documents' },

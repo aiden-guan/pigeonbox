@@ -224,3 +224,26 @@ describe('cancellation and de-duplication', () => {
     expect(await cache.get('k', load)).toBe(2);
   });
 });
+
+
+describe('Authenticated document upload', () => {
+  const id = '00000000-0000-4000-8000-000000000123';
+  const bytes = new TextEncoder().encode('%PDF-1.4 fixture');
+  const doc = { id, title: 'Proposal', filename: 'proposal.pdf', sizeBytes: bytes.length, pageCount: null, status: 'ready', createdAt: '2026-10-01T12:00:00.000Z', links: 0, views: 0, lastViewedAt: null };
+  it('uses a generated path on the issuing origin, disallows redirects and validates responses', async () => {
+    const upload = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => json({ document: doc }));
+    const client = new PigeonBoxCloudClient({ baseUrl: 'https://cloud.test', fetch: upload, tokens: { get: async () => 'fixture-token', refresh: async () => null } });
+    expect((await client.uploadDocument(id, bytes)).document.id).toBe(id);
+    expect(upload).toHaveBeenCalledWith(`https://cloud.test/v1/documents/${id}/content`, expect.objectContaining({ method: 'PUT', credentials: 'omit', redirect: 'error', body: bytes }));
+    await expect(client.uploadDocument('https://evil.test/upload', bytes)).rejects.toThrow();
+    await expect(client.uploadDocument(id, new TextEncoder().encode('not a PDF'))).rejects.toMatchObject({ code: 'invalid_request' });
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
+  it('refreshes exactly once and sanitizes network failures', async () => {
+    const upload = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => (init!.headers as Record<string, string>).Authorization === 'Bearer old' ? json({}, 401) : json({ document: doc }));
+    const refresh = vi.fn(async () => 'new'); const client = new PigeonBoxCloudClient({ baseUrl: 'https://cloud.test', fetch: upload, tokens: { get: async () => 'old', refresh } });
+    await client.uploadDocument(id, bytes); expect(refresh).toHaveBeenCalledTimes(1); expect(upload).toHaveBeenCalledTimes(2);
+    const failing = new PigeonBoxCloudClient({ baseUrl: 'https://cloud.test', fetch: async () => { throw new Error('body prompt oauth private'); }, tokens: { get: async () => 'old', refresh } });
+    const error = await failing.uploadDocument(id, bytes).catch((value: unknown) => value); expect(String(error)).not.toContain('private');
+  });
+});

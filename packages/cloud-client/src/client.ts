@@ -6,6 +6,8 @@ import {
   PROTOCOL_VERSION,
   REQUEST_ID_HEADER,
   ROUTES,
+  DocumentResponseSchema,
+  documentUploadPath,
   isKnownErrorCode,
   type CloudErrorCode,
   type RouteName,
@@ -149,6 +151,33 @@ export class PigeonBoxCloudClient {
   }
   billingPortal() {
     return this.call('billingPortal', {});
+  }
+
+  /** Upload only to the issuing Cloud origin, with the same refresh and privacy policy as JSON calls. */
+  async uploadDocument(id: string, bytes: Uint8Array<ArrayBuffer>, options: CallOptions = {}) {
+    const path = documentUploadPath(id);
+    if (!bytes.length || bytes.length > 20_000_000 || new TextDecoder().decode(bytes.subarray(0, 5)) !== '%PDF-') {
+      throw new CloudApiError({ code: 'invalid_request', message: 'Choose a PDF up to 20 MB.' });
+    }
+    const send = async (token: string) => {
+      try {
+        return await this.fetchImpl(`${this.baseUrl}${path}`, {
+          method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/pdf', [PROTOCOL_HEADER]: String(PROTOCOL_VERSION), [CLIENT_HEADER]: this.clientName },
+          body: bytes, signal: combineSignals(options.signal, AbortSignal.timeout(options.timeoutMs ?? 60_000)), credentials: 'omit', redirect: 'error',
+        });
+      } catch {
+        throw new CloudApiError({ code: 'network', message: 'Could not upload the PDF. Try again.', retryable: true });
+      }
+    };
+    const token = await this.tokens?.get();
+    if (!token) throw new CloudApiError({ code: 'signed_out', message: 'Sign in to PigeonBox Cloud first.' });
+    let response = await send(token);
+    if (response.status === 401) {
+      const next = await this.tokens?.refresh();
+      if (!next) throw new CloudApiError({ code: 'signed_out', message: 'Sign in to PigeonBox Cloud again.' });
+      response = await send(next);
+    }
+    return this.readResponse(response, DocumentResponseSchema) as Promise<import('@pigeonbox/api-contract').RouteResponse<'documentCreate'>>;
   }
 
   /**

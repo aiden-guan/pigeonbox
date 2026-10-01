@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { trackProductEvent } from './analytics';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CloudState, PigeonBoxCapability, PigeonBoxMode } from '@pigeonbox/core';
 
 /** What the background worker reports about mode, Cloud and capabilities. */
@@ -46,17 +47,25 @@ export function sendProductMessage(message: Record<string, unknown>): Promise<Re
  */
 export function useProductState() {
   const [state, setState] = useState<ProductState>(INITIAL_PRODUCT_STATE);
+  const refreshSequence = useRef(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     const next = (await sendProductMessage({ type: 'GET_PRODUCT_STATE' })) as ProductState | undefined;
-    if (next && 'runMode' in next) setState(next);
+    if (sequence === refreshSequence.current && next && 'runMode' in next) setState(next);
   }, []);
 
+  const invalidate = useCallback(() => { ++refreshSequence.current; }, []);
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    const changed = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if (changes.settings || changes.cloudSession || changes.cloudState) void refresh();
+    };
+    chrome.storage?.onChanged?.addListener(changed);
+    return () => { invalidate(); chrome.storage?.onChanged?.removeListener(changed); };
+  }, [refresh, invalidate]);
 
   const run = useCallback(async (message: Record<string, unknown>) => {
     setBusy(true);
@@ -77,10 +86,11 @@ export function useProductState() {
     error,
     refresh,
     has: (capability: PigeonBoxCapability) => state.capabilities.includes(capability),
-    useLocal: () => run({ type: 'SET_RUN_MODE', mode: 'local' }),
-    useCloud: (consent: boolean) => run({ type: 'SET_RUN_MODE', mode: 'cloud', consent }),
+    useLocal: () => { trackProductEvent('local_selected'); return run({ type: 'SET_RUN_MODE', mode: 'local' }); },
+    useCloud: (consent: boolean) => { if (consent) trackProductEvent('cloud_selected'); return run({ type: 'SET_RUN_MODE', mode: 'cloud', consent }); },
     /** Call from a click handler: Chrome only shows permission prompts during a user gesture. */
     signIn: async () => {
+      trackProductEvent('cloud_signin_started');
       if (typeof chrome !== 'undefined' && chrome.permissions?.request) {
         const granted = await chrome.permissions
           .request({ permissions: ['identity'], origins: state.cloudOrigins })
@@ -90,7 +100,9 @@ export function useProductState() {
           return undefined;
         }
       }
-      return run({ type: 'CLOUD_SIGN_IN' });
+      const reply = await run({ type: 'CLOUD_SIGN_IN' });
+      if (reply?.ok) trackProductEvent('cloud_signin_completed', { outcome: 'success' });
+      return reply;
     },
     signOut: () => run({ type: 'CLOUD_SIGN_OUT' }),
     recheck: () => run({ type: 'CLOUD_REFRESH' }),

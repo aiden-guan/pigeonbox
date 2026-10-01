@@ -20,4 +20,5 @@ export * from './automation.js';
 export * from './team.js';
 export * from './documents.js';
 export * from './notifications.js';
+export * from './overview.js';
 export * from './routes.js';

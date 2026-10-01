@@ -87,7 +87,10 @@ function releaseHygiene(): Plugin {
     name: 'pigeonbox-release-hygiene',
     apply: 'build',
     async writeBundle(output) {
-      if (!release || !output.dir) return;
+      if (!output.dir) return;
+      // Preserve the canonical PNG in source; ship only its lossless WebP counterpart.
+      await rm(resolve(output.dir, "brand/pigeon-sprites.png"), { force: true });
+      if (!release) return;
       await Promise.all(RELEASE_EXCLUDED.map((file) => rm(resolve(output.dir!, file), { force: true })));
     },
   };

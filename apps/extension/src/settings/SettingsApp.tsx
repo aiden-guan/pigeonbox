@@ -1,5 +1,9 @@
+import { AnalyticsPreference } from './AnalyticsPreference';
+import { Section, Toggle, Field } from './SettingsComponents';
+import { CloudPreferences } from './CloudPreferences';
+import { openCloud } from '../ui/cloud-features';
 import { Brand, Pigeon } from '../ui/Pigeon';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS, getProviderRequiredOrigin, type ExtensionSettings, type ThreadCategory } from '@pigeonbox/shared';
 import { trackerHealthLabel, trackerPermissionOrigin, type TrackerHealthStatus } from '@pigeonbox/tracking';
 import { AiConnect } from '../setup/AiConnect';
@@ -7,6 +11,8 @@ import { ProfileFields } from '../setup/ProfileFields';
 import { RunModePanel } from '../setup/RunModePanel';
 import { Orb } from '../ui/Orb';
 import { useProductState } from '../ui/product-state';
+import { DEV_REBUILD_URL } from '../config';
+import { RebuildFailedError, requestExtensionReload } from '../reload-extension';
 import {
   checkLatestRelease,
   chromeManagesUpdates,
@@ -29,6 +35,8 @@ export function SettingsApp() {
   const [checkingRelease, setCheckingRelease] = useState(false);
   const [releaseNotice, setReleaseNotice] = useState<string | null>(null);
   const [storeInstall, setStoreInstall] = useState(false);
+  const [reloadingExtension, setReloadingExtension] = useState(false);
+  const [reloadError, setReloadError] = useState<string | null>(null);
   const product = useProductState();
   const cloudMode = product.state.runMode === 'cloud';
 
@@ -92,6 +100,17 @@ export function SettingsApp() {
       chrome.permissions.remove({ origins: [RELEASE_CHECK_PERMISSION] });
     }
   }, [checkForUpdates]);
+
+  const reloadExtension = useCallback(async () => {
+    setReloadingExtension(true);
+    setReloadError(null);
+    try {
+      await requestExtensionReload(chrome, { devRebuildUrl: DEV_REBUILD_URL });
+    } catch (error) {
+      setReloadingExtension(false);
+      setReloadError(error instanceof RebuildFailedError ? 'Build failed. See the dev:reload terminal.' : 'Could not reload the extension. Try again.');
+    }
+  }, []);
 
   const checkTracker = useCallback((current: ExtensionSettings) => {
     if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
@@ -199,7 +218,8 @@ export function SettingsApp() {
         <div className="gi-settings-title"><div><div className="gi-kicker">Make yourself at home</div><h1 className="gi-display">Your perch.</h1><p className="gi-muted mt-3 text-sm">A few thoughtful defaults. The rest is up to you.</p></div><Pigeon size={116} /></div>
       </header>
 
-      <Section title="How should PigeonBox run?">
+      <nav aria-label="Settings sections" className="gi-cloud-actions">{[["PigeonBox", "pigeonbox"], ["AI", "ai"], ["Inbox", "inbox"], ["Tracking", "tracking"], ["Cloud", "cloud"], ["Personalization", "personalization"], ["Privacy & data", "privacy"]].filter(([, id]) => id !== "cloud" || cloudMode).map(([label, id]) => <a key={id} className="gi-text-btn" href={`#${id}`}>{label}</a>)}</nav>
+      <Section title="PigeonBox" id="pigeonbox">
         <RunModePanel
           product={product}
           onAdvanced={() => {
@@ -210,7 +230,7 @@ export function SettingsApp() {
         />
       </Section>
 
-      <Section title="General">
+      <Section title="Inbox" id="inbox">
         <Toggle label="AI Inbox" checked={(cloudMode || settings.aiMode !== 'disabled') && settings.autoClassify} onChange={(on) => update('autoClassify', on)} />
         <Toggle label="Email tracking" checked={settings.trackingEnabled} onChange={(on) => update('trackingEnabled', on)} />
         <Toggle label="Desktop alerts" checked={settings.desktopNotifications} onChange={(on) => update('desktopNotifications', on)} />
@@ -270,7 +290,7 @@ export function SettingsApp() {
       </Section>
 
       {cloudMode ? null : (
-        <Section title="AI on this computer">
+        <Section title="AI on this computer" id="ai">
           <p className="text-sm">{provider}{settings.aiModel && settings.aiMode !== 'disabled' ? ` · ${settings.aiModel}` : ''}</p>
           <button type="button" className="gi-text-btn mt-2" onClick={() => setChangeAi((open) => !open)}>
             {changeAi ? 'Hide AI setup' : 'Change AI'}
@@ -279,7 +299,7 @@ export function SettingsApp() {
         </Section>
       )}
 
-      <Section title="Email tracking">
+      <Section title="Email tracking" id="tracking">
         <Toggle label="Track opens" checked={settings.trackOpens} onChange={(on) => update('trackOpens', on)} />
         <Toggle label="Track links" checked={settings.trackLinks} onChange={(on) => update('trackLinks', on)} />
         {cloudMode ? (
@@ -320,7 +340,8 @@ export function SettingsApp() {
         </p>
       </Section>
 
-      <Section title="Personalization">
+      {cloudMode && product.has("cloud_mail_sync") ? <Section title="Cloud" id="cloud"><CloudPreferences capabilities={product.state.capabilities} /></Section> : null}
+      <Section title="Personalization" id="personalization">
         <ProfileFields voice={settings.voiceProfile} onChange={(voiceProfile) => update('voiceProfile', voiceProfile)} />
         <Field label="Greeting">
           <input className="gi-field" value={settings.voiceProfile.greeting} onChange={(event) => update('voiceProfile', { ...settings.voiceProfile, greeting: event.target.value })} />
@@ -344,14 +365,14 @@ export function SettingsApp() {
           <p className="gi-muted text-xs">
             Provider endpoints, tokens, index controls, and diagnostics.
           </p>
-          <Field label="PigeonBox Cloud API URL (development)">
+          {DEV_REBUILD_URL ? <Field label="PigeonBox Cloud API URL (development)">
             <input
               className="gi-field"
               value={settings.cloudApiUrl}
               placeholder="Blank uses this build's default"
               onChange={(event) => update('cloudApiUrl', event.target.value)}
             />
-          </Field>
+          </Field> : null}
           <p className="gi-muted text-xs">
             Self-hosting guides for Convex and Cloudflare Worker + Supabase are in the PigeonBox repository under docs/.
           </p>
@@ -412,6 +433,16 @@ export function SettingsApp() {
           ) : null}
         </Section>
       ) : null}
+      <Section title="Privacy & data" id="privacy"><AnalyticsPreference /><p className="gi-muted text-xs">Local mail and settings stay in this browser unless you explicitly select another provider. Cloud processes mail on your configured infrastructure and stores encrypted derived intelligence; retaining excerpts requires a separate opt-in.</p>{cloudMode ? <button className="gi-text-btn" type="button" onClick={() => openCloud('privacy')}>Manage Cloud data and retention ↗</button> : null}<button className="gi-btn gi-btn-ghost" type="button" onClick={() => { if (window.confirm('Clear the mail index on this computer? Cloud data and your settings are unaffected.')) chrome.runtime.sendMessage({ type: 'CLEAR_INDEX' }); }}>Clear local mail index</button></Section>
+      {DEV_REBUILD_URL ? (
+        <Section title="Developer">
+          <p className="gi-muted text-xs">Rebuild and restart this unpacked extension from the local development helper.</p>
+          <button type="button" className="gi-btn gi-btn-ghost" disabled={reloadingExtension} onClick={() => void reloadExtension()}>
+            {reloadingExtension ? 'Rebuilding…' : 'Reload extension'}
+          </button>
+          {reloadError ? <p className="gi-danger text-xs" role="alert">{reloadError}</p> : null}
+        </Section>
+      ) : null}
       </div>
     </div>
   );
@@ -426,33 +457,4 @@ function describeReleaseStatus(status: ReleaseUpdateStatus | null): string {
     return `PigeonBox v${status.latestVersion} is available. Installed version: v${status.currentVersion}.`;
   }
   return status.message || 'Could not check for updates.';
-}
-
-function Section(props: { title: string; children: ReactNode; id?: string }) {
-  return (
-    <section className="gi-card" id={props.id}>
-      <h2>{props.title}</h2>
-      <div className="space-y-3">{props.children}</div>
-    </section>
-  );
-}
-
-function Toggle(props: { label: string; checked: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="text-[13px]">{props.label}</span>
-      <button type="button" className="gi-toggle" role="switch" aria-checked={props.checked} aria-label={props.label} onClick={() => props.onChange(!props.checked)}>
-        <span />
-      </button>
-    </div>
-  );
-}
-
-function Field(props: { label: string; children: ReactNode }) {
-  return (
-    <label className="block text-xs text-[#aba99e]">
-      {props.label}
-      <div className="mt-1.5">{props.children}</div>
-    </label>
-  );
 }

@@ -9,6 +9,12 @@ import { forgetThreadIntel } from './thread-state';
 
 /** Contract routes extension pages may call. Never billing, account deletion, tokens or webhooks. */
 export const PAGE_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>([
+  'cloudOverview',
+  'briefingGenerate',
+  'views', 'viewCompile', 'viewSave', 'viewResults', 'viewShadow', 'viewReview',
+  'automations', 'automationCompile', 'automationSave', 'automationRuns',
+  'contacts',
+  'documents', 'documentCreate', 'documentLinkCreate', 'documentAnalytics',
   'connections',
   'connectStart',
   'connectionUpdate',

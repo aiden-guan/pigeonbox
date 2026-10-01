@@ -58,10 +58,10 @@ describe('Cloud thread companion', () => {
     const host = render(<CloudCompanion intel={intel()} onUseDraft={() => undefined} />);
     const text = host.textContent ?? '';
     expect(text).toContain('Needs your reply');
-    expect(text).toContain('You: send the quote');
+    expect(text).toContain('You promised: send the quote');
     expect(text).toContain('Fill in [CONFIRM PRICE], [DATE NEEDED] before sending.');
     expect(host.querySelectorAll('mark')).toHaveLength(2);
-    expect(text).toContain('Used to prepare this draft: Pricing for 50 seats');
+    expect(text).toContain('Used to prepare this draftPricing for 50 seats');
     expect(text).toContain('did not follow them');
   });
 

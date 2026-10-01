@@ -13,7 +13,7 @@ describe('commands', () => {
       'mark_respond',
       'mark_waiting',
       'mark_fyi',
-      'cloud',
+      'cloud', 'cloud_approvals', 'cloud_activity', 'cloud_briefings', 'cloud_views', 'cloud_automations', 'cloud_contacts', 'cloud_documents',
     ]);
     for (const command of VISIBLE_COMMANDS) expect(isVisibleCommand(command.id)).toBe(true);
     expect(isVisibleCommand('index')).toBe(false);
@@ -23,6 +23,12 @@ describe('commands', () => {
   it('shows Cloud commands only when Cloud’s always-on features are on', () => {
     expect(paletteCommands('', false).map((command) => command.id)).not.toContain('cloud');
     expect(paletteCommands('', true).map((command) => command.id)).toContain('cloud');
-    expect(paletteCommands('approv', true).map((command) => command.id)).toEqual(['cloud']);
+    expect(paletteCommands('approv', true).map((command) => command.id)).toEqual(['cloud_approvals']);
   });
+});
+
+it('filters thread-only and ungranted commands, with context first', () => {
+  expect(paletteCommands('', true, { thread: false, capabilities: [] }).map((item) => item.id)).not.toContain('summarize');
+  expect(paletteCommands('', true, { thread: false, capabilities: [] }).map((item) => item.id)).not.toContain('cloud_documents');
+  expect(paletteCommands('', true, { thread: true, capabilities: ['cloud_documents'] })[0].id).toBe('summarize');
 });

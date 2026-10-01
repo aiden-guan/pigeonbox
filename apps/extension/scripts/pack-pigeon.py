@@ -49,4 +49,5 @@ for row, (_, _, centers) in enumerate(ROWS):
         cell[ys - y0, xs - x0] = src[ys, xs]
 
 Image.fromarray(atlas).save(OUT, optimize=True)
+Image.fromarray(atlas).save(OUT.with_suffix(".webp"), lossless=True, exact=True, method=6)
 print(f'wrote {OUT.relative_to(ROOT)} ({atlas.shape[1]}x{atlas.shape[0]})')

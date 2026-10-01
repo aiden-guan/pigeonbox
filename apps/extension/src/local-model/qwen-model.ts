@@ -42,6 +42,11 @@ const schedule = createScheduler();
 let activeGenerator: Generator | null = null;
 let activeModelId: string | null = null;
 
+/** True only after this offscreen document has loaded and kept the model generator alive. */
+export function isQwenModelReady(modelId: string): boolean {
+  return Boolean(activeGenerator && activeModelId === modelId);
+}
+
 export function downloadQwenModel(modelId: string, onProgress: (fraction: number) => void): Promise<void> {
   return schedule('system', () => downloadModel(modelId, onProgress));
 }

@@ -1,3 +1,4 @@
+import { recordProductEvent } from '../ui/analytics';
 function isWorkerEvictionError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
   return msg.includes('No SW') || msg.includes('No RPH') || msg.includes('Extension context invalidated');
@@ -73,10 +74,11 @@ import {
 import { completeOnDevice, downloadOnDevice, warmOnDevice } from './ai/on-device';
 import { effectiveSettings, resolveAIProvider } from './ai/provider-router';
 import { clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud/client';
-import { cloudThreadStateAvailable, forgetThreadIntel, threadIntel } from './cloud/thread-state';
-import { pageCall } from './cloud/page-calls';
+import { cloudThreadStateAvailable, forgetThreadIntel } from './cloud/thread-state';
+import { handleCloudRequest } from './cloud/handlers';
+import { cloudSection } from '../ui/cloud-features';
 import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
-import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, senderMaySend } from './messaging';
+import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, isGmailContentScript, senderMaySend } from './messaging';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
 import { EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl } from '../config';
 import { TrackingNotificationHistory } from './tracking/notifications';
@@ -153,6 +155,7 @@ async function saveSettings(partial: Partial<ExtensionSettings>): Promise<Extens
   delete rest.cloudConsentAt;
   delete rest.settingsVersion;
   const previousAutomaticUpdateChecks = settings.automaticUpdateChecks;
+  if (rest.cloudApiUrl !== undefined && rest.cloudApiUrl !== settings.cloudApiUrl) forgetThreadIntel();
   settings = migrateSettings({ ...settings, ...rest });
   await chrome.storage.local.set({ settings });
   if (settings.automaticUpdateChecks !== previousAutomaticUpdateChecks) {
@@ -650,14 +653,25 @@ async function sendToTab(tabId: number, message: unknown, attempts = 8): Promise
   return { success: false, verified: false, reason: last };
 }
 
-async function openSidePanel(mode: 'inbox' | 'ask' | 'cloud', splitCategory?: string): Promise<void> {
+async function openSidePanel(
+  mode: 'inbox' | 'ask' | 'cloud',
+  splitCategory?: string,
+  askQuery?: string,
+  askRequestId?: string,
+  section?: string,
+): Promise<void> {
   const stored = await chrome.storage.session.get('panelState');
   const current = (stored.panelState || {}) as { mode?: string; splitCategory?: string };
+  const panelState: { mode: 'inbox' | 'ask' | 'cloud'; splitCategory: string; askQuery?: string; askRequestId?: string } = {
+    mode,
+    splitCategory: splitCategory || current.splitCategory || 'RESPOND',
+  };
+  if (mode === 'ask' && askQuery?.trim() && askRequestId) {
+    panelState.askQuery = askQuery.trim();
+    panelState.askRequestId = askRequestId;
+  }
   await chrome.storage.session.set({
-    panelState: {
-      mode,
-      splitCategory: splitCategory || current.splitCategory || 'RESPOND',
-    },
+    panelState: { ...panelState, cloudSection: cloudSection(section) },
   });
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.windowId != null) await chrome.sidePanel.open({ windowId: tab.windowId });
@@ -913,6 +927,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     message?.type === 'LOCAL_MODEL_PROGRESS' ||
     message?.type === 'LOCAL_MODEL_RELEASE' ||
     message?.type === 'ON_DEVICE_PING' ||
+    message?.type === 'ON_DEVICE_STATUS' ||
     message?.type === 'ON_DEVICE_PROMPT' ||
     message?.type === 'ON_DEVICE_WARM' ||
     message?.type === 'ON_DEVICE_DOWNLOAD'
@@ -926,6 +941,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     await loadSettings();
     if (!agent) rebuildAgent();
 
+    if (message?.type === 'PRODUCT_EVENT') { void recordProductEvent(message.event, message.metadata); sendResponse({ ok: true }); return; }
     const cloudResponse = await handleCloudMessage(message, sender);
     if (cloudResponse !== undefined) {
       sendResponse(cloudResponse);
@@ -1327,7 +1343,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       if (message?.type === 'FOCUS_SIDEPANEL') {
         try {
-          await openSidePanel(message.mode === 'inbox' ? 'inbox' : message.mode === 'cloud' ? 'cloud' : 'ask', message.category);
+          if (typeof message.composeId === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(message.composeId) && sender.tab?.id && isGmailContentScript(sender)) {
+            await chrome.storage.session.set({ documentComposeTarget: { tabId: sender.tab.id, composeId: message.composeId } });
+          }
+          await openSidePanel(
+            message.mode === 'inbox' ? 'inbox' : message.mode === 'cloud' ? 'cloud' : 'ask',
+            message.category,
+            typeof message.askQuery === 'string' ? message.askQuery : undefined,
+            typeof message.askRequestId === 'string' ? message.askRequestId : undefined,
+            typeof message.section === 'string' ? message.section : undefined,
+          );
           sendResponse({ ok: true });
         } catch (error) {
           sendResponse({ ok: false, reason: String(error) });
@@ -1754,7 +1779,7 @@ async function productState() {
 /** The Cloud web app (served by the Cloud API's origin), for a section such as "approvals". */
 function cloudWebUrl(section = 'overview'): string | null {
   const base = cloudApiUrl(settings);
-  return base ? `${new URL(base).origin}/app#${/^[a-z]{2,20}$/.test(section) ? section : 'overview'}` : null;
+  return base ? `${new URL(base).origin}/app#${cloudSection(section)}` : null;
 }
 
 /** A Cloud client only when Cloud's always-on features (`cloud_mail_sync`) are available; null in Local mode. */
@@ -1771,38 +1796,7 @@ async function cloudSyncClient() {
  * an extension page (enforced by `senderMaySend`). Returns undefined for any other message.
  */
 async function handleCloudMessage(message: { type?: unknown; [key: string]: unknown }, sender: chrome.runtime.MessageSender): Promise<unknown> {
-  switch (message?.type) {
-    case 'CLOUD_THREAD_INTEL': {
-      const client = await cloudSyncClient();
-      if (!client) return { ok: true, available: false, threads: {} };
-      const ids = Array.isArray(message.threadIds) ? message.threadIds.filter((id): id is string => typeof id === 'string') : [];
-      const mailbox = typeof message.mailbox === 'string' && EMAIL_PATTERN.test(message.mailbox) ? message.mailbox : undefined;
-      try {
-        return { ok: true, available: true, threads: await threadIntel(client, ids, mailbox) };
-      } catch (error) {
-        return { ok: false, available: true, threads: {}, reason: cloudErrorMessage(error).message };
-      }
-    }
-    case 'CLOUD_INTEL_STATE': {
-      const state = await readCloudState(settings);
-      return { ok: true, available: cloudThreadStateAvailable(state, settings.runMode), capabilities: state.capabilities, webUrl: cloudWebUrl() };
-    }
-    case 'CLOUD_CALL': {
-      if (!isExtensionPageSender(sender)) return { ok: false, code: 'forbidden', reason: 'This request is only accepted from PigeonBox pages.' };
-      const client = await cloudSyncClient();
-      if (!client) return { ok: false, code: 'not_configured', reason: 'Turn on PigeonBox Cloud and connect Google to use this.' };
-      return pageCall(client, message.route, message.body);
-    }
-    case 'CLOUD_OPEN': {
-      if (!isExtensionPageSender(sender)) return { ok: false, code: 'forbidden' };
-      const url = cloudWebUrl(typeof message.section === 'string' ? message.section : 'overview');
-      if (!url) return { ok: false, reason: 'PigeonBox Cloud is not available in this build.' };
-      await chrome.tabs.create({ url });
-      return { ok: true };
-    }
-    default:
-      return undefined;
-  }
+  return handleCloudRequest(message, sender, { settings: () => settings, readState: () => readCloudState(settings), client: async () => settings.runMode === 'cloud' ? getCloudClient(settings) : null, webUrl: cloudWebUrl });
 }
 
 async function pollCloudNotifications(): Promise<void> {
@@ -1849,6 +1843,7 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       return { ok: true, state: await productState() };
     }
     case 'CLOUD_SIGN_IN': {
+      forgetThreadIntel();
       const base = cloudApiUrl(settings);
       if (!base) return { ok: false, reason: 'PigeonBox Cloud is not available in this build.' };
       try {

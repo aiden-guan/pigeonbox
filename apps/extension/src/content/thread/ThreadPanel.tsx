@@ -54,6 +54,8 @@ export function ThreadPanel(props: {
   onRetrySummary?: () => void;
   /** What PigeonBox Cloud knows about this thread, in Cloud mode with Google connected. */
   cloud?: ThreadIntel | null;
+  cloudCapabilities?: string[];
+  mailbox?: string;
   onUseCloudDraft?: (body: string) => void;
 }) {
   const [uncontrolled, setUncontrolled] = useState<IslandMode>('open');
@@ -181,7 +183,7 @@ export function ThreadPanel(props: {
             <div className={props.tracking.opened ? 'gi-open-count is-open' : 'gi-open-count'}>{props.tracking.countLabel}</div>
           </div>
         ) : null}
-        {props.cloud ? <CloudCompanion intel={props.cloud} onUseDraft={(body) => props.onUseCloudDraft?.(body)} /> : null}
+        {props.cloud ? <CloudCompanion key={props.cloud.threadId} intel={props.cloud} capabilities={props.cloudCapabilities} mailbox={props.mailbox} onUseDraft={(body) => props.onUseCloudDraft?.(body)} /> : null}
         <div className="gi-actions">
           {canDraft ? (
             <button

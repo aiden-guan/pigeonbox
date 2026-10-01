@@ -142,7 +142,7 @@ describe('AI job asynchronous lifecycle and deduplication', () => {
 
     // Resolve inference
     resolveInference(true);
-    await new Promise((r) => setTimeout(r, 50));
+    await vi.waitFor(() => expect(intelEvents).toContain('THREAD_DRAFT_READY'));
 
     const savedDraft = await db.draft_suggestions.where('threadId').equals(threadId).first();
     expect(savedDraft?.suggestion.body).toBe('I will attend the Q3 review.');

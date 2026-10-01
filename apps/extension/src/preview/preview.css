@@ -10,7 +10,7 @@
 .preview-intro h1 { font-size:62px; line-height:1.03; letter-spacing:-.055em; font-weight:500; margin-top:16px; }
 .preview-intro em { font-family:Georgia,serif; font-weight:400; color:#dfb58f; }
 .preview-intro p { font-size:13px; line-height:1.8; color:#aaa99d; padding-bottom:5px; }
-.preview-grid { display:grid; grid-template-columns:320px minmax(320px,1fr) minmax(290px,1fr); gap:28px; max-width:1176px; margin:0 auto; padding:0 24px; align-items:start; }
+.preview-grid { display:grid; grid-template-columns:448px minmax(320px,1fr) minmax(290px,1fr); gap:28px; max-width:1176px; margin:0 auto; padding:0 24px; align-items:start; }
 .preview-grid article { min-width:0; }
 .preview-grid article>.gi-app { border:1px solid #f4f0e818; border-radius:24px; }
 .preview-panel { height:560px; overflow:hidden; border:1px solid #f4f0e818; border-radius:24px; }
@@ -23,5 +23,5 @@
 .preview-states strong { text-transform:capitalize; font-weight:500; font-size:12px; margin-top:10px; }
 .preview-states button>span:last-child { color:#96978b; font:9px ui-monospace,monospace; margin-top:6px; }
 .preview-notice { font-size:12px; margin:12px; color:#edbb93; }
-@media(max-width:1050px){.preview-grid{grid-template-columns:320px 1fr;}.preview-grid article:last-child{grid-column:2;}.preview-intro h1{font-size:48px}.preview-states{margin:24px;}}
-@media(max-width:700px){.preview-grid{display:flex;flex-direction:column;align-items:center}.preview-grid article{width:100%;max-width:380px}.preview-grid article:first-child{width:320px}.preview-intro{display:block;margin-top:28px}.preview-intro p{margin-top:20px}.preview-states{grid-template-columns:repeat(2,1fr)}.preview-nav{padding:20px}.preview-fixture{width:100%}}
+@media(max-width:1050px){.preview-grid{grid-template-columns:448px 1fr;}.preview-grid article:last-child{grid-column:2;}.preview-intro h1{font-size:48px}.preview-states{margin:24px;}}
+@media(max-width:700px){.preview-grid{display:flex;flex-direction:column;align-items:center}.preview-grid article{width:100%;max-width:448px}.preview-grid article:first-child{width:min(448px,100%)}.preview-intro{display:block;margin-top:28px}.preview-intro p{margin-top:20px}.preview-states{grid-template-columns:repeat(2,1fr)}.preview-nav{padding:20px}.preview-fixture{width:100%}}

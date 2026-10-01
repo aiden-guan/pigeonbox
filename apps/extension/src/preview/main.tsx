@@ -40,6 +40,7 @@ const demoAsk = { answer:"Your 3 most recent sent emails.", coverageNote:"Previe
 let empty = false;
 const listeners = new Set<(changes: unknown, area: string) => void>();
 const demoSettings = {...DEFAULT_SETTINGS, aiMode:"disabled", trackerBaseUrl:"", personalApiToken:"", aiApiKey:"", aiEndpoint:""};
+const demoSession = new Map<string, unknown>();
 // Product state for the run-mode UI. `#cloud` pretends this build has a Cloud URL.
 const demoProduct = { runMode:"local", cloudAvailable: location.search.includes("cloud"), cloudConsentAt:null as string|null,
   cloud:{status: location.search.includes("cloud") ? "signed_out" : "not_configured", email:null as string|null, plan:null as string|null, capabilities:[] as string[]},
@@ -57,10 +58,12 @@ Object.defineProperty(window, "chrome", { configurable:true, value: {
   runtime: { getURL:(p:string)=>`/${p}`, onMessage:{addListener:()=>undefined,removeListener:()=>undefined}, openOptionsPage:()=>{location.hash="settings";location.reload();},
     sendMessage:(message:{type:string;category?:string}, callback?:(r:unknown)=>void)=>{
       const response = PRODUCT_MESSAGES.has(message.type) ? productReply(message) : message.type==="GET_SETTINGS" ? {settings:demoSettings} : message.type==="LIST_SPLIT" ? {threads:empty || message.category!=="RESPOND" ? [] : demoThreads} : message.type==="RUN_DIAGNOSTICS" ? {gmailTab:"connected",ai:{status:"ready"},tracking:"healthy",coverage:"Preview uses fictional messages."} : message.type==="ASK_INBOX" ? (/^(draft|write|email)\b/i.test(String((message as {query?:string}).query||"")) ? demoDraft : demoAsk) : message.type==="OPEN_COMPOSE_DRAFT" ? {opened:true} : message.type==="GET_TRACKED_EMAILS" ? {emails:empty ? [] : demoTracked} : message.type==="GET_TRACKING_TIMELINE" ? {timeline:(message as {trackingId?:string}).trackingId==="trk-1" ? demoTimeline : (message as {trackingId?:string}).trackingId==="trk-3" ? [{type:"OPEN",timestamp:ago(4380)}] : []} : {};
+      if (message.type==="RUN_DIAGNOSTICS") (response as {indexedThreads?:number}).indexedThreads = demoThreads.length;
       setTimeout(()=>callback?.(response),message.type==="ASK_INBOX" ? 1800 : 0); return Promise.resolve(response);
     } },
-  storage:{session:{get:(_k:string,cb:(v:unknown)=>void)=>cb({}),set:()=>Promise.resolve()},local:{set:()=>Promise.resolve()},onChanged:{addListener:(fn:(changes:unknown,area:string)=>void)=>listeners.add(fn),removeListener:(fn:(changes:unknown,area:string)=>void)=>listeners.delete(fn)}},
-  tabs:{create:()=>Promise.resolve(),query:()=>Promise.resolve([])},
+  storage:{session:{get:(key:string,cb?:(v:unknown)=>void)=>{const value={[key]:demoSession.get(key)};cb?.(value);return Promise.resolve(value);},set:(items:Record<string,unknown>,cb?:()=>void)=>{Object.entries(items).forEach(([key,value])=>demoSession.set(key,value));cb?.();return Promise.resolve();}},local:{set:()=>Promise.resolve()},onChanged:{addListener:(fn:(changes:unknown,area:string)=>void)=>listeners.add(fn),removeListener:(fn:(changes:unknown,area:string)=>void)=>listeners.delete(fn)}},
+  tabs:{create:()=>Promise.resolve({id:8}),query:()=>Promise.resolve([{id:7,windowId:4,url:"https://mail.google.com/mail/u/0/#inbox"}])},
+  sidePanel:{open:()=>Promise.resolve()},
 }});
 
 function ThreadPreview({state}:{state:PigeonState}) {

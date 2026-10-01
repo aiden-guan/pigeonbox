@@ -110,7 +110,7 @@ async function install() {
   }
   if (await waitForHealth(5000)) {
     console.log(`[dev-reload] running in the background and at every login.
-  "Reload extension" in the popup now rebuilds before reloading.
+  Settings → Developer → "Reload extension" now rebuilds before reloading.
   Logs:   ${logPath}
   Remove: npm run dev:reload:uninstall`);
   } else {

@@ -21,6 +21,13 @@ export const DocumentSummarySchema = z.object({
 export type DocumentSummary = z.infer<typeof DocumentSummarySchema>;
 
 export const DocumentsResponseSchema = z.object({ documents: z.array(DocumentSummarySchema).max(500) });
+export const DocumentCreateRequestSchema = z.object({ title: z.string().min(1).max(300), filename: z.string().min(1).max(255) });
+export const DocumentResponseSchema = z.object({ document: DocumentSummarySchema });
+/** Binary PUT, authenticated by the service worker; never accept a caller-provided upload URL. */
+export function documentUploadPath(id: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new Error('Invalid document ID');
+  return `/v1/documents/${id}/content`;
+}
 
 export const DocumentLinkSchema = z.object({
   id: IdSchema,

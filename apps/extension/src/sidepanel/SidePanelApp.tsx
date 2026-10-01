@@ -1,10 +1,17 @@
+import { trackProductEvent } from '../ui/analytics';
 import { Brand, Pigeon } from '../ui/Pigeon';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ExtensionSettings } from '@pigeonbox/shared';
 import { DEFAULT_SETTINGS } from '@pigeonbox/shared';
 import { Orb } from '../ui/Orb';
 import { relative, stamp, WaitingView } from './WaitingView';
 import { CloudView } from './CloudView';
+import { CloudAsk } from './CloudAsk';
+import { CloudPreview } from './CloudPreview';
+import { useProductState } from '../ui/product-state';
+import { CommandPalette, type PopupCommand } from '../popup/PopupComponents';
+import { availableCloudFeatures } from '../ui/cloud-features';
+import '../popup/popup.css';
 
 type SplitCategory =
   | 'PRIORITY'
@@ -41,6 +48,14 @@ type AskDraft = {
   body: string;
 };
 
+type StoredPanelState = {
+  mode?: 'inbox' | 'ask' | 'cloud';
+  splitCategory?: SplitCategory;
+  askQuery?: string;
+  askRequestId?: string;
+  cloudSection?: string;
+};
+
 type AskResult = {
   answer?: string;
   citations?: Array<{ threadId: string; subject: string }>;
@@ -62,8 +77,11 @@ const CATEGORIES: Array<[SplitCategory, string]> = [
 ];
 
 export function SidePanelApp() {
+  const [palette, setPalette] = useState(false);
   const [mode, setMode] = useState<'inbox' | 'ask' | 'cloud'>('inbox');
-  const [cloudAvailable, setCloudAvailable] = useState(false);
+  const product = useProductState();
+  const cloudMode = product.state.runMode === 'cloud';
+  const [cloudSection, setCloudSection] = useState('overview');
   const [approvalCount, setApprovalCount] = useState(0);
   const [category, setCategory] = useState<SplitCategory>('RESPOND');
   const [threads, setThreads] = useState<SplitThread[]>([]);
@@ -75,10 +93,26 @@ export function SidePanelApp() {
   const [result, setResult] = useState<AskResult | null>(null);
   const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_SETTINGS);
   const [waitingCount, setWaitingCount] = useState('');
+  const [pendingAsk, setPendingAsk] = useState<{ id: string; query: string } | null>(null);
+  const consumedAskId = useRef<string | null>(null);
 
   const loadSplit = useCallback((next: SplitCategory) => {
     chrome.runtime.sendMessage({ type: 'LIST_SPLIT', category: next }, (res?: { threads?: SplitThread[] }) => {
       setThreads(res?.threads || []);
+    });
+  }, []);
+
+  const runAsk = useCallback((question: string) => {
+    trackProductEvent('ask_pigeon_used', { surface: 'sidepanel', mode: 'local' });
+    setAsked(question);
+    setQuery('');
+    setResult(null);
+    setDraftState(null);
+    setLoading(true);
+    chrome.runtime.sendMessage({ type: 'ASK_INBOX', query: question }, (res: AskResult) => {
+      setResult(res || { error: 'No response' });
+      setLoading(false);
+      if (res?.draft) openDraft(res.draft);
     });
   }, []);
 
@@ -87,41 +121,75 @@ export function SidePanelApp() {
     chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, (res?: { settings?: ExtensionSettings }) => {
       if (res?.settings) setSettings({ ...DEFAULT_SETTINGS, ...res.settings });
     });
-    // Cloud intelligence (approvals, Focus Queue, Ask Pigeon) only exists in Cloud mode with Google connected.
-    chrome.runtime.sendMessage({ type: 'CLOUD_INTEL_STATE' }, (state?: { available?: boolean }) => {
-      setCloudAvailable(Boolean(state?.available));
-      if (state?.available) {
-        chrome.runtime.sendMessage({ type: 'CLOUD_CALL', route: 'approvals', body: { status: 'pending', limit: 1 } }, (res?: { ok?: boolean; data?: { pending?: number } }) => {
-          if (res?.ok) setApprovalCount(res.data?.pending ?? 0);
-        });
-      }
-    });
     chrome.runtime.sendMessage({ type: 'RUN_DIAGNOSTICS' }, (diag?: { coverage?: string }) => {
       if (diag?.coverage) setCoverage(diag.coverage);
     });
-    chrome.storage.session.get('panelState', (stored) => {
-      const state = stored.panelState as { mode?: 'inbox' | 'ask' | 'cloud'; splitCategory?: SplitCategory } | undefined;
+    const applyPanelState = (value: unknown) => {
+      const state = value as StoredPanelState | undefined;
       if (state?.mode) setMode(state.mode);
+      if (state?.cloudSection) setCloudSection(state.cloudSection);
       if (state?.splitCategory) {
         setCategory(state.splitCategory);
         loadSplit(state.splitCategory);
       } else loadSplit('RESPOND');
-    });
+      if (state?.askQuery && state.askRequestId && consumedAskId.current !== state.askRequestId) {
+        consumedAskId.current = state.askRequestId;
+        setPendingAsk({ id: state.askRequestId, query: state.askQuery });
+        const cleanState = { ...state };
+        delete cleanState.askQuery;
+        delete cleanState.askRequestId;
+        void chrome.storage.session.set({ panelState: cleanState });
+      }
+    };
+    chrome.storage.session.get('panelState', (stored) => applyPanelState(stored.panelState));
     const onChanged = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
       if (area !== 'session') return;
-      if (changes.panelState?.newValue) {
-        const state = changes.panelState.newValue as { mode?: 'inbox' | 'ask' | 'cloud'; splitCategory?: SplitCategory };
-        if (state.mode) setMode(state.mode);
-        if (state.splitCategory) {
-          setCategory(state.splitCategory);
-          loadSplit(state.splitCategory);
-        }
-      }
+      if (changes.panelState?.newValue) applyPanelState(changes.panelState.newValue);
       if (changes.intelPulse) loadSplit(category);
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
   }, [category, loadSplit]);
+
+  useEffect(() => {
+    if (mode !== 'ask' || !pendingAsk || cloudMode) return;
+    setPendingAsk(null);
+    runAsk(pendingAsk.query);
+  }, [mode, pendingAsk, runAsk, cloudMode]);
+
+  useEffect(() => {
+    if (!cloudMode) return;
+    void chrome.storage.session.get('panelState').then((stored) => { if (!stored.panelState?.mode) setMode('cloud'); });
+  }, [cloudMode]);
+
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') return;
+      if ((event.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"]')) return;
+      event.preventDefault();
+      trackProductEvent('command_palette_opened', { surface: 'sidepanel', mode: cloudMode ? 'cloud' : 'local' });
+      setPalette(true);
+    };
+    document.addEventListener('keydown', shortcut);
+    return () => document.removeEventListener('keydown', shortcut);
+  }, [cloudMode]);
+  function navigate(next: 'inbox' | 'ask' | 'cloud', section = 'overview') {
+    setMode(next); setCloudSection(section);
+    void chrome.storage.session.set({ panelState: { mode: next, splitCategory: category, cloudSection: section } });
+  }
+  const commands: PopupCommand[] = [
+    { id: 'inbox', label: 'Inbox insights', detail: 'Mail indexed on this computer', icon: 'inbox', run: () => navigate('inbox') },
+    { id: 'ask', label: 'Ask Pigeon', detail: cloudMode ? 'Available synced Cloud context' : 'Mail on this computer', icon: 'sparkles', run: () => navigate('ask') },
+    { id: 'settings', label: 'Settings', detail: 'Execution mode, privacy and preferences', icon: 'settings', run: () => chrome.runtime.openOptionsPage() },
+    ...(cloudMode ? [
+      { id: 'overview', label: 'Cloud overview', detail: 'Prepared work and sync coverage', icon: 'inbox' as const, run: () => navigate('cloud') },
+      ...(product.has('cloud_mail_sync') ? [
+        { id: 'approvals', label: 'Open approvals', detail: 'Review actions before they happen', icon: 'edit' as const, run: () => navigate('cloud', 'approvals') },
+        { id: 'activity', label: 'Open activity', detail: 'Waiting, signals and recorded actions', icon: 'tracking' as const, run: () => navigate('cloud', 'activity') },
+      ] : []),
+      ...availableCloudFeatures(product.state.capabilities).map((feature) => ({ id: feature.id, label: `Open ${feature.title}`, detail: feature.detail, icon: 'document' as const, run: () => navigate('cloud', feature.id) })),
+    ] : []),
+  ];
 
   function choose(next: SplitCategory) {
     setCategory(next);
@@ -133,16 +201,7 @@ export function SidePanelApp() {
   function ask() {
     const question = query.trim();
     if (!question || loading) return;
-    setAsked(question);
-    setQuery('');
-    setResult(null);
-    setDraftState(null);
-    setLoading(true);
-    chrome.runtime.sendMessage({ type: 'ASK_INBOX', query: question }, (res: AskResult) => {
-      setResult(res || { error: 'No response' });
-      setLoading(false);
-      if (res?.draft) openDraft(res.draft);
-    });
+    runAsk(question);
   }
 
   function openDraft(draft: AskDraft) {
@@ -156,18 +215,17 @@ export function SidePanelApp() {
 
   return (
     <div className="gi-app flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+      {palette ? <CommandPalette commands={commands} cloud={cloudMode} onClose={() => setPalette(false)} onAskQuery={(question) => { navigate('ask'); setPendingAsk({ id: crypto.randomUUID(), query: question }); }} /> : null}
       <header className="px-4 pb-3 pt-4">
         <div className="flex items-center justify-between gap-3">
           <Brand />
           <div className="gi-segbar shrink-0">
-            <Tab active={mode === 'inbox'} onClick={() => setMode('inbox')}>
+            <Tab active={mode === 'inbox'} onClick={() => { setMode('inbox'); void chrome.storage.session.set({ panelState: { mode: 'inbox', splitCategory: category } }); }}>
               Inbox
             </Tab>
-            {cloudAvailable ? (
-              <Tab active={mode === 'cloud'} onClick={() => setMode('cloud')}>
+              <Tab active={mode === 'cloud'} onClick={() => { setMode('cloud'); void chrome.storage.session.set({ panelState: { mode: 'cloud', splitCategory: category } }); }}>
                 {approvalCount ? `Cloud · ${approvalCount}` : 'Cloud'}
               </Tab>
-            ) : null}
             <Tab
               active={mode === 'ask'}
               onClick={() => {
@@ -179,17 +237,17 @@ export function SidePanelApp() {
             </Tab>
           </div>
         </div>
-        <div className="gi-panel-heading"><div><div className="gi-kicker">{mode === 'ask' ? 'A second pair of eyes' : mode === 'cloud' ? 'Working while you’re away' : 'A little focus goes a long way'}</div><h1>{mode === 'ask' ? 'Ask your inbox' : mode === 'cloud' ? 'PigeonBox Cloud' : label}</h1></div><Pigeon state={loading ? 'indexing' : result?.error ? 'error' : 'idle'} size={78} /></div>
+        <div className="gi-panel-heading"><div><div className="gi-kicker">{mode === 'ask' ? 'A second pair of eyes' : mode === 'cloud' ? 'Working while you’re away' : 'A little focus goes a long way'}</div><h1>{mode === 'ask' ? 'Ask Pigeon' : mode === 'cloud' ? 'PigeonBox Cloud' : label}</h1></div><Pigeon state={loading ? 'indexing' : result?.error ? 'error' : 'idle'} size={78} /></div>
         {mode === 'cloud' ? (
-          <p className="gi-muted mt-1 text-[12px]">{approvalCount ? `${approvalCount} waiting for your approval` : 'Nothing waiting for approval'}</p>
+          <p className="gi-muted mt-1 text-[12px]">{approvalCount ? `${approvalCount} waiting for your approval` : 'Prepared work, follow-ups and briefings'}</p>
         ) : mode === 'inbox' ? (
           <p className="gi-muted mt-1 text-[12px]">{category === 'WAITING' && waitingCount ? waitingCount : threads.length === 1 ? '1 thread' : `${threads.length} threads`}</p>
         ) : (
-          <p className="gi-muted mt-1 text-[12px]">Mail already on this computer</p>
+          <p className="gi-muted mt-1 text-[12px]">{cloudMode ? 'Searching available synced Cloud context' : 'Searching mail indexed on this computer'}</p>
         )}
       </header>
       {mode === 'cloud' ? (
-        <CloudView onOpenThread={(id) => void openThread(id)} onApprovalCount={setApprovalCount} />
+        <CloudView key={product.state.cloudOrigins.join('|')} initialSection={cloudSection} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} onApprovalCount={setApprovalCount} />
       ) : mode === 'inbox' ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <nav className="gi-rail" aria-label="Splits">
@@ -226,9 +284,10 @@ export function SidePanelApp() {
                 ))}
               </ul>
             )}
+            {!cloudMode ? <CloudPreview product={product} compact /> : null}
           </main>
         </div>
-      ) : (
+      ) : cloudMode ? (product.has('cloud_semantic_search') ? <CloudAsk key={product.state.cloudOrigins.join('|')} pendingQuery={pendingAsk} onQueryConsumed={() => setPendingAsk(null)} capabilities={product.state.capabilities} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} /> : <div className="px-4"><p className="gi-warn">Cloud Ask is unavailable for this connection. Sign in or check your capabilities in Settings.</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.openOptionsPage()}>Open Settings</button></div>) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-auto px-4 pb-2">
             {result?.coverageNote || coverage ? <p className="gi-muted mb-3 text-[12px] leading-relaxed">{result?.coverageNote || coverage}</p> : null}
@@ -341,8 +400,16 @@ function gmailUrlId(threadId: string): string {
   return bare;
 }
 
-async function openThread(threadId: string, folder: 'inbox' | 'sent' = 'inbox'): Promise<void> {
-  const url = `https://mail.google.com/mail/u/0/#${folder}/${encodeURIComponent(gmailUrlId(threadId))}`;
+async function openThread(threadId: string, folder: 'inbox' | 'sent' = 'inbox', accountId?: string): Promise<void> {
+  let mailbox = '0';
+  if (accountId) {
+    const { callCloud } = await import('./cloud-api');
+    const result = await callCloud('connections');
+    const email = result.ok ? result.data.accounts.find((account) => account.id === accountId)?.email : null;
+    if (!email) return;
+    mailbox = email;
+  }
+  const url = accountId ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(mailbox)}#all/${encodeURIComponent(gmailUrlId(threadId))}` : `https://mail.google.com/mail/u/0/#${folder}/${encodeURIComponent(gmailUrlId(threadId))}`;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id && tab.url?.includes('mail.google.com')) {
     await chrome.tabs.update(tab.id, { url });

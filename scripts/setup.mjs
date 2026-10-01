@@ -184,7 +184,7 @@ Then open Gmail. Settings → "How should PigeonBox run?" picks on-device AI, Ol
 Categories work with AI off.
 
 Develop:   npm run dev   (then Reload on chrome://extensions)
-           or npm run dev:reload, then use "Reload extension" in the popup to rebuild + reload
+           or npm run dev:reload, then use Settings → Developer → "Reload extension" to rebuild + reload
            (macOS: npm run dev:reload:install keeps that helper running in the background)
 Check:     npm run verify
 Tracking:  recommended Convex setup: npm run setup:tracker -- --open (asks before cloud changes)

@@ -1,0 +1,9 @@
+{
+  "synthetic": true,
+  "timings": {
+    "overviewSetupToReadyMs": 323,
+    "askIncluding300msFixtureMs": 822,
+    "gmailNavigationAndThreadMountMs": 445,
+    "spaRouteAndCompanionCheckMs": 11
+  }
+}

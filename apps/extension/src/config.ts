@@ -11,8 +11,8 @@ export const BUILD_CLOUD_TRACKER_URL = normalizeBaseUrl(import.meta.env.VITE_PIG
 export const EXPERIMENTAL_FEATURES = import.meta.env.VITE_PIGEONBOX_EXPERIMENTAL !== 'false';
 
 /**
- * Local `npm run dev:reload` helper that rebuilds dist/ before the popup's
- * "Reload extension" restarts the extension. Blank in release builds.
+ * Local `npm run dev:reload` helper that rebuilds dist/ before Settings →
+ * Developer → "Reload extension" restarts the extension. Blank in release builds.
  */
 export const DEV_REBUILD_URL = import.meta.env.VITE_PIGEONBOX_DEV_REBUILD_URL ?? '';
 

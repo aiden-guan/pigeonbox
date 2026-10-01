@@ -1,0 +1,17 @@
+:root {
+  --gi-surface: #20201b;
+  --gi-elevated: #2c2a24;
+  --gi-success: #b8c9a2;
+  --gi-warning: #e7c27a;
+  --gi-danger: #ffb4b4;
+  --gi-border: rgba(244, 240, 232, .10);
+  --gi-shadow: 0 8px 24px rgba(10, 10, 8, .18);
+  --gi-radius-sm: 10px;
+  --gi-radius: 16px;
+  --gi-motion-fast: 120ms;
+  --gi-motion-enter: 180ms;
+  --gi-space-1: 4px;
+  --gi-space-2: 8px;
+  --gi-space-3: 12px;
+  --gi-space-4: 16px;
+}

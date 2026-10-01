@@ -32,9 +32,11 @@
     "verify:tracking": "node scripts/verify-tracking.mjs",
     "convex:dev": "convex dev",
     "convex:deploy": "convex deploy",
-    "clean": "rimraf packages/*/dist apps/*/dist apps/extension/dist-release workers/*/dist release coverage .tsbuildinfo"
+    "clean": "rimraf packages/*/dist apps/*/dist apps/extension/dist-release workers/*/dist release coverage .tsbuildinfo",
+    "test:browser": "node scripts/build-browser-fixture.mjs && playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.13.10",
     "@typescript-eslint/eslint-plugin": "^8.26.1",
     "@typescript-eslint/parser": "^8.26.1",

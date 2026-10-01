@@ -10,6 +10,7 @@
 /** Messages a Gmail content script is allowed to send. Everything else needs an extension page. */
 const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   'PING',
+  'PRODUCT_EVENT',
   'GET_PUBLIC_SETTINGS',
   'GET_THREAD_INTEL',
   'GET_THREAD_INTEL_MANY',
@@ -41,6 +42,7 @@ const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   'GMAIL_EVENT',
   // Read-only PigeonBox Cloud thread state for the thread card and chips. Decisions stay in extension pages.
   'CLOUD_THREAD_INTEL',
+  'CLOUD_THREAD_CONTEXT',
   // InboxSDK's own content-script loader asks the worker to inject its page-world file.
   'inboxsdk__injectPageWorld',
 ]);

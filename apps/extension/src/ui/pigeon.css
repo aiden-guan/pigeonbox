@@ -35,3 +35,11 @@
 .gi-brand-lockup { display:flex; align-items:center; gap:9px; color:#f4f0e8; font:600 16px/1.2 'Instrument Sans',system-ui,sans-serif; letter-spacing:-.035em; }
 .gi-brand-sub { display:block; margin-top:5px; color:#aba99e; font-size:10px; font-weight:400; letter-spacing:0; }
 @media (prefers-reduced-motion: reduce) { .gi-pigeon { animation: none; } }
+
+/* Rest and attention are quiet. Only active work loops; success reacts once. */
+.gi-pigeon-frame { animation:none; }
+.gi-pigeon-frame:first-child { visibility:visible; }
+.gi-pigeon[data-state='indexing'] .gi-pigeon-frame, .gi-pigeon[data-state='drafting'] .gi-pigeon-frame, .gi-pigeon[data-state='searching'] .gi-pigeon-frame, .gi-pigeon[data-state='working'] .gi-pigeon-frame { visibility:hidden; animation:gi-pigeon-frame var(--pigeon-duration) steps(1,end) infinite; animation-delay:calc(var(--frame) * var(--pigeon-duration) / -4); }
+.gi-pigeon[data-state='success'] .gi-pigeon-frame { visibility:hidden; animation:gi-pigeon-frame 1.6s steps(1,end) 1; animation-delay:calc(var(--frame) * -.4s); }
+.gi-pigeon[data-state='success'] .gi-pigeon-frame:first-child { visibility:visible; }
+@media (prefers-reduced-motion:reduce) { .gi-pigeon .gi-pigeon-frame { animation:none; visibility:hidden; } .gi-pigeon .gi-pigeon-frame:first-child { visibility:visible; } }

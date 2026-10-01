@@ -4,7 +4,7 @@ https://github.com/user-attachments/assets/d334da3f-d4c5-453b-8cd5-c12ca366e33e
 
 <p align="center">
   <strong>Private, local-first email intelligence for Gmail.</strong><br>
-  On-device AI triage, thread companion cards, voice-matched drafts, and privacy-preserving open tracking—without the Gmail API.
+  Local inbox intelligence inside Gmail, with optional Cloud work that continues while Gmail is closed.
 </p>
 
 <p align="center">
@@ -79,7 +79,7 @@ Open **Settings → Updates** to check the latest GitHub release or opt in to a 
 
 ## Overview
 
-PigeonBox is a Chrome extension (Manifest V3) that provides on-device email organization, thread summarization, draft generation, and open tracking directly inside Gmail. It does not require a cloud backend, does not request Gmail API OAuth scopes, and by default never transmits email contents off your computer.
+PigeonBox is a Chrome extension (Manifest V3) that provides on-device email organization, thread summarization, draft generation, and open tracking directly inside Gmail. Local mode needs no cloud backend or Gmail API OAuth scopes, and by default keeps email contents on your computer. Cloud is optional and requires explicit consent; connecting Google separately grants the permissions used for continuous sync.
 
 All indexing, search, rule evaluation, and model inferences execute locally through browser primitives: IndexedDB, WebGPU (via Transformers.js and ONNX Runtime Web), Chrome's built-in Gemini Nano (`window.ai`), or a local Ollama instance. For teams seeking hosted convenience, PigeonBox also offers an optional Cloud mode backed by typed API contracts and strict zero-fallback privacy boundaries.
 
@@ -94,13 +94,15 @@ PigeonBox provides two execution environments within a single extension package,
 | **Account Requirement** | No PigeonBox account; a tracker provider account is needed only if you enable tracking | PigeonBox account (OAuth + PKCE) |
 | **Pricing** | Free, open-source (MIT) | Hosted subscription |
 | **Inference Engine** | WebGPU (Transformers.js), Gemini Nano, Ollama, or BYOK | Hosted cloud inference cluster |
-| **Email Content Boundary** | Remains on this machine (or configured local model) | Processed in-memory over TLS; never stored or logged |
-| **Search & Mailbox Index** | Local IndexedDB (`gi_mailbox_v1`) | Local IndexedDB (`gi_mailbox_v1`) |
+| **Email Content Boundary** | Stays on this computer unless you explicitly choose a remote BYOK provider | Explicit consent and Google permissions; synced mail and derived intelligence are encrypted at rest. AI payloads are not logged |
+| **Search & Mailbox Index** | Local IndexedDB (`gi_mailbox_v1`) | Separate account-scoped synced Cloud index; Local data stays separate |
+| **While Gmail is Closed** | Browser-dependent local work | Continuous sync, follow-ups, prepared drafts and scheduled briefings |
+| **Rules and Documents** | Local inbox rules | Explainable Smart Views and automations with Shadow Mode; privately uploaded PDFs and observed viewing activity |
 | **Open & Click Tracking** | Optional self-hosted public tracker (Convex or Cloudflare Worker + Supabase) | Hosted managed tracker |
 | **Network Resilience** | Fully functional offline | Requires connectivity; switch to Local at any time |
-| **Fallback Guarantee** | Deterministic local evaluation | **Zero silent fallback** (never leaks payloads to third parties) |
+| **Fallback Guarantee** | Deterministic local evaluation | **Zero silent fallback** (uses the configured Cloud provider boundary) |
 
-On-device mode provides inbox intelligence without a cloud service; tracking runs separately. Cloud mode provides managed convenience without sacrificing data boundaries. If Cloud connectivity is interrupted, PigeonBox surfaces an explicit error rather than silently rerouting mail to third-party endpoints.
+On-device mode provides inbox intelligence without a cloud service; tracking runs separately. Cloud keeps organizing, preparing and monitoring work while you are away. Its Overview shows real recent work, sync coverage, prepared items, briefings and approvals. Ask uses the selected execution mode and cites available sources. Sending and invitations require explicit approval; new action rules start in Shadow Mode. If Cloud connectivity is interrupted, PigeonBox surfaces an explicit error rather than silently rerouting mail to third-party endpoints.
 
 ---
 
@@ -246,7 +248,7 @@ flowchart TD
 # Rebuild extension on file changes
 npm run dev
 
-# Or: let the popup's "Reload extension" button rebuild before reloading
+# Or: use Settings → Developer → Reload extension to rebuild before reloading
 npm run dev:reload
 
 # Run Vitest test suite across all packages (35 test files)
@@ -308,7 +310,7 @@ Configure tracking endpoints in the extension under **Settings → Email Trackin
 | :--- | :--- | :--- |
 | **Email Text & Indices** | IndexedDB (`gi_mailbox_v1`) | Restricted to browser profile; never synced without explicit Cloud mode. |
 | **Local AI Prompts** | On-device memory | Evaluated via WebGPU, Gemini Nano, or local Ollama; never transmitted externally. |
-| **Cloud AI Prompts** | Ephemeral memory over TLS | Processed in-memory in PigeonBox Cloud; raw content is not stored or logged. |
+| **Cloud AI Prompts** | Ephemeral inference over TLS | Inference payloads are not logged. Connecting Google separately stores encrypted synced mail and derived intelligence for continuous processing, subject to account controls. |
 | **Tracking Records** | Self-hosted backend / Cloud | Metadata only (event timestamps, user agent); never captures email bodies. |
 | **Credentials & Tokens** | Extension Service Worker | Storage scoped to `TRUSTED_CONTEXTS`; never exposed to page scripts or DOM. |
 

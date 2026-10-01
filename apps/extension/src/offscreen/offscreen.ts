@@ -1,10 +1,20 @@
-import { downloadQwenModel, promptWithQwen, releaseQwen, warmQwen } from '../local-model/qwen-model';
-import { promptWithChromeModel } from '../local-model/chrome-model';
+import { downloadQwenModel, isQwenModelReady, promptWithQwen, releaseQwen, warmQwen } from '../local-model/qwen-model';
+import { getOnDeviceAvailability, promptWithChromeModel } from '../local-model/chrome-model';
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'ON_DEVICE_PING') {
     sendResponse({ ok: true });
     return false;
+  }
+  if (message?.type === 'ON_DEVICE_STATUS') {
+    void (async () => {
+      if (message.provider === 'chrome') {
+        sendResponse({ chromeAvailability: await getOnDeviceAvailability() });
+      } else {
+        sendResponse({ qwenReady: isQwenModelReady(String(message.modelId || '')) });
+      }
+    })();
+    return true;
   }
   if (message?.type === 'LOCAL_MODEL_RELEASE') {
     void releaseQwen();

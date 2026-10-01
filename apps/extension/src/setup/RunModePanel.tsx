@@ -21,13 +21,15 @@ export function RunModePanel({
   product,
   onAdvanced,
   compact = false,
+  initialPickingCloud = false,
 }: {
   product: ProductControls;
   onAdvanced?: () => void;
   compact?: boolean;
+  initialPickingCloud?: boolean;
 }) {
   const { state, busy, error } = product;
-  const [pickingCloud, setPickingCloud] = useState(false);
+  const [pickingCloud, setPickingCloud] = useState(initialPickingCloud);
   const [consent, setConsent] = useState(false);
   const cloudMode = state.runMode === 'cloud';
   const cloudStatus = state.cloud.status;
@@ -49,8 +51,8 @@ export function RunModePanel({
           title="PigeonBox Cloud"
           detail={
             state.cloudAvailable
-              ? 'No model downloads or personal API keys. Needs a PigeonBox account.'
-              : 'No model downloads or personal API keys. Not available yet.'
+              ? 'Keeps working while Gmail is closed. Connect Google for prepared drafts, follow-ups, briefings and calendar context.'
+              : 'An always-on companion for your inbox. Cloud connection is not configured in this build.'
           }
           badge={state.cloudAvailable ? undefined : 'Coming soon'}
           active={cloudMode}

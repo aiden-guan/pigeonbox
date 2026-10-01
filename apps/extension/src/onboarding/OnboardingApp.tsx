@@ -1,149 +1,42 @@
 import { Brand, Pigeon } from '../ui/Pigeon';
-import { useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS, type ExtensionSettings } from '@pigeonbox/shared';
 import { ProfileFields } from '../setup/ProfileFields';
+import { RunModePanel } from '../setup/RunModePanel';
 import { useProductState } from '../ui/product-state';
+import { trackProductEvent } from '../ui/analytics';
+const AiConnect = lazy(() => import('../setup/AiConnect').then((module) => ({ default: module.AiConnect })));
 
 export function OnboardingApp() {
   const [step, setStep] = useState(0);
+  const [selected, setSelected] = useState<'local' | 'cloud' | 'advanced' | 'skip'>('local');
   const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_SETTINGS);
-  const [openCloudSetup, setOpenCloudSetup] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const product = useProductState();
-
-  function finish() {
-    chrome.storage.local.set({ onboardingComplete: true });
-    chrome.runtime.sendMessage({
-      type: 'SAVE_SETTINGS',
-      settings: {
-        voiceProfile: settings.voiceProfile,
-        aiMode: settings.aiMode,
-        aiProvider: settings.aiProvider,
-        aiModel: settings.aiModel,
-      },
-    });
-    // Cloud needs sign-in and explicit consent, which happen in Settings; nothing switches to Cloud here.
-    if (openCloudSetup) chrome.runtime.openOptionsPage();
-    else chrome.tabs.create({ url: 'https://mail.google.com/' });
-    window.close();
+  useEffect(() => { trackProductEvent('onboarding_started', { surface: 'onboarding' }); }, []);
+  async function finish() {
+    setBusy(true); setError('');
+    try {
+      const patch = selected === 'cloud' ? { voiceProfile: settings.voiceProfile } : { voiceProfile: settings.voiceProfile, aiMode: settings.aiMode, aiProvider: settings.aiProvider, aiModel: settings.aiModel, aiApiKey: settings.aiApiKey, aiEndpoint: settings.aiEndpoint };
+      await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: patch });
+      await chrome.storage.local.set({ onboardingComplete: true });
+      trackProductEvent('onboarding_completed', { surface: 'onboarding', mode: product.state.runMode });
+      await chrome.tabs.create({ url: 'https://mail.google.com/' }); window.close();
+    } catch { setError('Setup could not be saved. Try again.'); } finally { setBusy(false); }
   }
-
-  return (
-    <div className="gi-app flex min-h-full items-center justify-center px-6 py-16">
-      <div className="gi-onboarding w-full max-w-[460px]">
-        <Brand />
-        <div className="gi-welcome-pigeon"><Pigeon state={step === 3 ? 'opened' : 'idle'} size={176} /></div>
-        <div className="gi-steps mb-6" aria-hidden="true">
-          {[0, 1, 2, 3, 4].map((item) => (
-            <span key={item} data-on={item <= step ? 'true' : 'false'} />
-          ))}
-        </div>
-        {step > 0 ? <button type="button" className="gi-text-btn mb-5" onClick={() => setStep(step - 1)}>← Back</button> : null}
-        <div className="gi-step" key={step}>
-          {step === 0 ? (
-            <>
-              <div className="mb-4 flex items-center gap-2">
-
-                <span className="gi-kicker">Welcome</span>
-              </div>
-              <h1 className="gi-display">A lighter inbox.<br />A little more you.</h1>
-              <p className="gi-muted mt-4 text-[15px] leading-relaxed">Meet PigeonBox, your companion for Gmail.</p>
-<p className="gi-muted mt-3 text-[14px] leading-relaxed">Catch the important bits, find the right words, and keep an eye on what happens next.</p>
-              <button type="button" className="gi-btn mt-8" onClick={() => setStep(1)}>
-                Continue
-              </button>
-            </>
-          ) : null}
-          {step === 1 ? (
-            <>
-              <h1 className="gi-display">About you</h1>
-              <p className="gi-muted mt-3 text-[14px] leading-relaxed">Drafts are written as you and signed with your name. This stays on this computer.</p>
-              <div className="mt-6">
-                <ProfileFields voice={settings.voiceProfile} onChange={(voiceProfile) => setSettings({ ...settings, voiceProfile })} />
-              </div>
-              <button type="button" className="gi-btn mt-8" disabled={!settings.voiceProfile.name.trim()} onClick={() => setStep(2)}>
-                Continue
-              </button>
-            </>
-          ) : null}
-          {step === 2 ? (
-            <>
-              <h1 className="gi-display">How should PigeonBox run?</h1>
-              <p className="gi-muted mt-3 text-[14px] leading-relaxed">You can change this any time in Settings.</p>
-              <div className="mt-6 flex flex-col gap-2">
-                <Choice
-                  title="On this computer"
-                  detail="Private, free, no account. Pick a model to download in Settings, or use Chrome’s built-in model."
-                  onClick={() => {
-                    setSettings({ ...settings, aiMode: 'local', aiProvider: 'chrome', aiModel: 'gemini-nano' });
-                    setStep(3);
-                  }}
-                />
-                {product.state.cloudAvailable ? (
-                  <Choice
-                    title="PigeonBox Cloud"
-                    detail="No model downloads or personal API keys. Sign in and agree to Cloud processing in Settings."
-                    onClick={() => {
-                      setOpenCloudSetup(true);
-                      setStep(3);
-                    }}
-                  />
-                ) : (
-                  <Choice
-                    title="PigeonBox Cloud"
-                    detail="No model downloads or personal API keys. Not available yet."
-                    badge="Coming soon"
-                    disabled
-                    onClick={() => undefined}
-                  />
-                )}
-                <Choice
-                  title="Advanced"
-                  detail="Ollama or your own API key. Set it up in Settings → Change AI."
-                  onClick={() => {
-                    setSettings({ ...settings, aiMode: 'remote', aiProvider: 'openai' });
-                    setStep(3);
-                  }}
-                />
-                <Choice
-                  title="Skip for now"
-                  detail="Categories still work with on-device rules."
-                  onClick={() => {
-                    setSettings({ ...settings, aiMode: 'disabled' });
-                    setStep(3);
-                  }}
-                />
-              </div>
-            </>
-          ) : null}
-          {step === 3 ? (
-            <>
-              <h1 className="gi-display">Email tracking</h1>
-              <p className="gi-muted mt-3 text-[14px] leading-relaxed">The guided install defaults to Convex and pre-fills this extension. Open Settings, click Save, and allow Chrome to reach the tracker. If you skipped that setup or installed a release build, deploy a public tracker first. A tracker on your computer only works for local testing.</p>
-              <div className="mt-6 flex flex-col gap-2">
-                <Choice title="Connect tracker in Settings" detail="If setup deployed Convex, the URL and token are ready. Click Save there to grant Chrome access." onClick={() => {
-                  chrome.runtime.openOptionsPage();
-                  setStep(4);
-                }} />
-                <Choice title="Skip for now" detail="You can turn tracking on after setup." onClick={() => setStep(4)} />
-              </div>
-              <p className="gi-muted mt-4 text-xs leading-relaxed">
-                Setup guides: <a className="underline" href="https://github.com/aiden-guan/pigeonbox/blob/main/docs/convex-self-hosting.md" target="_blank" rel="noreferrer">Convex (recommended)</a> · <a className="underline" href="https://github.com/aiden-guan/pigeonbox/blob/main/docs/self-hosting.md" target="_blank" rel="noreferrer">Cloudflare Worker + Supabase</a>
-              </p>
-            </>
-          ) : null}
-          {step === 4 ? (
-            <>
-              <h1 className="gi-display">Ready</h1>
-              <p className="gi-muted mt-3 text-[14px] leading-relaxed">Open Gmail. Categories and summaries show up as you read. Hide the card any time from its corner.</p>
-              <button type="button" className="gi-btn mt-8" onClick={finish}>
-                {openCloudSetup ? 'Set up PigeonBox Cloud' : 'Open Gmail'}
-              </button>
-            </>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
+  function choose(mode: typeof selected) {
+    setSelected(mode); setStep(2);
+    if (mode !== 'cloud') { trackProductEvent('local_selected', { surface: 'onboarding' }); if (product.state.runMode === 'cloud') void product.useLocal(); }
+    if (mode === 'skip') setSettings({ ...settings, aiMode: 'disabled' });
+  }
+  return <div className="gi-app flex min-h-full items-center justify-center px-6 py-12"><div className="gi-onboarding w-full max-w-[520px]"><Brand /><div className="gi-welcome-pigeon"><Pigeon state={step === 4 ? 'success' : 'idle'} size={144} /></div><div className="gi-steps mb-6" aria-label={`Step ${step + 1} of 5`}>{[0,1,2,3,4].map((item) => <span key={item} data-on={item <= step ? 'true' : 'false'} />)}</div>{step > 0 ? <button type="button" className="gi-text-btn mb-5" onClick={() => setStep(step - 1)}>← Back</button> : null}<div className="gi-step" key={step}>
+    {step === 0 ? <><div className="gi-kicker">Welcome</div><h1 className="gi-display">Stay on top of Gmail.</h1><p className="gi-muted mt-4">Sort your inbox, summarize conversations, draft replies and find what matters. Local works on this computer. Cloud keeps working while you’re away.</p><button className="gi-btn mt-6" type="button" onClick={() => setStep(1)}>Continue</button></> : null}
+    {step === 1 ? <><h1 className="gi-display">How should PigeonBox work?</h1><p className="gi-muted mt-3">Change this any time in Settings.</p><div className="mt-5 space-y-2"><Choice title="On this computer" detail="Private and free. Summaries, inbox sorting, Ask and drafts while Gmail is open. Mail stays here unless you configure another provider." onClick={() => choose('local')} /><Choice title="PigeonBox Cloud" detail={product.state.cloudAvailable ? 'Keeps working while Gmail is closed. Connect Google for prepared drafts, follow-ups, briefings, calendar context and automations.' : 'Always-on inbox intelligence. Cloud connection is not configured in this build.'} disabled={!product.state.cloudAvailable} onClick={() => choose('cloud')} /><Choice title="Advanced provider" detail="Use Ollama or a provider you configure. You choose where mail is processed." onClick={() => choose('advanced')} /><Choice title="Start with inbox rules" detail="No AI setup now. Add it later in Settings." onClick={() => choose('skip')} /></div></> : null}
+    {step === 2 ? <><h1 className="gi-display">{selected === 'cloud' ? 'Turn on Cloud' : 'Your setup'}</h1>{selected === 'cloud' ? <><p className="gi-muted mt-3 mb-5">Agree to Cloud processing, sign in, then connect Google for continuous sync. Mail and calendar permissions are separate.</p><RunModePanel product={product} initialPickingCloud /></> : selected !== 'skip' ? <Suspense fallback={<p className="gi-muted">Loading setup…</p>}><AiConnect settings={settings} onPatch={(patch) => setSettings((current) => ({ ...current, ...patch }))} experimental={product.state.experimental} /></Suspense> : <p className="gi-muted mt-3">Inbox rules are ready. AI can be configured later.</p>}<details className="mt-5"><summary className="text-sm">Your profile (optional)</summary><p className="gi-muted text-xs mt-2">Your name and writing preferences help drafts sound like you.</p><ProfileFields voice={settings.voiceProfile} onChange={(voiceProfile) => setSettings({ ...settings, voiceProfile })} /></details><button className="gi-btn mt-6" type="button" onClick={() => setStep(3)}>Continue</button></> : null}
+    {step === 3 ? <><h1 className="gi-display">Tracking is optional.</h1><p className="gi-muted mt-3">{product.has('cloud_tracking') ? 'Cloud hosts your tracker. Review open and click preferences in Settings. Reader attribution is approximate, and sender self-opens are suppressed.' : 'Local tracking needs a public tracker you own. Configure it in Settings; recipient opens cannot reach a tracker running only on this computer.'}</p><div className="mt-5 space-y-2"><Choice title="Review tracking in Settings" detail="Choose open and link tracking, then grant access to your tracker." onClick={() => { chrome.runtime.openOptionsPage(); setStep(4); }} /><Choice title="Skip for now" detail="Enable tracking later." onClick={() => setStep(4)} /></div></> : null}
+    {step === 4 ? <><h1 className="gi-display">Ready for Gmail.</h1><p className="gi-muted mt-3">{selected === 'cloud' ? product.has('cloud_mail_sync') ? 'Open PigeonBox Cloud to see sync progress, prepared work and approvals. Nothing sends without your approval.' : 'Connect Google in Settings to turn on always-on sync. Cloud setup can be continued there.' : 'Open Gmail. Categories and summaries appear as you read. Ask Pigeon from the side panel, or use ⌘K / Ctrl+K outside an editor.'}</p><button className="gi-btn mt-6" type="button" disabled={busy} onClick={() => void finish()}>{busy ? 'Saving…' : 'Open Gmail'}</button>{selected === 'cloud' && !product.has('cloud_mail_sync') ? <button className="gi-text-btn ml-3" type="button" onClick={() => chrome.runtime.openOptionsPage()}>Continue Cloud setup</button> : null}{error ? <p className="gi-warn" role="alert">{error}</p> : null}</> : null}
+  </div></div></div>;
 }
 
 function Choice(props: { title: string; detail: string; badge?: string; disabled?: boolean; onClick: () => void }) {

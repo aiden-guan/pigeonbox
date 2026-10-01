@@ -1,0 +1,11 @@
+# Content-free product counters
+
+The shipped extension has no analytics network provider. Collection is off by default. Settings → Privacy & data can opt into counters stored only in `chrome.storage.local`; disabling collection removes them. Core behavior never depends on telemetry. A worker-owned queue validates and serializes updates. Counts are bounded and `first_` events are recorded once per installation while collection is enabled.
+
+The abstraction accepts only these event names: onboarding_started, onboarding_completed, local_selected, cloud_preview_opened, cloud_selected, cloud_signin_started, cloud_signin_completed, google_connection_started, google_connection_completed, first_cloud_sync_completed, first_cloud_overview_viewed, first_prepared_draft_seen, prepared_draft_used, first_briefing_viewed, first_approval_decided, smart_view_created, automation_created, automation_activated, command_palette_opened, ask_pigeon_used, tracked_document_created. Activation occurs in the Cloud control plane and has no new extension activation hook; merely previewing or saving a rule never emits activation.
+
+Local storage contains only `{eventName: count}`. No mail, subjects, bodies, addresses, queries, generated content, document data, IDs, URLs, tokens, timestamps or metadata are retained in these counters.
+
+An optional future worker provider receives a newly constructed payload: event name, numeric-semver extension version, and allowlisted enum metadata: surface (popup/sidepanel/gmail/onboarding/settings), mode (local/cloud), outcome (success/failure/denied), latency (fast/normal/slow), and capabilityPresent (boolean). Unknown events, keys and values are discarded. Provider exceptions and rejected promises are absorbed. Configuring an external provider is a separate deployment decision; this change configures none.
+
+First-sync means a real connected account reports healthy sync and a completed sync timestamp; it is not inferred from the plan. Google completion is recorded after a previously initiated connection flow returns a connected account, rather than when consent opens. Source links and document tokens are never analytics fields. Privacy canary and opt-in/deduplication/concurrency tests cover the abstraction.

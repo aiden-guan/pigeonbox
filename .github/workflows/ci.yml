@@ -46,6 +46,22 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Manifest V3 browser tests
+        run: npm run test:browser
+
+      - name: Upload browser traces and screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pigeonbox-browser-${{ github.sha }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+
       - name: Package and validate release ZIP
         run: node scripts/package-extension.mjs --out "$RUNNER_TEMP/package"
 

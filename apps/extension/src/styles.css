@@ -1,5 +1,7 @@
 @import './ui/pigeon.css';
 @import './ui/orb.css';
+@import './ui/product-tokens.css';
+@import './sidepanel/cloud.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -18,16 +20,6 @@ body,
 #root {
   height: 100%;
   margin: 0;
-}
-
-/* Chrome sizes the toolbar popup from the document width. A percentage width
-   collapses that to a tall sliver, and the popup cannot be dragged wider. */
-html:has(body.gi-popup),
-body.gi-popup,
-body.gi-popup #root {
-  width: 320px;
-  min-width: 320px;
-  height: auto;
 }
 
 /* The side panel is user-resizable. A fixed width or 100vw locks the drag handle. */
@@ -62,12 +54,6 @@ a:focus-visible {
     radial-gradient(900px 420px at -10% -20%, rgba(221, 167, 122, 0.12), transparent 55%),
     radial-gradient(700px 380px at 110% -10%, rgba(181, 176, 145, 0.07), transparent 50%),
     var(--gi-void);
-}
-
-body.gi-popup .gi-app {
-  width: 320px;
-  max-width: 320px;
-  min-height: 0;
 }
 
 .gi-kicker {

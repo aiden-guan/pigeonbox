@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Local rebuild helper for the popup's "Reload extension" button.
+ * Local rebuild helper for Settings → Developer → "Reload extension".
  *   npm run dev:reload
  *
  * Dev builds of the extension POST /rebuild here before calling
@@ -99,5 +99,5 @@ server.on('error', (error) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`[dev-reload] listening on http://${HOST}:${PORT}`);
-  console.log('[dev-reload] "Reload extension" in the popup now rebuilds before reloading.');
+  console.log('[dev-reload] Settings → Developer → "Reload extension" now rebuilds before reloading.');
 });
