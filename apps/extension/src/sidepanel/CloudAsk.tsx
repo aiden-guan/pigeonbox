@@ -104,7 +104,7 @@ export function CloudAsk(props: {
         ) : null}
         {error ? <p className="gi-danger">{error}</p> : null}
         {answer ? (
-          <>
+          <section className="pb-answer"><h2 className="gi-kicker">Answer</h2>
             {answer.claims.length ? (
               <ul className="gi-claims">
                 {answer.claims.map((claim, index) => (
@@ -113,30 +113,20 @@ export function CloudAsk(props: {
                     {claim.sourceIds.map((id) => {
                       const source = sources.get(id);
                       if (!source) return null;
-                      return source.gmailThreadId ? (
-                        <button
-                          key={id}
-                          type="button"
-                          className="gi-source"
-                          onClick={() => props.onOpenThread(source.gmailThreadId!, source.accountId)}
-                        >
-                          {source.title}
-                        </button>
-                      ) : (
-                        <SourceChips key={id} sources={[source]} onOpenThread={props.onOpenThread} />
-                      );
+                      return <span key={id} className="pb-citation-ref" title={source.title}>[{String(answer.sources.findIndex((item) => item.id === id) + 1).padStart(2, '0')}]</span>;
                     })}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="whitespace-pre-wrap text-[14px] leading-relaxed">{answer.answer}</p>
+              <p className="pb-intelligence whitespace-pre-wrap">{answer.answer}</p>
             )}
+            {answer.sources.length ? <section className="pb-answer-sources" aria-label="Sources"><h2 className="gi-kicker">Sources</h2><ol className="pb-source-list">{answer.sources.map((source, index) => <li key={source.id}><span className="pb-source-number">{String(index + 1).padStart(2, '0')}</span>{source.gmailThreadId ? <button type="button" onClick={() => props.onOpenThread(source.gmailThreadId!, source.accountId)}>{source.title}<span aria-hidden="true">↗</span></button> : <SourceChips sources={[source]} onOpenThread={props.onOpenThread} />}</li>)}</ol></section> : null}
             {answer.unverified.length ? (
               <p className="gi-warn">Could not check: {answer.unverified.join('; ')}</p>
             ) : null}
-            <p className="gi-muted mt-3 text-[11px] leading-relaxed">{answer.coverage.note}</p>
-          </>
+            {answer.coverage.note ? <p className="gi-muted mt-3 text-[11px] leading-relaxed">{answer.coverage.note}</p> : null}
+          </section>
         ) : null}
       </div>
       <form

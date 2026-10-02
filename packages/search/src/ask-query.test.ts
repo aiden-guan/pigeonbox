@@ -120,5 +120,12 @@ describe('parseComposeRequest', () => {
       keywords: ['dylan', 'thanks', 'budget', 'review'],
     });
   });
-});
 
+  it('reads messages with nothing to search for and no mention of mail as chat', () => {
+    expect(parseAskQuery('hi', NOW).intent).toBe('chat');
+    expect(parseAskQuery('how are you', NOW).intent).toBe('chat');
+    expect(parseAskQuery('can you do me a favor', NOW).intent).toBe('question');
+    expect(parseAskQuery('anything new?', NOW).intent).not.toBe('chat');
+    expect(parseAskQuery('what did I send', NOW).intent).not.toBe('chat');
+  });
+});

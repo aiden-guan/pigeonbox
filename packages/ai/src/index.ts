@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { EMAIL_SUMMARY_SYSTEM_PROMPT, formatThreadForSummary, summaryUserContent } from './summary-prompt.js';
 import { coerceDraftSuggestion, coerceThreadSummary } from './prompt-provider.js';
 import { draftQualityIssue, draftSystemPrompt, finishDraft, formatDraftContext } from './draft-prompt.js';
+import { ASK_CHAT_SYSTEM_PROMPT, ASK_RELEVANCE_RULE } from './ask-chat.js';
 
 export type ClassifyInput = {
   subject: string;
@@ -35,6 +36,9 @@ export type SummarizeInput = {
 export type MailboxOwner = { email: string; name?: string };
 
 export type DraftInput = {
+  /** Optional Cloud context selectors; local providers ignore these. */
+  threadId?: string;
+  recipientEmails?: string[];
   subject: string;
   /** `sender` is an address or `Name <address>`. */
   messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
@@ -241,8 +245,16 @@ export abstract class OpenAICompatibleProvider implements AIProvider {
   }
 
   async answerMailboxQuery(input: AskInput) {
+    if (!input.contextChunks.length) {
+      const { data, usage } = await this.chatJson(
+        `${ASK_CHAT_SYSTEM_PROMPT} Context: ${input.coverageNote} Return JSON {"answer": "..."}.`,
+        input.query,
+        z.object({ answer: z.string().min(1) }),
+      );
+      return { result: { answer: data.answer, citations: [], incompleteIndex: false }, usage };
+    }
     const { data, usage } = await this.chatJson(
-      `Answer ONLY from provided mailbox context. Every factual claim needs citations. If incomplete, set incompleteIndex true and say the local index may be incomplete. Coverage: ${input.coverageNote}`,
+      `Answer questions about the mailbox ONLY from provided mailbox context. Every factual claim needs citations. If incomplete, set incompleteIndex true and say the local index may be incomplete. ${ASK_RELEVANCE_RULE} Coverage: ${input.coverageNote}`,
       JSON.stringify({ query: input.query, contextChunks: input.contextChunks }),
       AskOutputSchema,
     );
@@ -591,6 +603,7 @@ export {
 } from './local-models.js';
 export type { LocalDtype, LocalModel, LocalModelVendor } from './local-models.js';
 export { createPromptBackedProvider, extractJsonObject } from './prompt-provider.js';
+export { ASK_CHAT_SYSTEM_PROMPT, ASK_RELEVANCE_RULE, smallTalkReply } from './ask-chat.js';
 export type { PromptComplete, PromptOptions, PromptPriority } from './prompt-provider.js';
 export type { ChatExample } from './draft-prompt.js';
 export { draftNeedsRefresh, draftQualityIssue } from './draft-prompt.js';

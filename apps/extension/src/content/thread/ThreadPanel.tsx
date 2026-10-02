@@ -125,13 +125,13 @@ export function ThreadPanel(props: {
         <div className="gi-bar" data-gi-drag={floating || undefined} title={floating ? 'Drag to move · double-click to reset' : undefined}>
           <div className="gi-brand">
             <Pigeon state={pigeonState} size={30} />
-            <span className="gi-kicker">PigeonBox</span>
+            <span className="gi-kicker">Pidgy / Thread brief</span>
           </div>
           <button type="button" className="gi-hide" aria-label="Hide intelligence" onClick={() => setMode('docked')}>
             Hide
           </button>
         </div>
-        <div className="gi-thread-mascot" data-gi-drag={floating || undefined}><Pigeon state={pigeonState} size={80} /><div><strong>{pigeonLabel}</strong><small>Your thread companion</small></div></div>
+        <div className="gi-thread-mascot" data-gi-drag={floating || undefined}><Pigeon state={pigeonState} size={44} /><div><strong>{pigeonLabel}</strong><small>THREAD BRIEF</small></div></div>
         <div className="gi-catrow">
           <div className="gi-cat">{category || 'Inbox'}</div>
           {props.intel?.manual ? <span className="gi-you">Set by you</span> : null}
@@ -142,6 +142,7 @@ export function ThreadPanel(props: {
           ) : null}
         </div>
         <div className="gi-section-heading">Summary</div>
+        {summaryReady ? <svg key={summary} className="pb-route-line" viewBox="0 0 280 10" aria-hidden="true"><path pathLength="100" d="M0 9H90Q100 9 108 3H280" fill="none" stroke="currentColor" strokeWidth="1" /></svg> : null}
         <p className={waiting ? 'gi-sum is-wait' : 'gi-sum'}>{waiting && !modelFailed ? <span className="gi-orb-line"><Orb size={14} tone="bare" />{line}</span> : line}</p>
         {modelFailed && props.onRetrySummary ? (
           <div className="gi-retry-row">
@@ -155,7 +156,7 @@ export function ThreadPanel(props: {
           </div>
         ) : null}
         {dates.length ? (
-          <div className="gi-section"><div className="gi-section-heading">Dates</div><div className="gi-dates">
+          <div className="gi-section"><div className="gi-section-heading">Key date</div><div className="gi-dates">
             {dates.map((date) => (
               <span className="gi-date" key={date}>
                 {date}

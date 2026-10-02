@@ -18,6 +18,8 @@ export type AskIntent =
   | 'waiting'
   /** Write a new email, e.g. "draft an email to Sam saying I'll be late". */
   | 'compose'
+  /** Nothing to search for and nothing about mail, e.g. "how's it going". Answered without reading any threads. */
+  | 'chat'
   /** Anything else: search, then let the model read the matches. */
   | 'question';
 
@@ -101,6 +103,9 @@ export function parseAskQuery(query: string, now: Date = new Date()): AskQuery {
     intent = 'waiting';
   } else if (keywords.length === 0 && (direction != null || recent)) {
     intent = 'list';
+  } else if (keywords.length === 0 && window.since == null && !tokenizeQuery(query).some((word) => INTENT_WORDS.has(word))) {
+    // Every word was filler and none of them mention mail, so there is nothing to look up.
+    intent = 'chat';
   }
 
   return {

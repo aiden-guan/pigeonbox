@@ -224,4 +224,29 @@ describe('PigeonBox popup', () => {
 
     expect(host.querySelector('[data-connection="ai"]')?.textContent).toContain('Ready');
   });
+
+  it('routes single-key utility shortcuts and leaves text editing alone', async () => {
+    installChrome({ gmailTab: 'connected', indexedThreads: 0, ai: { status: 'disabled' } });
+    await act(async () => root.render(<PopupApp />));
+    const editor = document.createElement('textarea');
+    host.append(editor);
+    editor.focus();
+    await act(async () => {
+      editor.dispatchEvent(new KeyboardEvent('keydown', { key: 's', bubbles: true }));
+    });
+    expect((globalThis as { chrome: any }).chrome.runtime.openOptionsPage).not.toHaveBeenCalled();
+    editor.blur();
+    for (const key of ['i', 't', 's']) {
+      await act(async () => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+    const api = (globalThis as { chrome: any }).chrome;
+    expect(api.storage.session.set).toHaveBeenCalledWith({ panelState: { mode: 'inbox', splitCategory: 'RESPOND' } });
+    expect(api.storage.session.set).toHaveBeenCalledWith({ panelState: { mode: 'inbox', splitCategory: 'WAITING' } });
+    expect(api.runtime.openOptionsPage).toHaveBeenCalledOnce();
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true })));
+    expect(host.querySelector('[role="dialog"]')).toBeTruthy();
+  });
 });

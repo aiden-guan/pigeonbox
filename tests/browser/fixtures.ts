@@ -313,13 +313,14 @@ export const test = base.extend<{ app: App }>({
     let closeContext: BrowserContext | undefined;
     try {
     const extension = path.join(profile, 'extension');
-    await cp(path.resolve('apps/extension/dist'), extension, { recursive: true });
+    await cp(path.resolve(process.env.PIGEONBOX_BROWSER_EXTENSION_PATH || 'apps/extension/dist'), extension, { recursive: true });
     await rm(path.join(extension, 'tracker-config.json'), { force: true });
     const context = await chromium.launchPersistentContext(path.join(profile, 'browser'), {
       channel: 'chromium',
       headless: true,
       args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
       viewport: { width: 1280, height: 900 },
+      recordVideo: process.env.PIGEONBOX_MOTION_QA ? { dir: 'test-results/dispatch-videos', size: { width: 1280, height: 900 } } : undefined,
     });
     closeContext = context;
     const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));

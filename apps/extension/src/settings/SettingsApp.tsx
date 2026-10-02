@@ -1,3 +1,4 @@
+import { MemorySettings } from './MemorySettings';
 import { AnalyticsPreference } from './AnalyticsPreference';
 import { Section, Toggle, Field } from './SettingsComponents';
 import { CloudPreferences } from './CloudPreferences';
@@ -210,15 +211,30 @@ export function SettingsApp() {
           ? 'Downloaded model'
           : settings.aiProvider;
 
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (!visible) return;
+      document.querySelectorAll<HTMLAnchorElement>('.gi-settings-nav a').forEach((link) => {
+        const active = link.hash === `#${visible.target.id}`;
+        link.dataset.active = String(active);
+        if (active) link.setAttribute('aria-current', 'location'); else link.removeAttribute('aria-current');
+      });
+    }, { rootMargin: '-10% 0px -65% 0px' });
+    document.querySelectorAll('.gi-settings section[id]').forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, [cloudMode, advanced]);
+
   return (
     <div className="gi-app gi-settings min-h-full">
-      <div className="mx-auto flex max-w-[760px] flex-col gap-3 px-6 py-12">
+      <div className="gi-settings-layout">
       <header className="gi-settings-header">
         <Brand />
-        <div className="gi-settings-title"><div><div className="gi-kicker">Make yourself at home</div><h1 className="gi-display">Your perch.</h1><p className="gi-muted mt-3 text-sm">A few thoughtful defaults. The rest is up to you.</p></div><Pigeon size={116} /></div>
+        <div className="gi-settings-title"><div><div className="gi-kicker">PigeonBox / Preferences</div><h1 className="gi-display">Settings.</h1><p className="gi-muted mt-3 text-sm">Choose how PigeonBox works for you.</p></div><Pigeon size={54} /></div>
       </header>
 
-      <nav aria-label="Settings sections" className="gi-cloud-actions">{[["PigeonBox", "pigeonbox"], ["AI", "ai"], ["Inbox", "inbox"], ["Tracking", "tracking"], ["Cloud", "cloud"], ["Personalization", "personalization"], ["Privacy & data", "privacy"]].filter(([, id]) => id !== "cloud" || cloudMode).map(([label, id]) => <a key={id} className="gi-text-btn" href={`#${id}`}>{label}</a>)}</nav>
+      <nav aria-label="Settings sections" className="gi-settings-nav">{[["General", "pigeonbox"], ["AI", "ai"], ["Inbox", "inbox"], ["Tracking", "tracking"], ["Cloud", "cloud"], ["Memory", "memory"], ["Personalization", "personalization"], ["Privacy & data", "privacy"]].filter(([, id]) => (id !== "cloud" && id !== "memory") || cloudMode).map(([label, id]) => <a key={id} className="gi-text-btn" href={`#${id}`}>{label}</a>)}</nav>
       <Section title="PigeonBox" id="pigeonbox">
         <RunModePanel
           product={product}
@@ -351,7 +367,7 @@ export function SettingsApp() {
         </Field>
       </Section>
 
-      <div className="mt-2 flex items-center gap-4">
+      <div className="gi-settings-save">
         <button type="button" className="gi-btn" onClick={save}>
           {saved ? 'Saved' : 'Save'}
         </button>
@@ -433,6 +449,7 @@ export function SettingsApp() {
           ) : null}
         </Section>
       ) : null}
+      {cloudMode ? <Section title="Memory" id="memory"><MemorySettings /></Section> : null}
       <Section title="Privacy & data" id="privacy"><AnalyticsPreference /><p className="gi-muted text-xs">Local mail and settings stay in this browser unless you explicitly select another provider. Cloud processes mail on your configured infrastructure and stores encrypted derived intelligence; retaining excerpts requires a separate opt-in.</p>{cloudMode ? <button className="gi-text-btn" type="button" onClick={() => openCloud('privacy')}>Manage Cloud data and retention ↗</button> : null}<button className="gi-btn gi-btn-ghost" type="button" onClick={() => { if (window.confirm('Clear the mail index on this computer? Cloud data and your settings are unaffected.')) chrome.runtime.sendMessage({ type: 'CLEAR_INDEX' }); }}>Clear local mail index</button></Section>
       {DEV_REBUILD_URL ? (
         <Section title="Developer">

@@ -256,6 +256,13 @@ export const PreferencesSchema = z.object({
       .array(z.object({ day: z.number().int().min(0).max(6), start: HourMinute, end: HourMinute }))
       .max(21),
   }),
+  memory: z.object({
+    /** Learning only: saved facts remain usable until explicitly forgotten. */
+    enabled: z.boolean(),
+    learnFromReceivedMail: z.boolean(),
+    learnFromSentMail: z.boolean(),
+    learnFromDraftEdits: z.boolean(),
+  }).default({ enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true }),
   fastRecall: z.object({
     /** Opt-in: keep encrypted excerpts of synced mail for deep search. Off by default. */
     enabled: z.boolean(),
@@ -295,6 +302,7 @@ export const PreferencesUpdateRequestSchema = z.object({
       followUp: PreferencesSchema.shape.followUp.partial(),
       autoDrafts: PreferencesSchema.shape.autoDrafts.partial(),
       calendar: PreferencesSchema.shape.calendar.partial(),
+      memory: PreferencesSchema.shape.memory.removeDefault().partial(),
       fastRecall: PreferencesSchema.shape.fastRecall.partial(),
       briefings: z
         .object({

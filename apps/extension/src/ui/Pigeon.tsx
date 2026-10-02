@@ -22,5 +22,5 @@ export function Pigeon({ state = 'idle', size = 88 }: { state?: PigeonState; siz
 }
 
 export function Brand() {
-  return <div className="gi-brand-lockup"><Pigeon size={38} /><span>PigeonBox<span className="gi-brand-sub">Your inbox, a little lighter.</span></span></div>;
+  return <div className="gi-brand-lockup"><Pigeon size={38} /><span>PigeonBox<span className="gi-brand-sub">Gmail intelligence</span></span></div>;
 }

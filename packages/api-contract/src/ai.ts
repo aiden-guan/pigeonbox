@@ -4,6 +4,7 @@ import {
   ThreadSummarySchema,
 } from '@pigeonbox/shared';
 import { z } from 'zod';
+import { GmailIdSchema, EmailAddressSchema, SourceRefSchema } from './common.js';
 
 /**
  * Cloud AI requests carry the same inputs the extension's `AIProvider` already
@@ -60,6 +61,8 @@ export const SummarizeInputSchema = z.object({
 });
 
 export const DraftInputSchema = z.object({
+  threadId: GmailIdSchema.optional(),
+  recipientEmails: z.array(EmailAddressSchema).max(20).optional(),
   subject: text(AI_LIMITS.subjectChars),
   messages: z.array(ThreadMessageSchema).min(1).max(AI_LIMITS.messages),
   owner: z.object({ email: text(320), name: text(120).optional() }).optional(),
@@ -132,7 +135,7 @@ export const EmbedRequestSchema = EmbedInputSchema;
 
 export const ClassifyResponseSchema = aiResponse(ClassificationResultSchema);
 export const SummarizeResponseSchema = aiResponse(ThreadSummarySchema);
-export const DraftResponseSchema = aiResponse(DraftSuggestionSchema);
+export const DraftResponseSchema = aiResponse(DraftSuggestionSchema).extend({ sources: z.array(SourceRefSchema).max(12).optional() });
 export const RewriteResponseSchema = aiResponse(z.string().max(AI_LIMITS.textChars * 2));
 export const AskResponseSchema = aiResponse(AskOutputSchema);
 export const EmbedResponseSchema = aiResponse(z.array(z.array(z.number())).max(AI_LIMITS.embedTexts));

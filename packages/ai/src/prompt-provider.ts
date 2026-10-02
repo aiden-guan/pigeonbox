@@ -39,6 +39,7 @@ import {
   dropOwnerTodos,
   parseCompactSummary,
 } from './compact-prompts.js';
+import { ASK_CHAT_SYSTEM_PROMPT, ASK_RELEVANCE_RULE } from './ask-chat.js';
 
 const AskSchema = z.object({
   answer: z.string(),
@@ -193,9 +194,10 @@ export function createPromptBackedProvider(
       return { result: data.text, usage };
     },
     async answerMailboxQuery(input: AskInput) {
+      if (!input.contextChunks.length) return chatAnswer(complete, input);
       if (summaryStyle === 'compact') return compactAnswer(complete, input);
       const { data, usage } = await chatJson(
-        `Answer ONLY from the mailbox context. Every factual claim needs citations. If the context is incomplete, set incompleteIndex true and say the local index may be incomplete. Coverage: ${input.coverageNote}`,
+        `Answer questions about the mailbox ONLY from the mailbox context. Every factual claim needs citations. If the context is incomplete, set incompleteIndex true and say the local index may be incomplete. ${ASK_RELEVANCE_RULE} Coverage: ${input.coverageNote}`,
         JSON.stringify({
           query: input.query,
           contextChunks: input.contextChunks.slice(0, 8).map((chunk) => ({
@@ -287,6 +289,17 @@ async function compactSummary(
   };
 }
 
+/** A message that is not about mail: plain text, no emails, no citations. */
+async function chatAnswer(
+  complete: PromptComplete,
+  input: AskInput,
+): Promise<{ result: z.infer<typeof AskSchema>; usage?: UsageStats }> {
+  const completion = await complete(ASK_CHAT_SYSTEM_PROMPT, `${input.coverageNote}\nMessage: ${input.query}`, { maxTokens: 120 });
+  const answer = cleanCompactText(completion.text);
+  if (!answer) throw new Error('The model returned an empty response.');
+  return { result: { answer, citations: [], incompleteIndex: false }, usage: completion.usage };
+}
+
 /** Small models cannot cite reliably in JSON, so answer in text and cite the retrieved threads. */
 async function compactAnswer(
   complete: PromptComplete,
@@ -295,7 +308,7 @@ async function compactAnswer(
   const chunks = input.contextChunks.slice(0, 4);
   const context = chunks.map((chunk, index) => `[${index + 1}] ${chunk.subject}\n${clip(chunk.text, 700)}`).join('\n\n');
   const completion = await complete(
-    'Answer the question using only these emails. "you" means the person asking, and each email starts with a Status line saying who wrote last. If the emails do not contain the answer, say so. Answer in 1 to 3 sentences.',
+    `Answer questions about the mailbox using only these emails. "you" means the person asking, and each email starts with a Status line saying who wrote last. If the emails do not contain the answer, say so. ${ASK_RELEVANCE_RULE} Answer in 1 to 3 sentences.`,
     `${context}\n\n${input.coverageNote}\nQuestion: ${input.query}`,
     { maxTokens: 160 },
   );

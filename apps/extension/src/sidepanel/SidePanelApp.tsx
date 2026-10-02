@@ -9,7 +9,9 @@ import { CloudView } from './CloudView';
 import { CloudAsk } from './CloudAsk';
 import { CloudPreview } from './CloudPreview';
 import { useProductState } from '../ui/product-state';
-import { CommandPalette, type PopupCommand } from '../popup/PopupComponents';
+import { DispatchThreads } from '../ui/DispatchThreads';
+import { useDispatchLayout } from '../ui/dispatch-motion';
+import { CommandLauncher, CommandPalette, type PopupCommand } from '../popup/PopupComponents';
 import { availableCloudFeatures } from '../ui/cloud-features';
 import '../popup/popup.css';
 
@@ -95,10 +97,13 @@ export function SidePanelApp() {
   const [waitingCount, setWaitingCount] = useState('');
   const [pendingAsk, setPendingAsk] = useState<{ id: string; query: string } | null>(null);
   const consumedAskId = useRef<string | null>(null);
+  const categoryRail = useDispatchLayout<HTMLElement>(category);
 
+  const splitRequest = useRef(0);
   const loadSplit = useCallback((next: SplitCategory) => {
+    const request = ++splitRequest.current;
     chrome.runtime.sendMessage({ type: 'LIST_SPLIT', category: next }, (res?: { threads?: SplitThread[] }) => {
-      setThreads(res?.threads || []);
+      if (request === splitRequest.current) setThreads(res?.threads || []);
     });
   }, []);
 
@@ -165,7 +170,7 @@ export function SidePanelApp() {
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') return;
-      if ((event.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"]')) return;
+      if (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="true"]')) return;
       event.preventDefault();
       trackProductEvent('command_palette_opened', { surface: 'sidepanel', mode: cloudMode ? 'cloud' : 'local' });
       setPalette(true);
@@ -214,46 +219,28 @@ export function SidePanelApp() {
   const label = CATEGORIES.find((item) => item[0] === category)?.[1] || 'Inbox';
 
   return (
-    <div className="gi-app flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
-      {palette ? <CommandPalette commands={commands} cloud={cloudMode} onClose={() => setPalette(false)} onAskQuery={(question) => { navigate('ask'); setPendingAsk({ id: crypto.randomUUID(), query: question }); }} /> : null}
-      <header className="px-4 pb-3 pt-4">
-        <div className="flex items-center justify-between gap-3">
-          <Brand />
-          <div className="gi-segbar shrink-0">
-            <Tab active={mode === 'inbox'} onClick={() => { setMode('inbox'); void chrome.storage.session.set({ panelState: { mode: 'inbox', splitCategory: category } }); }}>
-              Inbox
-            </Tab>
-              <Tab active={mode === 'cloud'} onClick={() => { setMode('cloud'); void chrome.storage.session.set({ panelState: { mode: 'cloud', splitCategory: category } }); }}>
-                {approvalCount ? `Cloud · ${approvalCount}` : 'Cloud'}
-              </Tab>
-            <Tab
-              active={mode === 'ask'}
-              onClick={() => {
-                setMode('ask');
-                chrome.storage.session.set({ panelState: { mode: 'ask', splitCategory: category } });
-              }}
-            >
-              Ask
-            </Tab>
-          </div>
+    <div className="gi-app pb-panel flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden" data-command-open={palette}>
+      <header className="pb-panel-header">
+        <div className="pb-panel-identity"><Brand /><span className="pb-mode-label">● {cloudMode ? 'Cloud' : 'Local'}</span></div>
+        <div className="pb-command-anchor"><CommandLauncher open={palette} onOpen={() => setPalette(true)} />
+          {palette ? <CommandPalette inline commands={commands} cloud={cloudMode} onClose={() => setPalette(false)} onAskQuery={(question) => { navigate('ask'); setPendingAsk({ id: crypto.randomUUID(), query: question }); }} /> : null}
         </div>
-        <div className="gi-panel-heading"><div><div className="gi-kicker">{mode === 'ask' ? 'A second pair of eyes' : mode === 'cloud' ? 'Working while you’re away' : 'A little focus goes a long way'}</div><h1>{mode === 'ask' ? 'Ask Pigeon' : mode === 'cloud' ? 'PigeonBox Cloud' : label}</h1></div><Pigeon state={loading ? 'indexing' : result?.error ? 'error' : 'idle'} size={78} /></div>
-        {mode === 'cloud' ? (
-          <p className="gi-muted mt-1 text-[12px]">{approvalCount ? `${approvalCount} waiting for your approval` : 'Prepared work, follow-ups and briefings'}</p>
-        ) : mode === 'inbox' ? (
-          <p className="gi-muted mt-1 text-[12px]">{category === 'WAITING' && waitingCount ? waitingCount : threads.length === 1 ? '1 thread' : `${threads.length} threads`}</p>
-        ) : (
-          <p className="gi-muted mt-1 text-[12px]">{cloudMode ? 'Searching available synced Cloud context' : 'Searching mail indexed on this computer'}</p>
-        )}
+        <nav className="pb-panel-nav" aria-label="Workspace">
+          <Tab active={mode === 'inbox'} onClick={() => navigate('inbox')}>Inbox</Tab>
+          <Tab active={mode === 'ask'} onClick={() => navigate('ask')}>Ask</Tab>
+          <Tab active={mode === 'cloud'} onClick={() => navigate('cloud')}>{approvalCount ? `Cloud · ${approvalCount}` : 'Cloud'}</Tab>
+        </nav>
+        <div className="pb-panel-title"><div><div className="gi-kicker">{mode === 'ask' ? 'MAIL INTELLIGENCE' : mode === 'cloud' ? 'ALWAYS-ON DISPATCH' : 'LOCAL INDEX / INBOX'}</div><h1>{mode === 'ask' ? 'Ask Pigeon' : mode === 'cloud' ? 'PigeonBox Cloud' : label}</h1><p>{mode === 'cloud' ? approvalCount ? `${approvalCount} awaiting approval` : 'Prepared work, follow-ups and briefings' : mode === 'inbox' ? category === 'WAITING' && waitingCount ? waitingCount : `${threads.length} threads` : cloudMode ? 'Available synced Cloud context' : 'Mail indexed on this computer'}</p></div><Pigeon state={loading ? 'searching' : draftState === 'opening' ? 'drafting' : result?.error ? 'attention' : draftState === 'opened' ? 'success' : 'idle'} size={54} /></div>
       </header>
+      <div className="pb-panel-content" inert={palette}>
       {mode === 'cloud' ? (
         <CloudView key={product.state.cloudOrigins.join('|')} initialSection={cloudSection} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} onApprovalCount={setApprovalCount} />
       ) : mode === 'inbox' ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <nav className="gi-rail" aria-label="Splits">
+        <div className="pb-inbox flex min-h-0 flex-1 flex-col">
+          <nav ref={categoryRail} className="gi-rail" aria-label="Splits">
             {CATEGORIES.map(([id, name]) => (
               <button key={id} type="button" className="gi-chip-btn" aria-pressed={id === category} data-active={id === category} onClick={() => choose(id)}>
-                {name}
+                {id === category ? <span className="pb-category-indicator" data-motion-id="category-indicator" aria-hidden="true" /> : null}{name}
               </button>
             ))}
           </nav>
@@ -261,28 +248,9 @@ export function SidePanelApp() {
             {category === 'WAITING' ? (
               <WaitingView threads={threads} onOpenThread={(id, folder) => void openThread(id, folder)} onCount={setWaitingCount} />
             ) : threads.length === 0 ? (
-              <div className="gi-empty"><Pigeon size={138} /><h2>A quiet little corner.</h2><p>No threads in this view yet.<br />Open Gmail to bring your mail into view.</p></div>
+              <div className="gi-empty"><Pigeon size={72} state="offline" /><h2>A quiet little corner.</h2><p>No threads in this view yet.<br />Open Gmail to bring your mail into view.</p></div>
             ) : (
-              <ul className="gi-list">
-                {threads.map((thread) => (
-                  <li key={thread.threadId}>
-                    <button type="button" className="gi-mail" onClick={() => openThread(thread.threadId)}>
-                      <div className="flex items-baseline justify-between gap-3">
-                        <span className="truncate text-[13px] font-semibold tracking-[-0.02em]">{thread.sender}</span>
-                        <span className="gi-time shrink-0">{relative(thread.timestamp)}</span>
-                      </div>
-                      <div className="mt-0.5 truncate text-[13px] text-[#e7e2d7]">{thread.subject || '(no subject)'}</div>
-                      {thread.snippet ? <div className="gi-muted mt-0.5 truncate text-[12px]">{thread.snippet}</div> : null}
-                      {thread.manual || thread.priority === 'HIGH' ? (
-                        <div className="mt-1.5 flex gap-1.5">
-                          {thread.manual ? <span className="gi-mini">Set by you</span> : null}
-                          {thread.priority === 'HIGH' ? <span className="gi-mini is-hot">Priority</span> : null}
-                        </div>
-                      ) : null}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <DispatchThreads threads={threads} category={category} onOpen={(id) => void openThread(id)} onAsk={(question) => { navigate('ask'); setPendingAsk({ id: crypto.randomUUID(), query: question }); }} />
             )}
             {!cloudMode ? <CloudPreview product={product} compact /> : null}
           </main>
@@ -294,12 +262,12 @@ export function SidePanelApp() {
             {settings.aiMode === 'disabled' ? <p className="gi-muted mb-3 text-[12px]">AI is off. Results are local matches.</p> : null}
             {result?.error ? <p className="gi-danger">{result.error}</p> : null}
             {asked && (loading || result) ? <p className="gi-asked">{asked}</p> : null}
-            {result?.answer ? <p className="whitespace-pre-wrap text-[14px] leading-relaxed tracking-[-0.011em]">{result.answer}</p> : null}
+            {result?.answer ? <section className="pb-answer"><h2 className="gi-kicker">Answer</h2><p className="pb-intelligence whitespace-pre-wrap">{result.answer}</p></section> : null}
             {result?.draft ? <DraftCard draft={result.draft} state={draftState} onOpen={() => openDraft(result.draft!)} /> : null}
             {!result && !loading ? <div className="gi-ask-start"><h2>What’s on your mind?</h2><p>Find a detail, catch up on a conversation, or remember what you promised.</p><div className="gi-suggestions">{['What needs a reply?', 'What did I promise this week?', 'Find upcoming deadlines'].map((prompt) => <button type="button" key={prompt} onClick={() => setQuery(prompt)}>{prompt}<span aria-hidden="true">↗</span></button>)}</div></div> : null}
             {loading ? <p className="gi-muted gi-orb-line" role="status"><Orb size={20} />Looking through your mail…</p> : null}
             {result?.items?.length ? (
-              <ul className="gi-list -mx-4 mt-3">
+              <><h2 className="gi-kicker pb-source-heading">Sources</h2><ul className="gi-list -mx-4 mt-3">
                 {result.items.map((item, index) => (
                   <li key={`${item.threadId || item.subject}-${index}`}>
                     <button
@@ -321,9 +289,9 @@ export function SidePanelApp() {
                     </button>
                   </li>
                 ))}
-              </ul>
+              </ul></>
             ) : result?.citations?.length ? (
-              <ul className="mt-4 space-y-2">
+              <><h2 className="gi-kicker pb-source-heading">Sources</h2><ul className="mt-4 space-y-2">
                 {result.citations.map((citation) => (
                   <li key={citation.threadId}>
                     <button type="button" className="gi-link text-[13px]" onClick={() => openThread(citation.threadId)}>
@@ -331,7 +299,7 @@ export function SidePanelApp() {
                     </button>
                   </li>
                 ))}
-              </ul>
+              </ul></>
             ) : null}
           </div>
           <form
@@ -353,7 +321,7 @@ export function SidePanelApp() {
             </button>
           </form>
         </div>
-      )}
+      )}</div>
     </div>
   );
 }

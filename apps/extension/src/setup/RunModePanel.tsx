@@ -1,3 +1,4 @@
+import { useDispatchLayout } from '../ui/dispatch-motion';
 import { useState } from 'react';
 import type { ProductControls } from '../ui/product-state';
 import { Orb } from '../ui/Orb';
@@ -33,10 +34,11 @@ export function RunModePanel({
   const [consent, setConsent] = useState(false);
   const cloudMode = state.runMode === 'cloud';
   const cloudStatus = state.cloud.status;
+  const modeLayout = useDispatchLayout<HTMLDivElement>(state.runMode);
   const signedIn = cloudStatus === 'ready' || cloudStatus === 'not_entitled' || cloudStatus === 'unreachable';
 
   return (
-    <div className="space-y-3" id="run-mode">
+    <div ref={modeLayout} className="space-y-3 pb-run-mode" id="run-mode">
       <div className="flex flex-col gap-2">
         <ModeChoice
           title="On this computer"
@@ -165,6 +167,7 @@ function ModeChoice(props: {
       onClick={props.onClick}
     >
       <span>
+        {props.active ? <span className="pb-mode-travel" data-motion-id="run-mode-indicator" aria-hidden="true" /> : null}
         <span className="flex items-center gap-2 text-[14px] font-medium tracking-[-0.02em]">
           {props.title}
           {props.badge ? <span className="gi-badge">{props.badge}</span> : null}

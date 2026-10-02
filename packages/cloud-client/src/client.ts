@@ -153,6 +153,12 @@ export class PigeonBoxCloudClient {
     return this.call('billingPortal', {});
   }
 
+  listMemories(body: RouteRequest<'memoryList'>) { return this.call('memoryList', body); }
+  getMemory(body: RouteRequest<'memoryGet'>) { return this.call('memoryGet', body); }
+  forgetMemory(body: RouteRequest<'memoryForget'>) { return this.call('memoryForget', body); }
+  correctMemory(body: RouteRequest<'memoryUpdate'>) { return this.call('memoryUpdate', body); }
+  purgeMemories(body: RouteRequest<'memoryPurge'>) { return this.call('memoryPurge', body); }
+
   /** Upload only to the issuing Cloud origin, with the same refresh and privacy policy as JSON calls. */
   async uploadDocument(id: string, bytes: Uint8Array<ArrayBuffer>, options: CallOptions = {}) {
     const path = documentUploadPath(id);

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './popup.css';
 import { callCloud } from '../sidepanel/cloud-api';
 import type { CloudOverview } from '@pigeonbox/api-contract';
+import { PopupDispatch } from './PopupDispatch';
 import { useProductState } from '../ui/product-state';
 import {
   CommandPalette,
@@ -87,6 +88,11 @@ export function PopupApp() {
 
   useEffect(() => {
     refreshDiagnostics();
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if (changes.intelPulse || changes.gmailRuntime || changes.settings || changes.trackerHealth) refreshDiagnostics();
+    };
+    if (typeof chrome !== 'undefined') chrome.storage?.onChanged?.addListener(onChanged);
+    return () => { if (typeof chrome !== 'undefined') chrome.storage?.onChanged?.removeListener(onChanged); };
   }, [refreshDiagnostics]);
 
   useEffect(() => {
@@ -96,21 +102,6 @@ export function PopupApp() {
       .catch(() => setActiveGmailTab(false));
   }, []);
 
-  useEffect(() => {
-    if (paletteOpen) return;
-    const onShortcut = (event: KeyboardEvent) => {
-      const isMac = navigator.platform.toLowerCase().includes('mac');
-      const modifier = isMac ? event.metaKey : event.ctrlKey;
-      if (!modifier || event.key.toLowerCase() !== 'k') return;
-      event.preventDefault();
-      event.stopPropagation();
-      trackProductEvent('command_palette_opened', { surface: 'popup' });
-      setPaletteOpen(true);
-      setActionError(null);
-    };
-    window.addEventListener('keydown', onShortcut, true);
-    return () => window.removeEventListener('keydown', onShortcut, true);
-  }, [paletteOpen]);
 
   const runMode = diag?.runMode ?? product.state.runMode;
   const ai = aiConnection(diag, runMode, localReadiness);
@@ -256,47 +247,42 @@ export function PopupApp() {
     return items;
   }, [aiEnabled, hasActiveThread, openAsk, openPanel, openGmail, openSettings, runGmailCommand]);
 
+  useEffect(() => {
+    if (paletteOpen) return;
+    const shortcut = (event: KeyboardEvent) => {
+      if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault(); setPaletteOpen(true); setActionError(null);
+        trackProductEvent('command_palette_opened', { surface: 'popup' });
+      } else if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+        const action = { i: () => void openPanel('inbox'), a: () => setPaletteOpen(true), t: () => void openPanel('inbox', 'WAITING'), s: () => void openSettings() }[event.key.toLowerCase()];
+        if (action) { event.preventDefault(); action(); }
+      }
+    };
+    window.addEventListener('keydown', shortcut, true);
+    return () => window.removeEventListener('keydown', shortcut, true);
+  }, [paletteOpen, openPanel, openSettings]);
+
   return (
-    <div className="gi-app gi-popup-app">
+    <div className="gi-app gi-popup-app" data-command-open={paletteOpen}>
       <main className="pb-popup-main">
-        <PopupHeader status={header} onSettings={openSettings} />
-        <div className="pb-mode-summary"><strong>{runMode === 'cloud' ? 'Cloud' : 'Local'}</strong><span>{runMode === 'cloud' ? 'Working while you’re away' : 'On this computer'}</span>{overview?.work ? <small>{overview.work.draftsPrepared !== null ? `${overview.work.draftsPrepared} drafts prepared · ` : ''}{overview.work.approvalsWaiting} approvals waiting</small> : null}{runMode === 'cloud' ? <button className="gi-text-btn" type="button" onClick={() => void openPanel('cloud')}>Open PigeonBox Cloud</button> : null}</div>
-        <CommandLauncher onOpen={() => {
-          setActionError(null);
-          trackProductEvent('command_palette_opened', { surface: 'popup' });
-      setPaletteOpen(true);
-        }} />
-        <InboxOverviewCard
-          indexedThreads={typeof diag?.indexedThreads === 'number' ? diag.indexedThreads : null}
-          loading={!diag}
-          onClick={() => void openPanel('inbox', 'RESPOND')}
-        />
-        <OpenGmailButton connected={gmail.tone === 'success'} onClick={() => void openGmail()} />
-        <QuickActions
-          askButtonRef={askButtonRef}
-          onInbox={() => void openPanel('inbox', 'RESPOND')}
-          onAsk={() => {
-            setActionError(null);
-            trackProductEvent('command_palette_opened', { surface: 'popup' });
-      setPaletteOpen(true);
-          }}
-          onTracking={() => void openPanel('inbox', 'WAITING')}
-          onSettings={openSettings}
-        />
-        {actionError ? <p className="pb-action-error" role="alert">{actionError}</p> : null}
-        <ConnectionFooter statuses={[gmail, ai, tracker]} />
+        <PopupHeader status={header} mode={runMode} onSettings={openSettings} />
+        <div className="pb-command-anchor">
+          <CommandLauncher open={paletteOpen} onOpen={() => {
+            setActionError(null); trackProductEvent('command_palette_opened', { surface: 'popup' }); setPaletteOpen(true);
+          }} />
+          {paletteOpen ? <CommandPalette inline commands={commands} cloud={runMode === 'cloud'} onClose={() => setPaletteOpen(false)} onAskQuery={(query) => void openAsk(query)} /> : null}
+        </div>
+        <div className="pb-popup-content" inert={paletteOpen}>
+          {runMode === 'cloud' ? <div className="pb-mode-summary"><strong>Cloud dispatch</strong><span>Working while you’re away</span>{overview?.work ? <small>{overview.work.draftsPrepared !== null ? `${overview.work.draftsPrepared} drafts prepared · ` : ''}{overview.work.approvalsWaiting} approvals waiting</small> : null}<button className="gi-text-btn" type="button" onClick={() => void openPanel('cloud')}>Open PigeonBox Cloud →</button></div> : null}
+          <InboxOverviewCard indexedThreads={typeof diag?.indexedThreads === 'number' ? diag.indexedThreads : null} loading={!diag} onClick={() => void openPanel('inbox', 'RESPOND')} />
+          <PopupDispatch indexedThreads={diag?.indexedThreads ?? null} onPanel={(category) => void openPanel('inbox', category)} onAsk={(question) => void openAsk(question)} />
+          <OpenGmailButton connected={gmail.tone === 'success'} onClick={() => void openGmail()} />
+          <QuickActions askButtonRef={askButtonRef} onInbox={() => void openPanel('inbox', 'RESPOND')} onAsk={() => setPaletteOpen(true)} onTracking={() => void openPanel('inbox', 'WAITING')} onSettings={openSettings} />
+          {actionError ? <p className="pb-action-error" role="alert">{actionError}</p> : null}
+          <ConnectionFooter statuses={[gmail, ai, tracker]} />
+        </div>
       </main>
-      {paletteOpen ? (
-        <CommandPalette
-          commands={commands}
-          cloud={product.state.runMode === 'cloud'}
-          onClose={() => {
-            setPaletteOpen(false);
-            window.setTimeout(() => askButtonRef.current?.focus(), 0);
-          }}
-          onAskQuery={(query) => void openAsk(query)}
-        />
-      ) : null}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { MemoryListRequestSchema, MemoryListResponseSchema, MemoryIdRequestSchema, MemoryResponseSchema, MemoryUpdateRequestSchema, MemoryPurgeRequestSchema, MemoryPurgeResponseSchema } from './memory.js';
 import type { z } from 'zod';
 import {
   AccountDeleteRequestSchema,
@@ -214,6 +215,13 @@ export const ROUTES = {
   draftFeedback: { method: 'POST', path: '/v1/drafts/feedback', auth: 'user', request: DraftFeedbackRequestSchema, response: OkResponseSchema, capability: 'cloud_auto_drafts' },
   followUps: { method: 'POST', path: '/v1/followups/list', auth: 'user', request: FollowUpListRequestSchema, response: FollowUpListResponseSchema, capability: 'cloud_mail_sync' },
   followUpUpdate: { method: 'POST', path: '/v1/followups/update', auth: 'user', request: FollowUpUpdateRequestSchema, response: FollowUpUpdateResponseSchema, capability: 'cloud_mail_sync' },
+
+  // Personal context controls stay available after a subscription ends.
+  memoryList: { method: 'POST', path: '/v1/memory/list', auth: 'user', request: MemoryListRequestSchema, response: MemoryListResponseSchema },
+  memoryGet: { method: 'POST', path: '/v1/memory/get', auth: 'user', request: MemoryIdRequestSchema, response: MemoryResponseSchema },
+  memoryForget: { method: 'POST', path: '/v1/memory/forget', auth: 'user', request: MemoryIdRequestSchema, response: OkResponseSchema },
+  memoryUpdate: { method: 'POST', path: '/v1/memory/update', auth: 'user', request: MemoryUpdateRequestSchema, response: MemoryResponseSchema },
+  memoryPurge: { method: 'POST', path: '/v1/memory/purge', auth: 'user', request: MemoryPurgeRequestSchema, response: MemoryPurgeResponseSchema },
 
   // Ask Pigeon.
   askPigeon: { method: 'POST', path: '/v1/ask', auth: 'user', request: AskPigeonRequestSchema, response: AskPigeonResponseSchema, capability: 'cloud_semantic_search' },

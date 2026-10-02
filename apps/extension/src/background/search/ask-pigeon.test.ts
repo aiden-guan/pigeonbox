@@ -284,3 +284,37 @@ describe('drafting from Ask', () => {
   });
 });
 
+
+describe('answerAskPigeon small talk', () => {
+  const threads = [thread('warn', { subject: 'UC Berkeley WarnMe: Burglary Reported', latestSender: { email: 'warnme@berkeley.edu', name: 'UC Berkeley WarnMe' } })];
+
+  it('answers "hi" without reading mail or calling the model', async () => {
+    const model = vi.fn();
+    const result = await answerAskPigeon(input({ query: 'hi', threads, answerWithModel: model }));
+    expect(model).not.toHaveBeenCalled();
+    expect(result.answer).toMatch(/^Hi! How can I help\?/);
+    expect(result.citations).toEqual([]);
+    expect(result.items).toBeUndefined();
+  });
+
+  it('sends chat with no mail words to the model without any threads', async () => {
+    const model = vi.fn().mockResolvedValue({ answer: 'Sure, what do you need?', citations: [], incompleteIndex: false });
+    const result = await answerAskPigeon(input({ query: 'can you do me a favor', threads, answerWithModel: model }));
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({ contextChunks: [] }));
+    expect(result).toMatchObject({ answer: 'Sure, what do you need?', citations: [] });
+  });
+
+  it('lets the model answer a question nothing in the mail matches, without threads', async () => {
+    const model = vi.fn().mockResolvedValue({ answer: 'Paris.', citations: [], incompleteIndex: false });
+    const result = await answerAskPigeon(input({ query: 'what is the capital of France', threads, answerWithModel: model }));
+    expect(model).toHaveBeenCalledWith(expect.objectContaining({ contextChunks: [] }));
+    expect(result.answer).toBe('Paris.');
+  });
+
+  it('shows no sources when the model cites none', async () => {
+    const model = vi.fn().mockResolvedValue({ answer: 'Nothing about that here.', citations: [], incompleteIndex: false });
+    const result = await answerAskPigeon(input({ query: 'burglary', threads, answerWithModel: model }));
+    expect(model.mock.calls[0]![0].contextChunks).toHaveLength(1);
+    expect(result.citations).toEqual([]);
+  });
+});

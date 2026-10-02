@@ -2,10 +2,12 @@ import { build } from 'esbuild';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 
+const outputDir = process.env.PIGEONBOX_BROWSER_EXTENSION_PATH || 'apps/extension/dist';
+
 // Test-only entry in the ignored dev build. Release packaging rebuilds dist-release.
 await build({
   entryPoints: ['tests/browser/tracking-runtime.ts'],
-  outfile: 'apps/extension/dist/browser-fixture.js',
+  outfile: resolve(outputDir, 'browser-fixture.js'),
   bundle: true,
   format: 'iife',
   alias: Object.fromEntries(
@@ -28,6 +30,6 @@ await build({
   ],
 });
 await writeFile(
-  'apps/extension/dist/browser-fixture.html',
+  resolve(outputDir, 'browser-fixture.html'),
   '<!doctype html><html><body><script src="browser-fixture.js"></script></body></html>',
 );

@@ -476,6 +476,7 @@ export class AgentLoop {
           input.fingerprint,
           () =>
             this.deps.ai!.draftReply({
+              threadId: input.threadId,
               subject: input.subject,
               messages: input.messages,
               owner: input.owner,

@@ -22,3 +22,5 @@ export * from './documents.js';
 export * from './notifications.js';
 export * from './overview.js';
 export * from './routes.js';
+
+export * from './memory.js';

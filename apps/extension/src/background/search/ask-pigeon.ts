@@ -2,7 +2,7 @@
  * Ask Pigeon: answers questions about mail from the local index (and, when AI
  * is on, the selected `AIProvider`). Runs entirely on this computer in Local mode.
  */
-import type { AskInput, AskOutput } from '@pigeonbox/ai';
+import { smallTalkReply, type AskInput, type AskOutput } from '@pigeonbox/ai';
 import type { IndexCoverage, MessageRow, SearchDocumentRow, ThreadRow } from '@pigeonbox/mailbox';
 import { formatCoverageWarning, inAskWindow, parseAskQuery, parseComposeRequest, type AskQuery, type LexicalSearchIndex } from '@pigeonbox/search';
 import { isDeliveredTrackedEmail as isDelivered, normalizeGmailId, type TrackedEmailSummary } from '@pigeonbox/tracking';
@@ -79,6 +79,11 @@ export async function answerAskPigeon(input: AskPigeonInput): Promise<AskRespons
   const pool = views.filter((view) => matchesDirection(view, query) && inAskWindow(view.timestamp, query));
   const byRecency = (a: ThreadView, b: ThreadView) => (a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0);
 
+  // "hi" and "thanks" get a reply, not a search of whatever arrived most recently.
+  const pleasantry = smallTalkReply(input.query);
+  if (pleasantry) return { answer: pleasantry, citations: [], coverageNote, incompleteIndex: false };
+  if (query.intent === 'chat') return chatReply(input, coverageNote, now, 'This message is not about any email.');
+
   if (query.intent === 'compose') return composeDraft(input, query, views, isOwner, coverageNote, now);
 
   if (query.intent === 'waiting') {
@@ -112,6 +117,10 @@ export async function answerAskPigeon(input: AskPigeonInput): Promise<AskRespons
     chosen = [...chosen, ...[...pool].sort(byRecency).filter((view) => !seen.has(view.row.threadId))];
   }
   chosen = chosen.slice(0, MODEL_CHUNKS);
+  // Nothing in the mail matches, which is also what a general question looks like. Let the model reply without threads.
+  if (!chosen.length && input.answerWithModel && !filtered) {
+    return chatReply(input, coverageNote, now, `No emails in the local index match this message. ${coverageNote}`);
+  }
   if (!chosen.length) {
     return {
       answer: `No matching threads in the local index. ${coverageNote}`,
@@ -143,6 +152,7 @@ export async function answerAskPigeon(input: AskPigeonInput): Promise<AskRespons
     })),
   });
   // Keep only citations that point at threads we actually gave the model, once each.
+  // No citations means the model judged the threads unrelated, so show none.
   const known = new Map(citations.map((citation) => [citation.threadId, citation]));
   const cited = uniqueBy(
     (result.citations || []).map((citation) => known.get(citation.threadId)).filter((citation): citation is { threadId: string; subject: string } => Boolean(citation)),
@@ -150,10 +160,24 @@ export async function answerAskPigeon(input: AskPigeonInput): Promise<AskRespons
   );
   return {
     answer: result.answer.trim(),
-    citations: cited.length ? cited : uniqueBy(citations, (citation) => citation.threadId).slice(0, 4),
+    citations: cited,
     coverageNote,
     incompleteIndex: result.incompleteIndex,
   };
+}
+
+/** A reply that reads no threads. Without AI, point at what Ask can do instead. */
+async function chatReply(input: AskPigeonInput, coverageNote: string, now: Date, note: string): Promise<AskResponse> {
+  const base = { citations: [], coverageNote, incompleteIndex: false };
+  if (!input.answerWithModel) {
+    return { ...base, answer: 'I can only look things up in your mail while AI is off. Try "what needs a reply?" or name a person or subject.' };
+  }
+  const result = await input.answerWithModel({
+    query: input.query,
+    coverageNote: `${note} Today is ${formatDate(now.toISOString())}.${input.owner?.name ? ` The user is ${input.owner.name}.` : ''}`,
+    contextChunks: [],
+  });
+  return { ...base, answer: result.answer.trim() };
 }
 
 async function composeDraft(

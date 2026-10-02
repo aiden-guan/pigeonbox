@@ -32,6 +32,27 @@ describe('normalizeBaseUrl', () => {
 });
 
 describe('PigeonBoxCloudClient', () => {
+  it('uses bounded, validated authenticated memory controls without exposing SQL internals', async () => {
+    const paths: string[] = [];
+    const id = '11111111-1111-4111-8111-111111111111';
+    const memory = {id,kind: 'semantic',category: 'classes',text: 'Professor Smith teaches MATH 52.',confidence: 0.9,status: 'active',validFrom: '2026-10-01T10:00:00Z',validUntil: null,lastConfirmedAt: '2026-10-01T10:00:00Z',corrected: false,entities: [],sources: []};
+    const request = vi.fn(async (url: RequestInfo | URL,init?: RequestInit) => {
+      expect((init!.headers as Record<string,string>).Authorization).toBe('Bearer fixture');
+      const path = new URL(String(url)).pathname; paths.push(path);
+      const body = JSON.parse(String(init!.body)) as Record<string,unknown>;
+      if (path.endsWith('/list')) { expect(body.limit).toBe(20); return json({memories: [memory],nextCursor: null}); }
+      if (path.endsWith('/get') || path.endsWith('/update')) return json({memory});
+      if (path.endsWith('/purge')) { expect(body.confirm).toBe('forget all memories'); return json({removed: 1}); }
+      return json({ok: true});
+    });
+    const client = new PigeonBoxCloudClient({baseUrl: 'https://cloud.test',fetch: request,tokens: {get: async () => 'fixture',refresh: async () => null}});
+    expect((await client.listMemories({query: 'Professor'})).memories[0]!.text).toContain('MATH 52');
+    await client.getMemory({memoryId: id}); await client.correctMemory({memoryId: id,text: 'Professor Smith teaches MATH 53.'});
+    await client.forgetMemory({memoryId: id}); await client.purgeMemories({confirm: 'forget all memories'});
+    expect(paths).toEqual(['/v1/memory/list','/v1/memory/get','/v1/memory/update','/v1/memory/forget','/v1/memory/purge']);
+    await expect(client.forgetMemory({memoryId: 'not-a-uuid'})).rejects.toMatchObject({code: 'invalid_request'});
+    expect(request).toHaveBeenCalledTimes(5);
+  });
   it('sends the protocol header and bearer token and validates the response', async () => {
     const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
       const headers = init!.headers as Record<string, string>;

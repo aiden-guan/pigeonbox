@@ -19,6 +19,7 @@ export const PAGE_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>([
   'connectStart',
   'connectionUpdate',
   'connectionResync',
+  'memoryList', 'memoryGet', 'memoryForget', 'memoryUpdate', 'memoryPurge',
   'preferences',
   'preferencesUpdate',
   'threadsIntel',
