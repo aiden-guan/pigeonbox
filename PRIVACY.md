@@ -1,8 +1,8 @@
 # PigeonBox Privacy Policy
 
-Effective September 26, 2026. Applies to the PigeonBox Chrome extension, including the version on the Chrome Web Store and builds from this repository.
+Effective October 2, 2026. Applies to the PigeonBox Chrome extension, including the version on the Chrome Web Store and builds from this repository.
 
-PigeonBox reads the Gmail page you already have open so it can sort, summarize and search your mail, draft replies you review, and tell you when a tracked email was opened. It does not use the Gmail API, does not ask for OAuth access to your Google account, and does not read your Google cookies.
+PigeonBox reads the Gmail page you already have open so it can sort, summarize and search your mail, draft replies you review, and tell you when a tracked email was opened. Local does not use the Gmail API or request Google OAuth access. Separately configured Cloud beta builds can connect Google with your explicit authorization. PigeonBox does not read your Google cookies.
 
 The short version: **by default everything stays in your browser.** Email content leaves your computer only when you choose a service that needs it, and only to that service.
 
@@ -15,7 +15,7 @@ The short version: **by default everything stays in your browser.** Email conten
 | Settings, API keys and tracker tokens you enter | Running the features you turn on | In your browser (`chrome.storage.local`), readable only by the extension's own pages and background worker |
 | Tracked-email records (see Tracking) | Showing opens and clicks | On the tracker you choose, and a copy in your browser |
 
-PigeonBox has no analytics, no advertising, and no telemetry.
+Optional product analytics are off by default and can be enabled in Settings. They record feature events, never message content, addresses, prompts or provider keys. PigeonBox has no advertising.
 
 ## When data leaves your computer
 
@@ -24,10 +24,14 @@ Only in these cases, each of which you turn on yourself:
 - **AI on this computer** (downloaded model, Chrome's built-in Gemini Nano, or Ollama on `localhost`): email content is processed on your computer and sent nowhere. Downloading a model fetches its files from Hugging Face, which sees your IP address. No email content is sent.
 - **Your own AI provider (bring your own key)**: the email content needed for the task you asked for is sent to the endpoint you entered, under your account with that provider and its terms.
 - **Open and click tracking** (off until you set up a tracker): see Tracking.
-- **PigeonBox Cloud** (when available, and only after you explicitly choose it in Settings): email content needed for a request is sent over TLS to the PigeonBox Cloud API, processed by its AI provider, and returned. Cloud does not store request or response bodies and does not log email content. It keeps your account details, subscription status and usage counts (for billing and limits) without any email text. Payments are handled by Stripe.
+- **PigeonBox Cloud** (when available, and only after you explicitly choose it in Settings): email content needed for a request is sent over TLS to the PigeonBox Cloud API, processed by its AI provider, and returned. Cloud does not log email content. It stores account details, subscription status, usage counts and encrypted derived intelligence including summaries, commitments and prepared drafts. Retaining encrypted message excerpts for Fast Recall requires a separate opt-in and retention setting. Payments are handled by Stripe.
 - **Update checks** (off by default): PigeonBox asks GitHub for the latest release. No email or settings data is sent; GitHub sees your IP address. Copies installed from the Chrome Web Store are updated by Chrome instead.
 
 PigeonBox never switches between these on its own. If a service you chose is unavailable, the request fails with a message. Nothing is sent to a different provider.
+
+## Cloud waitlist
+
+The Local store release opens [the Cloud waitlist](https://usepigeonbox.com/waitlist) when you choose an unavailable Cloud feature. Opening it does not enable Cloud or authorize Gmail access. Submitting the form sends only your email address, signup source (website or extension), and signup time to the PigeonBox backend. The normalized email is stored once in Supabase, accessible only to the backend and project administrators, for Cloud launch access. We send no automatic email. Rate limiting uses a salted hash of your IP address, not the raw address. Signups are retained until launch access is handled or you request removal through the contact below.
 
 ## Tracking
 

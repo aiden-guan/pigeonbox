@@ -3,6 +3,7 @@
  * Build and package the extension for the Chrome Web Store and GitHub Releases.
  *
  *   npm run package                 release build, validate, write release/PigeonBox-vX.Y.Z.zip + .sha256
+ *   npm run package -- --cloud      configured Cloud beta (separate from the Local store release)
  *   npm run package -- --skip-build package the existing apps/extension/dist-release
  *   npm run package -- --out <dir>  write artifacts somewhere else
  *
@@ -19,6 +20,7 @@ import { createZip, listZipEntries } from './lib/zip.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
+const cloudBuild = args.includes('--cloud');
 const skipBuild = args.includes('--skip-build');
 const outIndex = args.indexOf('--out');
 const outDir = outIndex >= 0 ? resolve(args[outIndex + 1]) : join(root, 'release');
@@ -37,7 +39,10 @@ if (!skipBuild) {
     cwd: root,
     stdio: 'inherit',
     shell: process.platform === 'win32',
-    env: { ...process.env, PIGEONBOX_RELEASE: '1', VITE_PIGEONBOX_EXPERIMENTAL: 'false' },
+    env: {
+      ...process.env, PIGEONBOX_RELEASE: '1', VITE_PIGEONBOX_EXPERIMENTAL: 'false',
+      ...(!cloudBuild ? { VITE_PIGEONBOX_CLOUD_API_URL: '', VITE_PIGEONBOX_CLOUD_TRACKER_URL: '', VITE_PIGEONBOX_CLOUD_TRACKER_PREVIOUS_URLS: '' } : {}),
+    },
   });
   if (result.status !== 0) fail('Release build failed.');
 }

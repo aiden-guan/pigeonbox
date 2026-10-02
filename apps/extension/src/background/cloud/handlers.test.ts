@@ -94,3 +94,13 @@ it('allowlists deep-link sections and refuses arbitrary caller URLs', async () =
   expect(chrome.tabs.create).toHaveBeenNthCalledWith(1, { url: 'https://cloud.test/app#documents' });
   expect(chrome.tabs.create).toHaveBeenNthCalledWith(2, { url: 'https://cloud.test/app#overview' });
 });
+it('opens the public waitlist when Cloud is unavailable without loading a client', async () => {
+  const client = vi.fn(deps.client);
+  const settings = { ...DEFAULT_SETTINGS, runMode: 'local' as const };
+  expect(await handleCloudRequest({ type: 'CLOUD_OPEN', section: 'documents' }, page, {
+    ...deps, client, settings: () => settings, webUrl: () => null,
+  })).toEqual({ ok: true });
+  expect(chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://usepigeonbox.com/waitlist?source=extension' });
+  expect(client).not.toHaveBeenCalled();
+  expect(settings.runMode).toBe('local');
+});

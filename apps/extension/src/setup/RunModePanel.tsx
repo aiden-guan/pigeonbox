@@ -1,3 +1,4 @@
+import { openCloudWaitlist } from '../config';
 import { useDispatchLayout } from '../ui/dispatch-motion';
 import { useState } from 'react';
 import type { ProductControls } from '../ui/product-state';
@@ -54,12 +55,11 @@ export function RunModePanel({
           detail={
             state.cloudAvailable
               ? 'Keeps working while Gmail is closed. Connect Google for prepared drafts, follow-ups, briefings and calendar context.'
-              : 'An always-on companion for your inbox. Cloud connection is not configured in this build.'
+              : 'Cloud is on its way. Join the waitlist for always-on summaries, prepared replies and follow-ups.'
           }
-          badge={state.cloudAvailable ? undefined : 'Coming soon'}
+          badge={state.cloudAvailable ? undefined : 'Join waitlist ↗'}
           active={cloudMode}
-          disabled={!state.cloudAvailable}
-          onClick={() => setPickingCloud(true)}
+          onClick={() => state.cloudAvailable ? setPickingCloud(true) : openCloudWaitlist()}
         />
         {compact ? null : (
           <ModeChoice
@@ -76,8 +76,8 @@ export function RunModePanel({
           <div className="text-sm font-medium">Use PigeonBox Cloud</div>
           <p className="mt-1 text-xs gi-muted">
             When PigeonBox summarizes, sorts, drafts or answers a question, the email content involved is sent over an
-            encrypted connection to PigeonBox Cloud and its AI provider. It is processed to answer the request and is not
-            stored. Your local index, drafts and settings stay on this computer.
+            encrypted connection to PigeonBox Cloud and its AI provider. Cloud stores encrypted summaries, prepared drafts and related intelligence. Retaining message excerpts requires
+            a separate opt-in. Your local index and settings stay on this computer.
           </p>
           <label className="gi-consent mt-3">
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />

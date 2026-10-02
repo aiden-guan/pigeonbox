@@ -6,7 +6,7 @@ import { isExtensionPageSender, senderMaySend } from '../messaging';
 import { cloudThreadStateAvailable, threadIntel } from './thread-state';
 import { pageCall } from './page-calls';
 import { cloudSection } from '../../ui/cloud-features';
-import { cloudApiUrl } from '../../config';
+import { CLOUD_WAITLIST_URL, cloudApiUrl } from '../../config';
 
 type Deps = {
   settings: () => ExtensionSettings;
@@ -121,8 +121,7 @@ export async function handleCloudRequest(
   if (!isExtensionPageSender(sender))
     return { ok: false, code: 'forbidden', reason: 'This request is only accepted from PigeonBox pages.' };
   if (message.type === 'CLOUD_OPEN') {
-    const url = deps.webUrl(cloudSection(message.section));
-    if (!url) return { ok: false, reason: 'Cloud is not configured in this build.' };
+    const url = deps.webUrl(cloudSection(message.section)) ?? CLOUD_WAITLIST_URL;
     await chrome.tabs.create({ url });
     return { ok: true };
   }

@@ -1,3 +1,4 @@
+import { openCloudWaitlist } from '../config';
 import { trackProductEvent } from '../ui/analytics';
 import { useEffect, useState } from 'react';
 import type { ProductControls } from '../ui/product-state';
@@ -49,9 +50,7 @@ export function CloudPreview({ product, compact = false }: { product: ProductCon
           See how Cloud works
         </button>
       ) : (
-        <p className="gi-muted">
-          Cloud connection is not configured in this build. Local keeps working on this computer.
-        </p>
+        <><p className="gi-muted">Cloud is on its way. Local keeps working on this computer.</p><button className="gi-btn gi-btn-ghost" type="button" onClick={openCloudWaitlist}>Join the Cloud waitlist ↗</button></>
       )}
       {expanded || (!compact && product.state.runMode === 'cloud') ? <RunModePanel product={product} /> : null}
       {product.error ? (

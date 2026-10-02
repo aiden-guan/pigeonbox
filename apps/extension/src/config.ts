@@ -1,3 +1,6 @@
+export const CLOUD_WAITLIST_URL = 'https://usepigeonbox.com/waitlist?source=extension';
+export function openCloudWaitlist() { void chrome.tabs.create({ url: CLOUD_WAITLIST_URL }); }
+
 import { normalizeBaseUrl } from '@pigeonbox/cloud-client';
 
 /** Public build-time configuration. No secrets may be read here. */
