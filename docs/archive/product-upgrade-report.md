@@ -19,7 +19,7 @@ private Cloud checkout arrived clean. Git's combined diff includes inherited wor
 | Design system | Shared surface, accent, spacing and motion tokens; copper/dark hierarchy; focused keyboard interaction; stateful mascot; reduced-motion and static idle states; lossless WebP sprites |
 
 See [the inspection map](product-upgrade-map.md) for package boundaries and reused
-Cloud APIs, and [the analytics specification](product-analytics.md) for the exact
+Cloud APIs, and [the analytics specification](../product-analytics.md) for the exact
 local event schema. Private implementation remains in pigeonbox-cloud.
 
 ## New product flows

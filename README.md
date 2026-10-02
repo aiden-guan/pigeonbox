@@ -343,3 +343,5 @@ To report security vulnerabilities, please refer to [SECURITY.md](SECURITY.md).
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+Documentation starts at [docs/README.md](docs/README.md).

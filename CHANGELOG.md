@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 — 2026-10-02
+
+- Ship Local with explicitly empty Cloud endpoints. Configured development and beta builds remain available separately.
+- Open the Cloud waitlist from onboarding, Settings and unavailable Cloud actions without changing mode or starting authentication.
+- Update privacy disclosures for Cloud intelligence and the optional waitlist. Organize documentation and preserve historical reports in an archive.
+
+
 All notable changes to PigeonBox (formerly Gmail Intelligence) are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -23,7 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [0.4.0] — 2026-10-02
 
 ### Added
-- **Dispatch redesign.** Popup, side panel, settings, onboarding and the Gmail companion share one ink/paper system with small-radius geometry. Command rows replace the action tiles, the launcher expands in place into the command surface, and inbox categories show real counts. Selecting a mail row opens it as a brief that keeps its sender and subject. Motion follows real state: the index count rolls when it grows, and Pidgy acknowledges once. Reduced motion is respected. See [docs/dispatch-redesign.md](docs/dispatch-redesign.md).
+- **Dispatch redesign.** Popup, side panel, settings, onboarding and the Gmail companion share one ink/paper system with small-radius geometry. Command rows replace the action tiles, the launcher expands in place into the command surface, and inbox categories show real counts. Selecting a mail row opens it as a brief that keeps its sender and subject. Motion follows real state: the index count rolls when it grows, and Pidgy acknowledges once. Reduced motion is respected. See [docs/dispatch-redesign.md](docs/archive/dispatch-redesign.md).
 - **Memory settings** for PigeonBox Cloud: search, inspect, correct, forget and purge what Cloud has learned, with independent learning and Fast Recall switches.
 - Ask chat helpers and memory contracts shared with PigeonBox Cloud.
 

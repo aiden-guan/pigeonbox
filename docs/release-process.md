@@ -10,7 +10,13 @@ npm install                      # updates package-lock.json
 npm run check:versions
 ```
 
-## Cut a release
+## Local 0.5.0 manual upload
+
+`npm run package` explicitly clears all three Cloud endpoint variables, including values from local Vite environment files. Cloud entry points open `https://usepigeonbox.com/waitlist` without sign-in or changing run mode. Development builds remain configurable; a separate beta package can opt in with `npm run package -- --cloud --out release/beta`.
+
+For this release: verify, commit and push main, build the ZIP, check its SHA-256, then upload `release/PigeonBox-v0.5.0.zip` in the store dashboard. Do **not** create or push a release tag: the tag workflow can submit automatically. Preserve older artifacts in ignored `release/archive/`.
+
+## Automated tagged releases
 
 1. Update `CHANGELOG.md`.
 2. `npm run verify` locally.
@@ -32,7 +38,7 @@ npm run check:versions
 
 6. Store users get the update automatically after review. Users of the GitHub ZIP see it in Settings → Updates.
 
-Builds include PigeonBox Cloud only when the repository variables `PIGEONBOX_CLOUD_API_URL` and `PIGEONBOX_CLOUD_TRACKER_URL` are set.
+Default release packages are Local regardless of repository Cloud variables. Configured beta packages require the explicit `--cloud` flag.
 
 The in-extension update checker (unpacked installs only; the Chrome Web Store updates its own installs) lists GitHub releases, picks the highest non-draft, non-prerelease `vX.Y.Z` tag (other releases, like the launch film, are ignored) and looks for the matching `PigeonBox-vX.Y.Z.zip` asset. Keep that tag format and asset name unchanged. Checks are opt-in; sideloaded Chrome extensions still need to be reloaded by the user after downloading.
 

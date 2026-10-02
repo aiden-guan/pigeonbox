@@ -1,4 +1,4 @@
-> Historical redesign notes. The popup and primary side panel model below were superseded by [the shared workspace](workspace-refactor.md).
+> Historical redesign notes. The popup and primary side panel model below were superseded by [the shared workspace](../workspace-refactor.md).
 
 # PigeonBox Dispatch redesign
 
