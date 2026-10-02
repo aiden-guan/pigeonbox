@@ -9,6 +9,12 @@ interface ImportMetaEnv {
   readonly VITE_PIGEONBOX_CLOUD_API_URL?: string;
   /** Hosted tracker origin used in Cloud mode. */
   readonly VITE_PIGEONBOX_CLOUD_TRACKER_URL?: string;
+  /**
+   * Comma-separated earlier origins of the same hosted tracker (for example the
+   * workers.dev address before a custom domain). Mail already sent carries those
+   * pixel URLs; listing them keeps the sender's own views of that mail suppressed.
+   */
+  readonly VITE_PIGEONBOX_CLOUD_TRACKER_PREVIOUS_URLS?: string;
   /** "false" hides experimental features (ChatGPT web sign-in). Release builds set it. */
   readonly VITE_PIGEONBOX_EXPERIMENTAL?: string;
   /** Local dev-reload helper origin. Source builds default it; release builds leave it blank. */

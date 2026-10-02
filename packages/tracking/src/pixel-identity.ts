@@ -58,13 +58,25 @@ function collectVariants(raw: string): string[] {
   return variants;
 }
 
-function expectedOrigin(trackerBaseUrl?: string): string | null {
-  if (!trackerBaseUrl?.trim()) return null;
-  try {
-    return new URL(trackerBaseUrl).origin;
-  } catch {
-    return null;
+/**
+ * Tracker URLs a pixel may come from. Usually one; a hosted tracker that moved
+ * to a new hostname also lists its previous ones, because mail sent earlier
+ * still carries the old pixel URL.
+ */
+export type TrackerBase = string | readonly string[];
+
+function expectedOrigins(trackerBase?: TrackerBase): { given: boolean; origins: string[] } {
+  const list = (typeof trackerBase === 'string' ? [trackerBase] : [...(trackerBase ?? [])]).map((url) => url.trim()).filter(Boolean);
+  const origins: string[] = [];
+  for (const url of list) {
+    try {
+      const origin = new URL(url).origin;
+      if (!origins.includes(origin)) origins.push(origin);
+    } catch {
+      /* An unparsable entry matches nothing. */
+    }
   }
+  return { given: list.length > 0, origins };
 }
 
 function variantOwnsOrigin(variant: string, matchIndex: number, origin: string): boolean {
@@ -79,15 +91,15 @@ function variantOwnsOrigin(variant: string, matchIndex: number, origin: string):
   }
 }
 
-export function extractTrackingIdFromCandidateUrl(raw: string, trackerBaseUrl?: string): string | null {
+export function extractTrackingIdFromCandidateUrl(raw: string, trackerBaseUrl?: TrackerBase): string | null {
   if (!raw || typeof raw !== 'string') return null;
-  const origin = expectedOrigin(trackerBaseUrl);
-  if (trackerBaseUrl?.trim() && !origin) return null;
+  const { given, origins } = expectedOrigins(trackerBaseUrl);
+  if (given && origins.length === 0) return null;
   for (const variant of collectVariants(raw)) {
     const match = variant.match(TRACKING_ID_RE);
     if (!match?.[1]) continue;
     const index = match.index ?? variant.indexOf(match[0]);
-    if (origin && !variantOwnsOrigin(variant, index, origin)) continue;
+    if (origins.length && !origins.some((origin) => variantOwnsOrigin(variant, index, origin))) continue;
     return match[1];
   }
   return null;
@@ -98,7 +110,7 @@ function isQuotedImage(el: PixelCandidateElement): boolean {
 }
 
 /** Unique tracking ids from images that are part of the message itself, not a quote. */
-export function extractTrackingIdsFromMessageBody(body: PixelCandidateRoot, trackerBaseUrl?: string): string[] {
+export function extractTrackingIdsFromMessageBody(body: PixelCandidateRoot, trackerBaseUrl?: TrackerBase): string[] {
   const ids: string[] = [];
   for (const node of body.querySelectorAll('img[src], img[data-src]')) {
     if (isQuotedImage(node)) continue;
@@ -113,7 +125,7 @@ export function extractTrackingIdsFromMessageBody(body: PixelCandidateRoot, trac
 }
 
 /** Unique tracking ids from images inside a quote in this body (an earlier message this one replies to or forwards). */
-export function extractQuotedTrackingIdsFromMessageBody(body: PixelCandidateRoot, trackerBaseUrl?: string): string[] {
+export function extractQuotedTrackingIdsFromMessageBody(body: PixelCandidateRoot, trackerBaseUrl?: TrackerBase): string[] {
   const ids: string[] = [];
   for (const node of body.querySelectorAll('img[src], img[data-src]')) {
     if (!isQuotedImage(node)) continue;
@@ -131,7 +143,7 @@ export function extractQuotedTrackingIdsFromMessageBody(body: PixelCandidateRoot
  * The tracking id embedded in this exact message body.
  * Returns null when the body has no pixel, or more than one distinct pixel.
  */
-export function extractTrackingIdFromMessageBody(body: PixelCandidateRoot, trackerBaseUrl?: string): string | null {
+export function extractTrackingIdFromMessageBody(body: PixelCandidateRoot, trackerBaseUrl?: TrackerBase): string | null {
   const ids = extractTrackingIdsFromMessageBody(body, trackerBaseUrl);
   return ids.length === 1 ? ids[0] : null;
 }

@@ -384,6 +384,12 @@ export type ExtensionSettings = {
 export type PublicExtensionSettings = Omit<ExtensionSettings, 'personalApiToken' | 'aiApiKey'> & {
   hasPersonalApiToken: boolean;
   hasAiApiKey: boolean;
+  /**
+   * Every tracker URL this install's tracking pixels may use: the current one
+   * first, then earlier hostnames of the same hosted tracker. Absent means
+   * `trackerBaseUrl` only.
+   */
+  trackerUrls?: string[];
 };
 
 export function toPublicSettings(settings: ExtensionSettings): PublicExtensionSettings {

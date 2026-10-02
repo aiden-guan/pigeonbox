@@ -98,3 +98,22 @@ describe('sender fingerprints', () => {
     expect(senderFingerprintMatches({ senderIpHash: null, senderUaFamily: 'chrome' }, { ipHash: 'ip_sender', userAgent: chrome })).toBe(false);
   });
 });
+
+describe('hosted tracker hostname changes', () => {
+  const current = 'https://t.usepigeonbox.com';
+  const previous = 'https://pigeonbox-cloud-tracker.pigeonbox.workers.dev';
+
+  it('still recognizes pixels from an earlier hostname of the same tracker', () => {
+    const urls = [current, previous];
+    expect(extractTrackingIdFromCandidateUrl(`${current}/open/trk_new`, urls)).toBe('trk_new');
+    expect(extractTrackingIdFromCandidateUrl(`${previous}/open/trk_old`, urls)).toBe('trk_old');
+    const proxied = `https://ci3.googleusercontent.com/meips/ADKq_abc=s0-d-e1-ft#${previous}/open/trk_old`;
+    expect(extractTrackingIdFromCandidateUrl(proxied, urls)).toBe('trk_old');
+  });
+
+  it('ignores pixels from any other tracker and rejects an unusable list', () => {
+    expect(extractTrackingIdFromCandidateUrl('https://someone-else.example/open/trk_x', [current, previous])).toBeNull();
+    expect(extractTrackingIdFromCandidateUrl(`${current}/open/trk_x`, ['not a url'])).toBeNull();
+    expect(extractTrackingIdFromCandidateUrl(`${current}/open/trk_x`, [])).toBe('trk_x');
+  });
+});

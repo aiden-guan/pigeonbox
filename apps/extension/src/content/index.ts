@@ -371,7 +371,7 @@ function initMessageSelfView(): MessageSelfViewController {
     const pendingReconcile = new Set<string>();
     messageSelfView = createMessageSelfViewHandler({
       getEmails: () => cachedTrackedEmails,
-      getTrackerBaseUrl: () => settings.trackerBaseUrl,
+      getTrackerBaseUrl: () => (settings.trackerUrls?.length ? settings.trackerUrls : settings.trackerBaseUrl),
       pageReload,
       onReconcile: (trackingId, threadId, messageId) => {
         pendingReconcile.add(trackingId);

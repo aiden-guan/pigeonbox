@@ -104,6 +104,10 @@ Cloud is off in source builds. A build enables it with public, build-time variab
 ```
 VITE_PIGEONBOX_CLOUD_API_URL=https://api.example.com
 VITE_PIGEONBOX_CLOUD_TRACKER_URL=https://t.example.com
+# Optional, comma-separated: earlier hostnames of the same hosted tracker
+VITE_PIGEONBOX_CLOUD_TRACKER_PREVIOUS_URLS=https://tracker.example.workers.dev
 ```
+
+Mail keeps the pixel and link URLs it was sent with, so moving the hosted tracker to a new hostname must keep the old one serving. List the old hostname in `VITE_PIGEONBOX_CLOUD_TRACKER_PREVIOUS_URLS` so the extension still recognizes those pixels when you view your own sent mail (self-view suppression). Tracked emails are keyed to Cloud by API (`cloud:<API origin>`), not by tracker hostname, so their status, claims and activity keep working after the move.
 
 For development, **Settings → Advanced → PigeonBox Cloud API URL** can point at `http://127.0.0.1:8788`; the tracker is then assumed at `:8789`. These values are not secrets and no secret may ever be added to extension configuration.

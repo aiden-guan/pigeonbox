@@ -50,7 +50,6 @@ import {
   probeTracker,
   summaryFromRemote,
   trackerHealthLabel,
-  trackerOriginOf,
   trackerPermissionOrigin,
   type TrackedEmailSummary,
   type TrackerCredential,
@@ -82,7 +81,7 @@ import { cloudSection, panelSection } from '../ui/cloud-features';
 import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, isGmailContentScript, senderMaySend } from './messaging';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
-import { EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl } from '../config';
+import { EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl, cloudTrackerUrls, trackerIssuer } from '../config';
 import { gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './tracking/notifications';
 
 const db = getMailboxDb();
@@ -130,7 +129,7 @@ async function contentSettings(): Promise<PublicExtensionSettings> {
   // an account without it sends at once instead of waiting on a refused allocation.
   const capabilities = (await cachedCloudState(settings).catch(() => null))?.capabilities;
   const entitled = capabilities ? capabilities.includes('cloud_tracking') : true;
-  return { ...view, trackerBaseUrl: tracker ?? '', hasPersonalApiToken: Boolean(tracker && user && entitled) };
+  return { ...view, trackerBaseUrl: tracker ?? '', trackerUrls: cloudTrackerUrls(settings), hasPersonalApiToken: Boolean(tracker && user && entitled) };
 }
 
 async function publishContentSettings(): Promise<void> {
@@ -746,14 +745,14 @@ async function trackerTarget(): Promise<TrackerTarget | null> {
 
 /**
  * The tracker for calls about one tracked email: the current tracker, but only
- * when it is the one that issued the ID. After a switch between Local and Cloud,
- * an email keeps its last known state instead of being sent to the wrong tracker.
+ * when it issued the ID (see `trackerIssuer`). After a switch between Local and
+ * Cloud, an email keeps its last known state instead of reaching the wrong tracker.
  */
 async function trackerTargetFor(trackingId: string): Promise<TrackerTarget | null> {
   const target = await trackerTarget();
   if (!target) return null;
-  const issuer = (await readTrackedEmails()).find((email) => email.trackingId === trackingId)?.trackerOrigin;
-  if (issuer && issuer !== trackerOriginOf(target.baseUrl)) return null;
+  const issuer = (await readTrackedEmails()).find((email) => email.trackingId === trackingId)?.issuer;
+  if (issuer && issuer !== trackerIssuer(settings)) return null;
   return target;
 }
 
@@ -785,24 +784,24 @@ async function pollTrackingNow(): Promise<void> {
   if (!settings.trackingEnabled) return;
   const target = await trackerTarget();
   if (!target) return;
-  const origin = trackerOriginOf(target.baseUrl);
+  const issuer = trackerIssuer(settings);
   const client = new TrackingClient(target.baseUrl, target.credential);
   const local = await readTrackedEmails();
   const byId = new Map(local.map((email) => [email.trackingId, email]));
   // Emails issued by another tracker keep their cached state; only this tracker's rows are refreshed.
-  const fromHere = (email: TrackedEmailSummary) => !email.trackerOrigin || email.trackerOrigin === origin;
+  const fromHere = (email: TrackedEmailSummary) => !email.issuer || email.issuer === issuer;
   let sawRemote = false;
   try {
     const remote = await client.listEmails(TRACKED_LIST_LIMIT);
     for (const row of remote) {
-      byId.set(row.tracking_id, summaryFromRemote(row, byId.get(row.tracking_id) || null, origin));
+      byId.set(row.tracking_id, summaryFromRemote(row, byId.get(row.tracking_id) || null, issuer));
     }
     // The tracker is the record. When it returned its whole list, a cached row it
     // no longer has (deleted with the account, or from an earlier sign-in) is dropped.
     if (remote.length < TRACKED_LIST_LIMIT) {
       const present = new Set(remote.map((row) => row.tracking_id));
       for (const email of local) {
-        if (email.trackerOrigin === origin && !present.has(email.trackingId)) byId.delete(email.trackingId);
+        if (email.issuer === issuer && !present.has(email.trackingId)) byId.delete(email.trackingId);
       }
     }
     sawRemote = true;
@@ -812,7 +811,7 @@ async function pollTrackingNow(): Promise<void> {
       local.filter(fromHere).slice(0, 40).map(async (email) => {
         try {
           const row = await client.getEmail(email.trackingId);
-          byId.set(row.tracking_id, summaryFromRemote(row, email, origin));
+          byId.set(row.tracking_id, summaryFromRemote(row, email, issuer));
           sawRemote = true;
         } catch {
           /* keep the last status we already have */
@@ -857,7 +856,7 @@ async function pollTrackingNow(): Promise<void> {
   await Promise.all(missingIds.map(async (id) => {
     try {
       const row = await client.getEmail(id);
-      byId.set(id, summaryFromRemote(row, null, origin));
+      byId.set(id, summaryFromRemote(row, null, issuer));
     } catch {
       /* The event can still be shown with a generic subject. */
     }
@@ -1228,7 +1227,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 click_count: 0,
               },
               null,
-              trackerOriginOf(created.pixel_url) ?? trackerOriginOf(target.baseUrl),
+              trackerIssuer(settings),
             ),
           );
           sendResponse({ ok: true, ...created });

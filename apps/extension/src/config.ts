@@ -3,6 +3,14 @@ import { normalizeBaseUrl } from '@pigeonbox/cloud-client';
 /** Public build-time configuration. No secrets may be read here. */
 export const BUILD_CLOUD_API_URL = normalizeBaseUrl(import.meta.env.VITE_PIGEONBOX_CLOUD_API_URL ?? '') ?? '';
 export const BUILD_CLOUD_TRACKER_URL = normalizeBaseUrl(import.meta.env.VITE_PIGEONBOX_CLOUD_TRACKER_URL ?? '') ?? '';
+export const BUILD_CLOUD_TRACKER_PREVIOUS_URLS = parseBaseUrls(import.meta.env.VITE_PIGEONBOX_CLOUD_TRACKER_PREVIOUS_URLS ?? '');
+
+function parseBaseUrls(value: string): string[] {
+  return value
+    .split(',')
+    .map((part) => normalizeBaseUrl(part.trim()))
+    .filter((url): url is string => Boolean(url));
+}
 
 /**
  * Experimental features (ChatGPT web sign-in) are on for source builds and off
@@ -35,4 +43,32 @@ export function cloudTrackerUrl(settings: { cloudApiUrl: string }): string | nul
     }
   }
   return BUILD_CLOUD_TRACKER_URL || null;
+}
+
+/**
+ * Every hosted-tracker URL whose pixels belong to this Cloud install: the
+ * current tracker, then its earlier hostnames. Sent mail keeps its original
+ * pixel URL forever, so a hostname change must not stop self-view suppression.
+ */
+export function cloudTrackerUrls(settings: { cloudApiUrl: string }): string[] {
+  const current = cloudTrackerUrl(settings);
+  if (!current) return [];
+  return [current, ...BUILD_CLOUD_TRACKER_PREVIOUS_URLS.filter((url) => url !== current)];
+}
+
+/**
+ * Identifies the tracker that issued a tracking ID. Cloud is keyed by its API,
+ * so moving the hosted tracker to a new hostname keeps existing IDs routable.
+ */
+export function trackerIssuer(settings: { runMode: string; cloudApiUrl: string; trackerBaseUrl: string }): string | null {
+  if (settings.runMode === 'cloud') {
+    const api = cloudApiUrl(settings);
+    return api ? `cloud:${new URL(api).origin}` : null;
+  }
+  try {
+    const url = new URL(settings.trackerBaseUrl);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? `local:${url.origin}` : null;
+  } catch {
+    return null;
+  }
 }

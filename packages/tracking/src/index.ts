@@ -365,11 +365,13 @@ export type TrackedEmailSummary = {
   lastClickedAt?: string | null;
   notifyIfNoReply: boolean;
   /**
-   * Origin of the tracker that issued this tracking ID. Management calls for
-   * the email go only to this origin, so a Cloud ID never reaches a Local
-   * tracker (or the reverse) after the run mode or account changes.
+   * Which tracker issued this tracking ID: `cloud:<API origin>` for PigeonBox
+   * Cloud (stable when the hosted tracker changes hostname) or `local:<tracker
+   * origin>` for a self-hosted tracker. Management calls for the email go only
+   * to a tracker with the same issuer, so a Cloud ID never reaches a Local
+   * tracker, or the reverse, after the run mode changes.
    */
-  trackerOrigin?: string | null;
+  issuer?: string | null;
 };
 
 export function summaryFromRemote(
@@ -391,7 +393,7 @@ export function summaryFromRemote(
     last_clicked_at?: string | null;
   },
   local?: TrackedEmailSummary | null,
-  trackerOrigin?: string | null,
+  issuer?: string | null,
 ): TrackedEmailSummary {
   const remoteStatus = asStatus(row.status, row.sent_at);
   const localAhead = local?.status === 'SENT' && remoteStatus === 'PENDING';
@@ -421,7 +423,7 @@ export function summaryFromRemote(
     firstClickedAt: clickCount === 0 ? null : (row.first_clicked_at || local?.firstClickedAt || null),
     lastClickedAt: clickCount === 0 ? null : (row.last_clicked_at || local?.lastClickedAt || null),
     notifyIfNoReply: local?.notifyIfNoReply ?? false,
-    trackerOrigin: trackerOrigin ?? local?.trackerOrigin ?? null,
+    issuer: issuer ?? local?.issuer ?? null,
   };
 }
 
@@ -992,4 +994,4 @@ export {
   extractTrackingIdFromMessageBody,
   extractTrackingIdsFromMessageBody,
 } from './pixel-identity.js';
-export type { PixelCandidateElement, PixelCandidateRoot } from './pixel-identity.js';
+export type { PixelCandidateElement, PixelCandidateRoot, TrackerBase } from './pixel-identity.js';

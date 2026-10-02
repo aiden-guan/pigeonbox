@@ -114,14 +114,14 @@ describe('outgoing link policy', () => {
 });
 
 describe('tracked email summaries', () => {
-  it('keep the issuing tracker origin and click times', () => {
+  it('keep the issuing tracker and click times', () => {
     const summary = summaryFromRemote(
       { tracking_id: 'trk_1', subject: 's', sender: 'a', recipients: ['b@example.com'], status: 'SENT', sent_at: '2026-01-01T00:00:00.000Z', click_count: 1, last_clicked_at: '2026-01-01T00:05:00.000Z' },
       null,
-      'https://t.example',
+      'cloud:https://api.example',
     );
-    expect(summary).toMatchObject({ trackerOrigin: 'https://t.example', clickCount: 1, lastClickedAt: '2026-01-01T00:05:00.000Z' });
-    expect(summaryFromRemote({ tracking_id: 'trk_1', subject: 's', sender: 'a', sent_at: null }, summary).trackerOrigin).toBe('https://t.example');
+    expect(summary).toMatchObject({ issuer: 'cloud:https://api.example', clickCount: 1, lastClickedAt: '2026-01-01T00:05:00.000Z' });
+    expect(summaryFromRemote({ tracking_id: 'trk_1', subject: 's', sender: 'a', sent_at: null }, summary).issuer).toBe('cloud:https://api.example');
     expect(trackerOriginOf('https://t.example/open/trk_1')).toBe('https://t.example');
     expect(trackerOriginOf('javascript:alert(1)')).toBeNull();
   });

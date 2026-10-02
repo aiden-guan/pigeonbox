@@ -3,6 +3,7 @@ import {
   extractTrackingIdFromMessageBody,
   normalizeGmailId,
   type TrackedEmailSummary,
+  type TrackerBase,
 } from '@pigeonbox/tracking';
 import { resolveMessageId, resolveThreadId, type MessageIdView, type ThreadIdView } from '@pigeonbox/gmail';
 
@@ -76,7 +77,8 @@ export type ActiveMessageViewState = {
 
 export function createMessageSelfViewHandler(opts: {
   getEmails: () => TrackedEmailSummary[];
-  getTrackerBaseUrl?: () => string | null | undefined;
+  /** The tracker URL, or every URL this install's pixels may use (current first). */
+  getTrackerBaseUrl?: () => TrackerBase | null | undefined;
   pageReload?: PageReloadContext | null;
   onSelfView: (
     trackingId: string,
