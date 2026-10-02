@@ -15,19 +15,19 @@
     {
       "sheet": "delivery",
       "frames": 8,
-      "minimumVisibleContentGutterPx": 16,
+      "minimumVisibleContentGutterPx": 19,
       "passed": true
     },
     {
       "sheet": "cheer",
       "frames": 8,
-      "minimumVisibleContentGutterPx": 28,
+      "minimumVisibleContentGutterPx": 26,
       "passed": true
     },
     {
       "sheet": "explorer",
       "frames": 8,
-      "minimumVisibleContentGutterPx": 26,
+      "minimumVisibleContentGutterPx": 25,
       "passed": true
     }
   ]
