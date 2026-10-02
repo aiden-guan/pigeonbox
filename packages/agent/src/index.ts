@@ -8,6 +8,11 @@ import {
   isPastedSummary,
   localThreadSummary,
   tightenSummary,
+  tagAuthors,
+  ownerPerspectiveKey,
+  summaryPerspectiveIssue,
+  sha256Hex,
+  type AuthorRole,
   type AIJobStatus,
   type ClassificationResult,
   type ExtensionSettings,
@@ -19,7 +24,11 @@ import {
   type HeuristicInput,
 } from './classify.js';
 
-const SUMMARY_VERSION = 'sum8';
+const SUMMARY_VERSION = 'sum9';
+type SummaryInput = { fingerprint: string; owner?: MailboxOwner };
+async function summaryFingerprint(input: SummaryInput): Promise<string> {
+  return `${input.fingerprint}:${SUMMARY_VERSION}:${await sha256Hex(ownerPerspectiveKey(input.owner))}`;
+}
 
 export type AgentLoopDeps = {
   db: MailboxDatabase;
@@ -47,7 +56,24 @@ export type AgentLoopDeps = {
  * Each step independently retryable; persist after meaningful steps.
  * Tier 3 actions never autonomous.
  */
+const summaryCoordinators = new WeakMap<MailboxDatabase, { generations: Map<string, { inputKey: string; id: string }>; writes: Promise<unknown> }>();
 export class AgentLoop {
+  private get summaryCoordinator() {
+    let coordinator = summaryCoordinators.get(this.deps.db);
+    if (!coordinator) { coordinator = { generations: new Map(), writes: Promise.resolve() }; summaryCoordinators.set(this.deps.db, coordinator); }
+    return coordinator;
+  }
+  private get summaryGenerations() { return this.summaryCoordinator.generations; }
+  private saveSummary(row: Parameters<MailboxDatabase['thread_summaries']['put']>[0], current: () => boolean) {
+    const coordinator = this.summaryCoordinator;
+    const write = coordinator.writes.then(async () => {
+      if (!current()) return false;
+      await this.deps.db.thread_summaries.put(row);
+      return current();
+    });
+    coordinator.writes = write.catch(() => undefined);
+    return write;
+  }
   private lastClassifierRun: number | null = null;
   private inFlightJobs = new Map<
     string,
@@ -77,7 +103,8 @@ export class AgentLoop {
     subject: string;
     quality?: 'ROW_STUB' | 'THREAD_PARTIAL' | 'THREAD_COMPLETE';
     owner?: MailboxOwner;
-    messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
+    requireOwner?: boolean;
+    messages: Array<{ sender: string; bodyText: string; timestamp: string; authorRole?: AuthorRole }>;
   }): Promise<void> {
     const settings = this.deps.settings();
     const quality = input.quality || 'THREAD_PARTIAL';
@@ -261,9 +288,10 @@ export class AgentLoop {
     threadId: string;
     fingerprint: string;
     subject: string;
-    messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
+    messages: Array<{ sender: string; bodyText: string; timestamp: string; authorRole?: AuthorRole }>;
     owner?: MailboxOwner;
     force?: boolean;
+    requireOwner?: boolean;
   }): Promise<{
     ok: boolean;
     jobId: string;
@@ -277,7 +305,18 @@ export class AgentLoop {
     if (!input.messages.some((message) => message.bodyText.trim())) {
       return { ok: false, jobId: '', status: 'failed', reason: 'Open the thread so the message can be read.' };
     }
-    const fingerprint = `${input.fingerprint}:${SUMMARY_VERSION}`;
+    if (input.requireOwner && !input.owner?.email) {
+      return { ok: false, jobId: '', status: 'failed', reason: 'Resolving Gmail account…' };
+    }
+    input = { ...input, messages: tagAuthors(input.messages, input.owner) };
+    const perspective = ownerPerspectiveKey(input.owner);
+    const inputKey = `${input.fingerprint}:${perspective}`;
+    const previousGeneration = this.summaryGenerations.get(input.threadId);
+    const generation = !input.force && previousGeneration?.inputKey === inputKey ? previousGeneration
+      : { inputKey, id: crypto.randomUUID() };
+    this.summaryGenerations.set(input.threadId, generation);
+    const isCurrent = () => this.summaryGenerations.get(input.threadId)?.id === generation.id;
+    const fingerprint = await summaryFingerprint(input);
     const existing = await this.deps.db.thread_summaries.get(input.threadId);
     const storedLine = existing?.summary.oneLine || '';
     const stalePaste = Boolean(storedLine) && isPastedSummary(storedLine, input.messages);
@@ -299,16 +338,21 @@ export class AgentLoop {
       return { ok: true, jobId: inFlight.jobId, status: inFlight.status };
     }
 
+    if (!isCurrent()) return { ok: false, jobId: '', status: 'failed', reason: 'Summary superseded by newer input.' };
     const aiReady = Boolean(this.deps.ai) && this.deps.settings().aiMode !== 'disabled';
     if (!aiReady) {
-      const summary = localThreadSummary(input);
-      await this.deps.db.thread_summaries.put({
+      const summary = perspectiveSafeFallback(input);
+      const saved = await this.saveSummary({
         threadId: input.threadId,
         fingerprint,
+        sourceFingerprint: input.fingerprint,
+        ownerPerspective: perspective,
+        generationId: generation.id,
         summary,
         createdAt: Date.now(),
         source: 'message',
-      });
+      }, isCurrent);
+      if (!saved) return { ok: false, jobId: '', status: 'failed', reason: 'Summary superseded by newer input.' };
       await this.deps.log({
         type: 'summarize',
         threadId: input.threadId,
@@ -356,16 +400,22 @@ export class AgentLoop {
           { bypassCache: Boolean(input.force), timeoutMs: this.deps.settings().aiProvider === 'local' ? 300_000 : 25_000 },
         );
         const summary = tightenSummary(result, input);
-        await this.deps.db.thread_summaries.put({
+        if (!isCurrent()) throw new Error('Summary superseded by newer input.');
+        if (summaryPerspectiveIssue(summary, input)) throw new Error('The model returned an inconsistent owner perspective.');
+        const saved = await this.saveSummary({
           threadId: input.threadId,
           fingerprint,
+          sourceFingerprint: input.fingerprint,
+          ownerPerspective: perspective,
+          generationId: generation.id,
           summary,
           createdAt: Date.now(),
           source: 'model',
           aiStatus: 'success',
           provider: this.deps.settings().aiProvider,
           model: this.deps.settings().aiModel,
-        });
+        }, isCurrent);
+        if (!saved) throw new Error('Summary superseded by newer input.');
         await this.deps.db.ai_jobs?.update(jobId, {
           status: 'succeeded',
           completedAt: Date.now(),
@@ -382,10 +432,17 @@ export class AgentLoop {
         return { ok: true, oneLine: summary.oneLine, source: 'model' as const, aiStatus: 'success' as const };
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
-        const fallback = localThreadSummary(input);
-        await this.deps.db.thread_summaries.put({
+        if (!isCurrent()) {
+          await this.deps.db.ai_jobs?.update(jobId, { status: 'failed', completedAt: Date.now(), error: 'Summary superseded by newer input.' }).catch(() => {});
+          return { ok: false, error: 'Summary superseded by newer input.' };
+        }
+        const fallback = perspectiveSafeFallback(input);
+        const saved = await this.saveSummary({
           threadId: input.threadId,
           fingerprint,
+          sourceFingerprint: input.fingerprint,
+          ownerPerspective: perspective,
+          generationId: generation.id,
           summary: fallback,
           createdAt: Date.now(),
           source: 'message',
@@ -393,7 +450,8 @@ export class AgentLoop {
           aiError: errorMsg,
           provider: this.deps.settings().aiProvider,
           model: this.deps.settings().aiModel,
-        });
+        }, isCurrent);
+        if (!saved) return { ok: false, error: 'Summary superseded by newer input.' };
         await this.deps.db.ai_jobs?.update(jobId, {
           status: 'failed',
           completedAt: Date.now(),
@@ -416,7 +474,7 @@ export class AgentLoop {
     threadId: string;
     fingerprint: string;
     subject: string;
-    messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
+    messages: Array<{ sender: string; bodyText: string; timestamp: string; authorRole?: AuthorRole }>;
     owner?: MailboxOwner;
     force?: boolean;
     insertIntoGmail?: boolean;
@@ -545,7 +603,7 @@ export class AgentLoop {
     threadId: string;
     fingerprint: string;
     subject: string;
-    messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
+    messages: Array<{ sender: string; bodyText: string; timestamp: string; authorRole?: AuthorRole }>;
     owner?: MailboxOwner;
     force?: boolean;
   }): Promise<{ ok: boolean; oneLine?: string; source?: 'model' | 'message'; aiStatus?: 'queued' | 'running' | 'success' | 'failed'; reason?: string; error?: string }> {
@@ -571,7 +629,7 @@ export class AgentLoop {
         oneLine: launched.oneLine,
       };
     }
-    const fingerprint = `${input.fingerprint}:${SUMMARY_VERSION}`;
+    const fingerprint = await summaryFingerprint(input);
     const key = `summary:${input.threadId}:${fingerprint}`;
     const job = this.inFlightJobs.get(key);
     if (job) {
@@ -595,7 +653,7 @@ export class AgentLoop {
     threadId: string;
     fingerprint: string;
     subject: string;
-    messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
+    messages: Array<{ sender: string; bodyText: string; timestamp: string; authorRole?: AuthorRole }>;
     owner?: MailboxOwner;
     force?: boolean;
   }): Promise<{ ok: boolean; body?: string; reason?: string; error?: string }> {
@@ -633,9 +691,10 @@ export class AgentLoop {
         timestamp: m.timestamp || '',
       })),
       owner: input.owner,
+      requireOwner: (input as { requireOwner?: boolean }).requireOwner,
     });
     if (launched.status === 'queued') {
-      const fingerprint = `${input.fingerprint}:${SUMMARY_VERSION}`;
+      const fingerprint = await summaryFingerprint(input);
       const key = `summary:${input.threadId}:${fingerprint}`;
       const job = this.inFlightJobs.get(key);
       if (job) await job.promise;
@@ -738,3 +797,9 @@ function hasReadableBody(messages: Array<{ bodyText: string }>): boolean {
 }
 
 export * from './classify.js';
+
+function perspectiveSafeFallback(input: { subject: string; owner?: MailboxOwner; messages: Array<{ sender: string; bodyText: string; authorRole?: AuthorRole }> }) {
+  const summary = localThreadSummary(input);
+  if (!summaryPerspectiveIssue(summary, input)) return summary;
+  return { ...summary, oneLine: 'Your conversation is ready to review.', keyPoints: [], commitments: [], actionItems: [] };
+}

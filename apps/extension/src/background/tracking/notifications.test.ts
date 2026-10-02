@@ -37,6 +37,16 @@ describe('tracking notification history', () => {
     expect((await history.claim('tracker-a/account-1', [event('new', 3), event('old', 1)])).map((item) => item.id)).toEqual(['new']);
   });
 
+  it('releases an event that became provisional during storage without losing its eventual recipient alert', async () => {
+    const storage = memoryStorage();
+    const history = new TrackingNotificationHistory(storage);
+    await history.claim('tracker-a', []);
+    expect((await history.claim('tracker-a', [event('held', 3)])).map((item) => item.id)).toEqual(['held']);
+    await history.release('tracker-a', ['held']);
+    expect((await history.claim('tracker-a', [event('held', 3)])).map((item) => item.id)).toEqual(['held']);
+    expect(await history.claim('tracker-a', [event('held', 3)])).toEqual([]);
+  });
+
   it('serializes simultaneous polls and retains the newest IDs when trimming', async () => {
     const storage = memoryStorage();
     const history = new TrackingNotificationHistory(storage);

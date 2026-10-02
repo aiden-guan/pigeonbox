@@ -1,3 +1,7 @@
+import { readWorkspace, updateWorkspace, showWorkspace, installWorkspaceToolbar } from './workspace';
+import type { WorkspaceContext } from '../workspace/context';
+import { MailboxIdentities, visibleSummaryForOwner, withSelfAliases } from './mailbox-identity';
+import { tagAuthors, type MailboxIdentity } from '@pigeonbox/shared';
 import { recordProductEvent } from '../ui/analytics';
 function isWorkerEvictionError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
@@ -38,6 +42,8 @@ import { aiDataDestination, resolveCapabilities, type CloudState } from '@pigeon
 import { cloudErrorMessage } from '@pigeonbox/cloud-client';
 import {
   TrackingClient,
+  SelfViewAttribution,
+  type PendingSelfView,
   applyRecentOpens,
   deriveTrackingTimeline,
   describeTrackingNotification,
@@ -59,7 +65,7 @@ import {
   type TrackingSendReport,
 } from '@pigeonbox/tracking';
 import { refreshGmailTabsAfterRestart } from '../reload-extension';
-import { patchTrackedEmail, readTrackedEmails, upsertTrackedEmail, writeTrackedEmails } from './tracking/tracked-mail';
+import { patchTrackedEmail, readTrackedEmails, upsertTrackedEmail, updateTrackedEmails } from './tracking/tracked-mail';
 import { answerAskPigeon, type AskDraft } from './search/ask-pigeon';
 import { createOwnerMatcher, isPlaceholderAddress } from './owner';
 import {
@@ -308,7 +314,7 @@ async function rebuildSearchIndex(docs?: SearchDocumentRow[]): Promise<void> {
   }
 }
 
-async function handleAskPigeon(query: string) {
+async function handleAskPigeon(query: string, currentThreadId?: string, currentOwner?: MailboxIdentity) {
   const [coverage, threads, messages, searchDocuments, tracked, owner, ownerAliases] = await Promise.all([
     ingestor.getCoverage(),
     db.threads.toArray(),
@@ -318,6 +324,19 @@ async function handleAskPigeon(query: string) {
     readMailboxOwner(),
     readOwnerAddresses(),
   ]);
+  const useCurrent = currentThreadId && /\b(?:this (?:thread|email|conversation)|summarize this|draft (?:a )?reply|did they open this|what do i need to do)\b/i.test(query);
+  if (currentOwner) {
+    for (let i = threads.length - 1; i >= 0; i--) if (threads[i]?.mailboxEmail && threads[i]?.mailboxEmail !== currentOwner.email) threads.splice(i, 1);
+    const allowed = new Set(threads.map((thread) => thread.threadId));
+    for (let i = messages.length - 1; i >= 0; i--) if (!allowed.has(messages[i]!.threadId)) messages.splice(i, 1);
+    for (let i = searchDocuments.length - 1; i >= 0; i--) if (!allowed.has(searchDocuments[i]!.threadId)) searchDocuments.splice(i, 1);
+  }
+  if (useCurrent) {
+    for (let i = threads.length - 1; i >= 0; i--) if (threads[i]?.threadId !== currentThreadId) threads.splice(i, 1);
+    for (let i = messages.length - 1; i >= 0; i--) if (messages[i]?.threadId !== currentThreadId) messages.splice(i, 1);
+    for (let i = searchDocuments.length - 1; i >= 0; i--) if (searchDocuments[i]?.threadId !== currentThreadId) searchDocuments.splice(i, 1);
+    for (let i = tracked.length - 1; i >= 0; i--) if (normalizeGmailId(tracked[i]?.gmailThreadId) !== normalizeGmailId(currentThreadId)) tracked.splice(i, 1);
+  }
   await rebuildSearchIndex(searchDocuments);
   const ai = effectiveSettings(settings).aiMode === 'disabled' ? null : getAI();
   try {
@@ -327,8 +346,8 @@ async function handleAskPigeon(query: string) {
       messages,
       searchDocuments,
       lexical,
-      owner,
-      ownerAliases,
+      owner: currentOwner || owner,
+      ownerAliases: currentOwner ? currentOwner.aliases || [] : ownerAliases,
       tracked,
       coverage,
       answerWithModel: ai ? async (input) => (await ai.answerMailboxQuery(input)).result : null,
@@ -363,6 +382,8 @@ async function openComposeDraft(draft: AskDraft): Promise<{ opened: boolean; rea
   await chrome.tabs.create({ url: `https://mail.google.com/mail/?${params.toString()}`, active: true, windowId: tab.windowId });
   return { opened: true, reason: res?.reason };
 }
+
+const mailboxIdentities = new MailboxIdentities(chrome.storage.local);
 
 /** The signed-in Gmail address, reported by the Gmail tab. */
 async function readMailboxOwner(): Promise<{ email: string; name?: string } | null> {
@@ -680,16 +701,16 @@ async function openSidePanel(
   await chrome.storage.session.set({
     panelState: { ...panelState, cloudSection: panelSection(section) },
   });
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.windowId != null) await chrome.sidePanel.open({ windowId: tab.windowId });
+  await updateWorkspace({ mode: mode === 'cloud' ? 'home' : mode, splitCategory: panelState.splitCategory, cloudSection: panelSection(section), open: true, display: 'float' });
+  await showWorkspace();
 }
 
-async function classifyIngested(thread: IngestThread, fingerprint: string, quality: IngestThread['quality'], direction: string): Promise<void> {
+async function classifyIngested(thread: IngestThread, fingerprint: string, quality: IngestThread['quality'], direction: string, accountOwner?: MailboxIdentity): Promise<void> {
   if (!agent) return;
   const latest = thread.messages?.[thread.messages.length - 1];
   // The folder a thread was opened from says nothing about who wrote last. The newest message does.
-  const [owner, aliases] = await Promise.all([readMailboxOwner(), readOwnerAddresses()]);
-  const isOwner = createOwnerMatcher({ owner, aliases, contacts: (thread.messages || []).map((message) => message.sender) });
+  const owner = accountOwner ?? (thread.mailboxEmail ? { email: thread.mailboxEmail } : null);
+  const isOwner = createOwnerMatcher({ owner, contacts: (thread.messages || []).map((message) => message.sender) });
   const latestKnown = latest && !isPlaceholderAddress(latest.sender?.email) ? latest.sender : undefined;
   const userWroteLast = latestKnown ? isOwner(latestKnown) : direction === 'outbound' || /^\s*me\s*$/i.test(thread.latestSender?.name || '');
   if (latestKnown) direction = userWroteLast ? 'outbound' : 'inbound';
@@ -705,6 +726,7 @@ async function classifyIngested(thread: IngestThread, fingerprint: string, quali
     userIsLatestMeaningfulSender: userWroteLast,
     quality: quality || 'ROW_STUB',
     owner: owner ?? undefined,
+    requireOwner: true,
     messages: (thread.messages || []).map((message) => ({
       sender: message.sender.name && !message.sender.name.includes('@')
         ? `${message.sender.name} <${message.sender.email}>`
@@ -771,6 +793,64 @@ async function notificationScope(baseUrl: string): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+const attribution = new SelfViewAttribution();
+const attributionReady = chrome.storage.session.get('trackingAttribution')
+  .then((stored) => attribution.restore(stored.trackingAttribution)).catch(() => undefined);
+let attributionWrites: Promise<unknown> = attributionReady;
+function persistAttribution(): Promise<void> {
+  const snapshot = attribution.snapshot();
+  const write = attributionWrites.then(() => chrome.storage.session.set({ trackingAttribution: snapshot }));
+  attributionWrites = write.catch(() => undefined);
+  return write;
+}
+let navigationAttribution: Promise<unknown> = attributionReady;
+chrome.tabs.onUpdated?.addListener((tabId, change, tab) => {
+  if (change.status !== 'loading' || !tab.url?.startsWith('https://mail.google.com/')) return;
+  // Reserve before any network poll can publish the reload's pixel. Only exact saved thread/message IDs qualify.
+  navigationAttribution = navigationAttribution.then(async () => {
+    await loadSettings();
+    const hash = new URL(tab.url!).hash.split('/').pop() || '';
+    const routeId = normalizeGmailId(decodeURIComponent(hash));
+    if (!routeId) return;
+    const observedAt = Date.now();
+    for (const email of await readTrackedEmails()) {
+      if (normalizeGmailId(email.gmailThreadId) !== routeId && normalizeGmailId(email.gmailMessageId) !== routeId) continue;
+      const issuer = email.issuer || trackerIssuer(settings) || 'unconfigured';
+      attribution.begin({ issuer, trackingId: email.trackingId, tabId, observedAt, eventId: `navigation_${tabId}_${observedAt}`, navigation: true });
+    }
+    await persistAttribution();
+  }).catch(() => undefined);
+});
+
+async function reconcileSelfView(claim: PendingSelfView, result: Awaited<ReturnType<TrackingClient['recordSelfView']>>, client: TrackingClient) {
+  attribution.reconciled(claim, result.reclassifiedEventIds || []);
+  const canonical = result.first_opened_at !== undefined ? result : await client.getEmail(claim.trackingId);
+  await patchTrackedEmail(claim.trackingId, {
+    openCount: result.open_count ?? result.openCount ?? canonical.open_count ?? 0,
+    firstOpenedAt: canonical.first_opened_at ?? null,
+    lastOpenedAt: canonical.last_opened_at ?? null,
+    ...(canonical.click_count !== undefined ? { clickCount: canonical.click_count } : {}),
+    firstClickedAt: canonical.first_clicked_at ?? null,
+    lastClickedAt: canonical.last_clicked_at ?? null,
+  });
+  attribution.settled(claim);
+  await persistAttribution();
+}
+let claimAttribution: Promise<unknown> = attributionReady;
+const deliveringClaims = new Set<string>();
+async function reserveClaim(message: Record<string, any>, tabId?: number) {
+  await navigationAttribution;
+  await loadSettings();
+  const trackingId = String(message.trackingId || '');
+  const email = (await readTrackedEmails()).find((row) => row.trackingId === trackingId);
+  const issuer = trackerIssuer(settings);
+  if (!trackingId || !issuer || (email?.issuer && email.issuer !== issuer)) return;
+  const observedAt = Date.parse(message.timestamp || '') || Date.now();
+  const eventId = message.selfViewEventId || `sv_${trackingId}_${normalizeGmailId(message.gmailMessageId) || 'nomessage'}_${message.source || 'MESSAGE_EXPANDED'}_${observedAt}`;
+  attribution.begin({ issuer, trackingId, eventId, observedAt, tabId });
+  await persistAttribution();
+}
+
 async function pollTracking(): Promise<void> {
   if (!trackingPollInFlight) {
     trackingPollInFlight = pollTrackingNow().finally(() => {
@@ -781,13 +861,24 @@ async function pollTracking(): Promise<void> {
 }
 
 async function pollTrackingNow(): Promise<void> {
+  await navigationAttribution;
+  await claimAttribution;
   if (!settings.trackingEnabled) return;
   const target = await trackerTarget();
   if (!target) return;
-  const issuer = trackerIssuer(settings);
+  const issuer = trackerIssuer(settings) || 'unconfigured';
   const client = new TrackingClient(target.baseUrl, target.credential);
+  // Retain the exact failed event identity across worker restarts; ordinary polls retry it.
+  for (const claim of attribution.snapshot().pending.filter((row) => row.issuer === issuer && row.retry)) {
+    if (deliveringClaims.has(`${claim.trackingId}\n${claim.eventId}`)) continue;
+    try {
+      const result = await client.recordSelfView(claim.trackingId, { ...claim.retry, timestamp: new Date(claim.observedAt).toISOString(), selfViewEventId: claim.eventId });
+      if (result.ok) await reconcileSelfView(claim, result, client);
+    } catch { /* Keep last settled state until this claim can be delivered. */ }
+  }
   const local = await readTrackedEmails();
   const byId = new Map(local.map((email) => [email.trackingId, email]));
+  const revisions = new Map(local.map((email) => [email.trackingId, attribution.revision(issuer, email.trackingId)]));
   // Emails issued by another tracker keep their cached state; only this tracker's rows are refreshed.
   const fromHere = (email: TrackedEmailSummary) => !email.issuer || email.issuer === issuer;
   let sawRemote = false;
@@ -823,7 +914,9 @@ async function pollTrackingNow(): Promise<void> {
   let newEvents: typeof events = [];
   try {
     events = await client.getRecentEvents();
-    newEvents = await notificationHistory.claim(await notificationScope(target.baseUrl), events);
+    await navigationAttribution;
+    await claimAttribution;
+    events = attribution.events(issuer, events);
     if (!sawRemote && events.length) {
       for (const email of applyRecentOpens([...byId.values()], events)) byId.set(email.trackingId, email);
     }
@@ -851,7 +944,7 @@ async function pollTrackingNow(): Promise<void> {
   }
   // The list endpoint only returns the 200 newest sent emails. An older email
   // can still have a new open, so look up its details before composing the alert.
-  const missingIds = [...new Set(newEvents.filter(isNotifiableTrackingEvent).map((event) => event.tracking_id))]
+  const missingIds = [...new Set(events.filter(isNotifiableTrackingEvent).map((event) => event.tracking_id))]
     .filter((id) => !byId.has(id));
   await Promise.all(missingIds.map(async (id) => {
     try {
@@ -861,11 +954,34 @@ async function pollTrackingNow(): Promise<void> {
       /* The event can still be shown with a generic subject. */
     }
   }));
-  if (sawRemote || local.length || missingIds.length) await writeTrackedEmails([...byId.values()]);
+  await navigationAttribution;
+  await claimAttribution;
+  if (sawRemote || local.length || missingIds.length) {
+    await updateTrackedEmails((current) => {
+      const latest = new Map(current.map((email) => [email.trackingId, email]));
+      for (const [id, remote] of byId) {
+        if (attribution.publishable(issuer, id, revisions.get(id) || 0)) latest.set(id, { ...latest.get(id), ...remote });
+        // Pending unknown rows remain neutral until their canonical claim response arrives.
+        else if (!latest.has(id)) latest.set(id, { ...remote, openCount: 0, clickCount: 0, firstOpenedAt: null, lastOpenedAt: null });
+      }
+      for (const email of current) {
+        if (!byId.has(email.trackingId) && email.issuer === issuer && attribution.publishable(issuer, email.trackingId, revisions.get(email.trackingId) || 0)) latest.delete(email.trackingId);
+      }
+      return [...latest.values()];
+    });
+  }
+  const settledEvents = attribution.events(issuer, events).filter((event) => attribution.publishable(issuer, event.tracking_id, revisions.get(event.tracking_id) || 0));
+  const scope = await notificationScope(target.baseUrl);
+  newEvents = await notificationHistory.claim(scope, settledEvents);
+  await navigationAttribution;
+  await claimAttribution;
+  const held = newEvents.filter((event) => !attribution.publishable(issuer, event.tracking_id, revisions.get(event.tracking_id) || 0));
+  if (held.length) await notificationHistory.release(scope, held.map((event) => event.id));
   if (!settings.desktopNotifications) return;
   try {
     const fresh = [...byId.values()];
     for (const alert of groupTrackingAlerts(newEvents)) {
+      if (!attribution.publishable(issuer, alert.event.tracking_id, revisions.get(alert.event.tracking_id) || 0)) continue;
       const email = fresh.find((item) => item.trackingId === alert.event.tracking_id);
       const { title, message } = describeTrackingNotification(alert.event, email, alert.count);
       void Promise.resolve(chrome.notifications.create(trackingNotificationId(alert.event), {
@@ -959,6 +1075,22 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   }
 });
 
+installWorkspaceToolbar();
+chrome.tabs.onActivated?.addListener(({ tabId }) => { void chrome.storage.session.set({ workspaceContextActive: tabId }); });
+chrome.tabs.onRemoved?.addListener((tabId) => {
+  mailboxIdentities.forgetTab(tabId);
+  void navigationAttribution.then(() => claimAttribution).then(async () => { attribution.inspected(tabId); await persistAttribution(); });
+  void chrome.storage.session.get('workspaceContexts').then((stored) => { const contexts = { ...stored.workspaceContexts }; delete contexts[tabId]; return chrome.storage.session.set({ workspaceContexts: contexts }); });
+});
+let contextWrites: Promise<unknown> = Promise.resolve();
+let commandWrites: Promise<unknown> = Promise.resolve();
+async function workspaceContext(senderTab?: chrome.tabs.Tab): Promise<{ context: WorkspaceContext | null; tabId?: number; windowId?: number }> {
+  const tab = senderTab?.url?.startsWith('https://mail.google.com/') ? senderTab : (await chrome.tabs.query({ active: true, currentWindow: true })).find((item) => item.url?.startsWith('https://mail.google.com/'));
+  if (tab?.id == null) return { context: null };
+  const stored = await chrome.storage.session.get('workspaceContexts');
+  return { context: stored.workspaceContexts?.[tab.id] || null, tabId: tab.id, windowId: tab.windowId };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (
     message?.type === 'LOCAL_MODEL_PROGRESS' ||
@@ -973,10 +1105,69 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: false, error: 'forbidden', reason: 'This request is only accepted from PigeonBox pages.' });
     return false;
   }
+  if (message?.type === 'TRACKING_SELF_VIEW') claimAttribution = claimAttribution.then(() => reserveClaim(message, sender.tab?.id)).catch(() => undefined);
   void (async () => {
     try {
     await loadSettings();
     if (!agent) rebuildAgent();
+    if (message?.type === 'GET_WORKSPACE_PRESENTATION') {
+      const intention = await chrome.storage.session.get('workspaceReopen');
+      if (sender.tab?.id != null && intention.workspaceReopen?.tabId === sender.tab.id) {
+        await updateWorkspace({ open: true, display: 'float' });
+        await chrome.storage.session.remove('workspaceReopen');
+      }
+      const appearanceValue = (await chrome.storage.local.get('pigeonboxAppearance')).pigeonboxAppearance;
+      sendResponse({ state: await readWorkspace(), appearance: appearanceValue === 'light' || appearanceValue === 'dark' ? appearanceValue : 'system' }); return;
+    }
+    if (message?.type === 'WORKSPACE_PRESENTATION') {
+      const row = message.patch || {};
+      const patch = { ...(typeof row.open === 'boolean' ? { open: row.open } : {}), ...(row.position ? { position: row.position } : {}), ...(row.size ? { size: row.size } : {}) };
+      sendResponse({ state: await updateWorkspace(patch) }); return;
+    }
+    if (message?.type === 'WORKSPACE_NAVIGATE' || message?.type === 'WORKSPACE_DISPLAY') {
+      const state = await updateWorkspace(message.type === 'WORKSPACE_DISPLAY' ? { display: message.display, open: message.open ?? true } : { mode: message.mode, splitCategory: message.splitCategory || (await readWorkspace()).splitCategory, cloudSection: message.cloudSection || 'overview' });
+      sendResponse({ state }); return;
+    }
+    if (message?.type === 'OPEN_WORKSPACE_COMMANDS') {
+      await updateWorkspace({ display: 'float', open: true });
+      await chrome.storage.session.set({ workspaceCommandsRequest: { id: crypto.randomUUID(), tabId: sender.tab?.id } });
+      sendResponse({ ok: true }); return;
+    }
+    if (message?.type === 'CONSUME_WORKSPACE_COMMANDS') {
+      commandWrites = commandWrites.catch(() => undefined).then(async () => {
+        const request = (await chrome.storage.session.get('workspaceCommandsRequest')).workspaceCommandsRequest;
+        const context = await workspaceContext(sender.tab);
+        const open = Boolean(request && (request.tabId == null || request.tabId === context.tabId));
+        if (open) await chrome.storage.session.remove('workspaceCommandsRequest');
+        sendResponse({ open });
+      });
+      await commandWrites; return;
+    }
+    if (message?.type === 'RESET_WORKSPACE_LAYOUT') { sendResponse({ state: await updateWorkspace({ position: undefined, size: undefined }) }); return; }
+    if (message?.type === 'OPEN_PIGEONBOX_WORKSPACE') { await showWorkspace(); sendResponse({ ok: true }); return; }
+    if (message?.type === 'SET_WORKSPACE_CONTEXT') {
+      if (sender.tab?.id == null) { sendResponse({ ok: false }); return; }
+      const tabId = sender.tab.id;
+      const row = message.context;
+      const context = row?.threadId ? { tabId, threadId: String(row.threadId).slice(0, 128), subject: String(row.subject || '').slice(0, 998), sender: String(row.sender || '').slice(0, 320), owner: mailboxOwnerFrom(row.owner), pending: row.pending ? String(row.pending).slice(0, 200) : null, drafting: Boolean(row.drafting) } : null;
+      contextWrites = contextWrites.then(async () => {
+        const current = await chrome.storage.session.get('workspaceContexts');
+        if (JSON.stringify(current.workspaceContexts?.[tabId]) !== JSON.stringify(context)) await chrome.storage.session.set({ workspaceContexts: { ...current.workspaceContexts, [tabId]: context } });
+      });
+      await contextWrites;
+      sendResponse({ ok: true }); return;
+    }
+    if (message?.type === 'GET_WORKSPACE_CONTEXT') {
+      const context = await workspaceContext(sender.tab);
+      if (context.tabId != null && sender.url?.includes('workspace.html')) await chrome.sidePanel.setOptions({ tabId: context.tabId, path: 'sidepanel.html', enabled: true });
+      sendResponse(context); return;
+    }
+    if (message?.type === 'WORKSPACE_THREAD_ACTION') {
+      const context = await workspaceContext(sender.tab);
+      if (!context.context || context.context.threadId !== message.threadId || context.tabId == null) { sendResponse({ ok: false, reason: 'Reopen this conversation first.' }); return; }
+      sendResponse(await chrome.tabs.sendMessage(context.tabId, { type: 'PIGEONBOX_WORKSPACE_ACTION', id: message.id, threadId: message.threadId, body: typeof message.body === 'string' ? message.body.slice(0, 40000) : undefined })); return;
+    }
+
 
     if (message?.type === 'PRODUCT_EVENT') { void recordProductEvent(message.event, message.metadata); sendResponse({ ok: true }); return; }
     const cloudResponse = await handleCloudMessage(message, sender);
@@ -998,12 +1189,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message?.type === 'INGEST_THREAD' || message?.type === 'INGEST_THREADS') {
         const threads = (message.type === 'INGEST_THREADS' ? message.threads : [message.thread]) as IngestThread[];
         const direction = message.direction || 'inbound';
+        const explicit = mailboxOwnerFrom(message.owner);
+        const identity = explicit ? withSelfAliases(explicit, (threads || []).flatMap((thread) => (thread?.messages || []).flatMap((row) => [row.sender, ...(row.recipients || [])]))) : undefined;
+        const owner = isGmailContentScript(sender) && !identity ? undefined : await mailboxIdentities.resolve(sender.tab?.id, sender.tab?.url || sender.url, identity);
         const results = [];
         for (const thread of threads || []) {
           if (!thread?.threadId) continue;
+          if (owner) thread.mailboxEmail = owner.email;
           const result = await ingestor.ingestThread(thread);
           results.push(result);
-          if (result.changed) await classifyIngested(thread, result.fingerprint, result.quality, direction);
+          if (result.changed) await classifyIngested(thread, result.fingerprint, result.quality, direction, owner);
         }
         sendResponse({ ok: true, results });
         return;
@@ -1011,7 +1206,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message?.type === 'REPORT_RUNTIME') {
         await chrome.storage.session.set({ gmailRuntime: message.runtime });
         const owner = mailboxOwnerFrom(message.owner);
-        if (owner) await rememberMailboxOwner(owner);
+        if (owner) {
+          await rememberMailboxOwner(owner);
+          if (sender.tab?.id != null) await mailboxIdentities.remember(sender.tab.id, sender.tab.url || sender.url || '', owner);
+        }
         sendResponse({ ok: true });
         return;
       }
@@ -1025,7 +1223,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const matched = filterSplitThreads(threads, category, followUps);
         const rows = [];
         for (const thread of matched) {
-          const summary = await db.thread_summaries.get(thread.threadId);
+          const owner = thread.mailboxEmail ? await mailboxIdentities.forEmail(thread.mailboxEmail) : undefined;
+          const summary = visibleSummaryForOwner(await db.thread_summaries.get(thread.threadId), owner);
           rows.push({
             threadId: thread.threadId,
             subject: thread.subject,
@@ -1104,16 +1303,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: false, reason: 'Open the thread first.' });
           return;
         }
+        const owner = isGmailContentScript(sender) && !mailboxOwnerFrom(message.owner) ? undefined : await mailboxIdentities.resolve(sender.tab?.id, sender.tab?.url || sender.url, mailboxOwnerFrom(message.owner));
+        if (!owner && (message.type === 'REQUEST_SUMMARY' || message.type === 'SUMMARIZE_THREAD')) {
+          sendResponse({ ok: false, status: 'waiting_owner', reason: 'Resolving Gmail account…' });
+          return;
+        }
         const input = {
           threadId,
+          requireOwner: true,
           fingerprint: snapshot.fingerprint || thread?.contentFingerprint || `page:${threadId}`,
           subject: snapshot.subject,
-          messages: snapshot.messages.map((m) => ({
+          messages: tagAuthors(snapshot.messages.map((m) => ({
             sender: withSenderName(m.sender, senderNames),
             bodyText: m.bodyText,
             timestamp: m.timestamp,
-          })),
-          owner: mailboxOwnerFrom(message.owner),
+          })), owner),
+          owner,
           force: Boolean(message.force),
         };
         const result = message.type === 'REQUEST_SUMMARY'
@@ -1137,7 +1342,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             body = matching?.suggestion?.body;
           } else if (job.kind === 'summary') {
             const summary = await db.thread_summaries.get(job.threadId);
-            oneLine = summary?.summary?.oneLine;
+            oneLine = summary?.fingerprint === job.fingerprint ? summary.summary.oneLine : undefined;
           }
         }
         sendResponse({ ok: Boolean(job), job: job || null, body, oneLine });
@@ -1167,16 +1372,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: false, reason: 'Open the thread first.' });
           return;
         }
+        const owner = isGmailContentScript(sender) && !mailboxOwnerFrom(message.owner) ? undefined : await mailboxIdentities.resolve(sender.tab?.id, sender.tab?.url || sender.url, mailboxOwnerFrom(message.owner));
+        if (!owner && (message.type === 'REQUEST_SUMMARY' || message.type === 'SUMMARIZE_THREAD')) {
+          sendResponse({ ok: false, status: 'waiting_owner', reason: 'Resolving Gmail account…' });
+          return;
+        }
         const input = {
           threadId,
+          requireOwner: true,
           fingerprint: snapshot.fingerprint || thread?.contentFingerprint || `page:${threadId}`,
           subject: snapshot.subject,
-          messages: snapshot.messages.map((m) => ({
+          messages: tagAuthors(snapshot.messages.map((m) => ({
             sender: withSenderName(m.sender, senderNames),
             bodyText: m.bodyText,
             timestamp: m.timestamp,
-          })),
-          owner: mailboxOwnerFrom(message.owner),
+          })), owner),
+          owner,
           force: Boolean(message.force),
         };
         const result = message.type === 'SUMMARIZE_THREAD' ? await agent.requestSummary(input) : await agent.requestDraft(input);
@@ -1331,6 +1542,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true, emails: await readTrackedEmails() });
         return;
       }
+      if (message?.type === 'TRACKING_INSPECTION_READY') {
+        await navigationAttribution;
+        const released = sender.tab?.id != null && attribution.inspected(sender.tab.id);
+        await persistAttribution();
+        if (released) void pollTracking();
+        sendResponse({ ok: true });
+        return;
+      }
       if (message?.type === 'GET_TRACKED_EMAILS') {
         sendResponse({ emails: await readTrackedEmails() });
         return;
@@ -1345,7 +1564,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         try {
           const events = await new TrackingClient(target.baseUrl, target.credential).getEvents(trackingId);
-          sendResponse({ timeline: deriveTrackingTimeline(events) });
+          await navigationAttribution;
+          await claimAttribution;
+          sendResponse({ timeline: deriveTrackingTimeline(attribution.events(trackerIssuer(settings) || 'unconfigured', events)) });
         } catch (error) {
           sendResponse({ error: error instanceof Error ? error.message : 'Activity could not be loaded.' });
         }
@@ -1431,11 +1652,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             db.draft_suggestions.where('threadId').equals(threadId).toArray(),
             db.thread_overrides.get(threadId),
           ]);
-          const currentFingerprint = summary?.fingerprint?.replace(/:sum\d+$/, '') || threadRow?.contentFingerprint;
+          const resolvedOwner = isGmailContentScript(sender) && !mailboxOwnerFrom(message.owner) ? undefined : await mailboxIdentities.resolve(sender.tab?.id, sender.tab?.url || sender.url, mailboxOwnerFrom(message.owner));
+          const owner = resolvedOwner || (isExtensionPageSender(sender) && threadRow?.mailboxEmail ? await mailboxIdentities.forEmail(threadRow.mailboxEmail) : undefined);
+          const visibleSummary = visibleSummaryForOwner(summary, owner);
+          const currentFingerprint = summary?.sourceFingerprint || threadRow?.contentFingerprint;
           const matchingDraft = currentFingerprint
             ? drafts.find((d) => d.fingerprint === currentFingerprint) || null
             : drafts.sort((a, b) => b.createdAt - a.createdAt)[0] || null;
-          intel[threadId] = { classification, summary, draft: matchingDraft, manual: Boolean(override) };
+          intel[threadId] = { classification, summary: visibleSummary, draft: matchingDraft, manual: Boolean(override) };
         }
         sendResponse(message.type === 'GET_THREAD_INTEL_MANY' ? { intel } : intel[ids[0]] || {});
         return;
@@ -1518,7 +1742,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse(await runDiagnostics());
         break;
       case 'ASK_INBOX':
-        sendResponse(await handleAskPigeon(msg.query));
+        sendResponse(await handleAskPigeon(msg.query, typeof message.threadId === 'string' ? message.threadId : undefined, await mailboxIdentities.resolve(sender.tab?.id, sender.tab?.url || sender.url, mailboxOwnerFrom(message.owner))));
         break;
       case 'OPEN_COMPOSE_DRAFT':
         sendResponse(await openComposeDraft(msg.draft));
@@ -1613,6 +1837,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true });
         break;
       case 'TRACKING_SELF_VIEW': {
+        await claimAttribution;
         const target = msg.trackingId ? await trackerTargetFor(String(msg.trackingId)) : null;
         if (!target) {
           sendResponse({
@@ -1632,6 +1857,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           msg.selfViewEventId ||
           `sv_${msg.trackingId}_${normMessageId || 'nomessage'}_${source}_${Date.parse(timestamp) || Date.now()}`;
 
+        const pendingClaim: PendingSelfView = { issuer: trackerIssuer(settings) || 'unconfigured', trackingId: msg.trackingId, eventId: selfViewEventId, observedAt: Date.parse(timestamp), tabId: sender.tab?.id };
+        attribution.begin(pendingClaim);
+        const deliveryKey = `${pendingClaim.trackingId}\n${pendingClaim.eventId}`;
+        deliveringClaims.add(deliveryKey);
+        try {
+        await persistAttribution();
+
+        const retryPayload = { source, gmailThreadId: normThreadId, gmailMessageId: normMessageId, quotedRender: msg.quotedRender === true, reconcileGmailIds: msg.reconcileGmailIds === true };
+        // Also retry a successful legacy claim whose canonical detail lookup fails.
+        attribution.retry(pendingClaim, retryPayload);
+        await persistAttribution();
         let lastErr: unknown = null;
         let result: Awaited<ReturnType<typeof client.recordSelfView>> | null = null;
         const delays = [0, 500, 2000];
@@ -1663,8 +1899,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         }
 
+        if (!result?.ok) {
+          // Store retry metadata on the same precise reservation, never an extra suppression window.
+          const pending = attribution.snapshot().pending.find((row) => row.eventId === selfViewEventId && row.trackingId === msg.trackingId);
+          if (pending) pending.retry = retryPayload;
+          await persistAttribution();
+        }
         if (result && result.ok) {
-          await pollTracking();
+          await reconcileSelfView(pendingClaim, result, client);
+          void pollTracking();
           try {
             await chrome.storage.session?.set?.({
               lastSelfViewDiagnostic: {
@@ -1716,6 +1959,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             error: errMessage,
           });
         }
+        } finally { deliveringClaims.delete(deliveryKey); }
         break;
       }
       case 'CHATGPT_LOGIN':
@@ -1944,12 +2188,12 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
 const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
 /** The Gmail account the content script read from the page, if any. */
-function mailboxOwnerFrom(value: unknown): { email: string; name?: string } | undefined {
+function mailboxOwnerFrom(value: unknown): MailboxIdentity | undefined {
   if (!value || typeof value !== 'object') return undefined;
-  const { email, name } = value as { email?: unknown; name?: unknown };
+  const { email, name, aliases } = value as { email?: unknown; name?: unknown; aliases?: unknown };
   if (typeof email !== 'string' || !EMAIL_PATTERN.test(email)) return undefined;
   const cleanName = typeof name === 'string' ? name.trim().slice(0, 80) : '';
-  return { email: email.trim().toLowerCase(), name: cleanName || undefined };
+  return { email: email.trim().toLowerCase(), name: cleanName || undefined, aliases: Array.isArray(aliases) ? aliases.filter((alias): alias is string => typeof alias === 'string' && EMAIL_PATTERN.test(alias)).slice(0, 20).map((alias) => alias.trim().toLowerCase()) : undefined };
 }
 
 /** Display names by lowercased address, from the page first and then stored rows. */

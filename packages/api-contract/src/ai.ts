@@ -40,6 +40,7 @@ export const VoiceProfileSchema = z.object({
 
 const ThreadMessageSchema = z.object({
   sender: text(400),
+  authorRole: z.enum(['owner', 'other']).optional(),
   bodyText: text(AI_LIMITS.bodyChars),
   timestamp: text(80),
 });
@@ -57,7 +58,7 @@ export const ClassifyInputSchema = z.object({
 export const SummarizeInputSchema = z.object({
   subject: text(AI_LIMITS.subjectChars),
   messages: z.array(ThreadMessageSchema).min(1).max(AI_LIMITS.messages),
-  owner: z.object({ email: text(320), name: text(120).optional() }).optional(),
+  owner: z.object({ email: text(320), name: text(120).optional(), aliases: z.array(text(320)).max(20).optional() }).optional(),
 });
 
 export const DraftInputSchema = z.object({
@@ -65,7 +66,7 @@ export const DraftInputSchema = z.object({
   recipientEmails: z.array(EmailAddressSchema).max(20).optional(),
   subject: text(AI_LIMITS.subjectChars),
   messages: z.array(ThreadMessageSchema).min(1).max(AI_LIMITS.messages),
-  owner: z.object({ email: text(320), name: text(120).optional() }).optional(),
+  owner: z.object({ email: text(320), name: text(120).optional(), aliases: z.array(text(320)).max(20).optional() }).optional(),
   voice: VoiceProfileSchema,
   mode: z.enum(['direct', 'warm', 'short']).optional(),
   kind: z.enum(['reply', 'follow_up']),

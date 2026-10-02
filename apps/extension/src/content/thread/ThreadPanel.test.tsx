@@ -191,35 +191,12 @@ describe('thread panel and row chips', () => {
     root.unmount();
   });
 
-  it('hides the card to a pill and brings it back', async () => {
-    const host = document.createElement('div');
-    document.body.append(host);
-    const root = createRoot(host);
-    await act(async () => {
-      root.render(
-        <ThreadPanel
-          intel={{
-            classification: { category: 'RESPOND', needsReply: true },
-            summary: { source: 'model', aiStatus: 'success', summary: { oneLine: 'Asked about Thursday.', keyPoints: ['Thursday is open'] } },
-            draft: { suggestion: { body: 'Thursday works.' } },
-          }}
-          onDraft={() => undefined}
-          onRemind={() => undefined}
-        />,
-      );
-    });
-    const hide = host.querySelector('[aria-label="Hide intelligence"]') as HTMLButtonElement;
-    await act(async () => {
-      hide.click();
-    });
-    expect(host.textContent).not.toContain('Draft reply');
-    const show = host.querySelector('[aria-label="Show intelligence"]') as HTMLButtonElement;
-    expect(show?.textContent).toContain('Respond');
-    await act(async () => {
-      show.click();
-    });
-    expect(host.textContent).toContain('Draft reply');
-    expect(host.textContent).toContain('Thursday is open');
+  it('shows a neutral state while owner identity resolves instead of stale summary text', async () => {
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+    await act(async () => root.render(<ThreadPanel pending="Resolving Gmail account…" intel={{ summary: { source: 'model', aiStatus: 'success', summary: { oneLine: 'Aiden sent the scope.' } } }} onDraft={() => undefined} onRemind={() => undefined} />));
+    expect(host.textContent).toContain('Resolving Gmail account');
+    expect(host.textContent).not.toContain('Aiden sent');
+    expect(host.querySelector('[data-gi-drag]')).toBeNull();
     root.unmount();
   });
 
@@ -312,7 +289,7 @@ describe('thread panel and row chips', () => {
       );
     });
     expect(host.textContent).toContain('Analyzing with gpt-4o-mini…');
-    expect(host.textContent).toContain('Summary');
+    expect(host.textContent).not.toContain('Summary');
     expect(host.textContent).not.toContain('Message preview');
     expect(host.textContent).not.toContain('A draft question about meeting times.');
     root.unmount();

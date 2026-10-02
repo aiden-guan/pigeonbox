@@ -1,4 +1,5 @@
 import {
+  summaryPerspectiveIssue,
   ClassificationResultSchema,
   DraftSuggestionSchema,
   ThreadSummarySchema,
@@ -150,16 +151,20 @@ export function createPromptBackedProvider(
         owner: input.owner,
         messages: readable.slice(-8).map((message) => ({
           sender: message.sender,
+          authorRole: message.authorRole,
           timestamp: message.timestamp,
           bodyText: clip(message.bodyText, Math.max(800, Math.floor(maxUserChars / 8))),
         })),
       });
-      const { data, usage } = await chatJson(
-        EMAIL_SUMMARY_SYSTEM_PROMPT,
-        summaryUserContent(formatted),
-        z.preprocess(coerceThreadSummary, ThreadSummarySchema) as z.ZodType<ThreadSummary>,
-      );
-      return { result: data, usage };
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const { data, usage } = await chatJson(
+          EMAIL_SUMMARY_SYSTEM_PROMPT,
+          summaryUserContent(formatted) + (attempt ? '\nCorrect the actor perspective: messages from you belong to the reader. Return a fresh brief.' : ''),
+          z.preprocess(coerceThreadSummary, ThreadSummarySchema) as z.ZodType<ThreadSummary>,
+        );
+        if (!summaryPerspectiveIssue(data, input)) return { result: data, usage };
+      }
+      throw new Error('The model returned an inconsistent owner perspective.');
     },
     async draftReply(input: DraftInput) {
       return summaryStyle === 'compact'
@@ -277,16 +282,16 @@ async function compactSummary(
   input: SummarizeInput,
   maxUserChars: number,
 ): Promise<{ result: ThreadSummary; usage?: UsageStats }> {
-  const completion = await complete(COMPACT_SUMMARY_SYSTEM_PROMPT, compactSummaryUser(input, maxUserChars), {
-    examples: COMPACT_SUMMARY_EXAMPLES,
-    maxTokens: 160,
-  });
-  const parsed = ThreadSummarySchema.safeParse(coerceThreadSummary(jsonOrNull(completion.text) ?? parseCompactSummary(completion.text)));
-  if (!parsed.success) throw new Error('On-device model did not return a summary. Try again or choose a larger model.');
-  return {
-    result: { ...parsed.data, actionItems: dropOwnerTodos(parsed.data.actionItems, input.owner) },
-    usage: completion.usage,
-  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const completion = await complete(COMPACT_SUMMARY_SYSTEM_PROMPT, compactSummaryUser(input, maxUserChars) + (attempt ? '\nUse you for the reader who wrote messages from me.' : ''), {
+      examples: COMPACT_SUMMARY_EXAMPLES, maxTokens: 160,
+    });
+    const parsed = ThreadSummarySchema.safeParse(coerceThreadSummary(jsonOrNull(completion.text) ?? parseCompactSummary(completion.text)));
+    if (!parsed.success) throw new Error('On-device model did not return a summary. Try again or choose a larger model.');
+    const result = { ...parsed.data, actionItems: dropOwnerTodos(parsed.data.actionItems, input.owner) };
+    if (!summaryPerspectiveIssue(result, input)) return { result, usage: completion.usage };
+  }
+  throw new Error('The model returned an inconsistent owner perspective.');
 }
 
 /** A message that is not about mail: plain text, no emails, no citations. */

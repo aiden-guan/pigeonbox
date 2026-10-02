@@ -143,7 +143,7 @@ describe('answerAskPigeon', () => {
 
   it('leaves out threads where you already had the last word, automated mail and list mail', async () => {
     const q = (id: string, patch: Partial<ThreadRow> = {}) => thread(id, { classification: 'RESPOND', requiresResponse: true, ...patch });
-    const signedInAs = { email: 'aiden@example.com', name: 'Aiden Guan' };
+    const signedInAs = { email: 'aiden@example.com', name: 'Aiden Guan', aliases: ['aidenguan@berkeley.edu'] };
     const fromSchool = (threadId: string, timestamp: string, body = 'thanks!') => ({
       ...message(threadId, 'aidenguan@berkeley.edu', 'arlan@example.com', timestamp, body),
       sender: { email: 'aidenguan@berkeley.edu', name: 'Aiden Haoyu Guan' },

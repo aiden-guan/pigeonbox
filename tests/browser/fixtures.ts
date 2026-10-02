@@ -4,7 +4,8 @@ import { cp, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { DEFAULT_SETTINGS } from '../../packages/shared/src/index';
-import { ROUTES, type CloudDraft, type DraftListItem, type RouteName, type ThreadIntel } from '../../packages/api-contract/src/index';
+import type { TrackedEmail, TrackingEvent } from '../../packages/tracking/src/index';
+import { ROUTES, type CloudDraft, type DraftListItem, type RouteName, type ThreadIntel, type SavedTask } from '../../packages/api-contract/src/index';
 
 const accountId = '00000000-0000-4000-8000-000000000001';
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -146,6 +147,7 @@ export type FixtureApi = {
   syncMode: 'idle' | 'analyzing' | 'reauth';
   calls: { route: string; body: Record<string, unknown> }[];
   baseUrl: string;
+  tracker?: { email: TrackedEmail; events: TrackingEvent[]; holdClaims: boolean; release: () => void };
 };
 type App = {
   context: BrowserContext;
@@ -159,6 +161,8 @@ export const test = base.extend<{ app: App }>({
   app: async ({}, use) => {
     const api: FixtureApi = { partial: false, disconnected: false, delay: 0, fail: false, quiet: false, syncMode: 'idle', calls: [], baseUrl: '' };
     const placed = new Map<string, CloudDraft>();
+    let tasks: SavedTask[] = [];
+    const heldClaims: Array<() => void> = [];
     const server = createServer(async (request, response) => {
       const route = new URL(request.url!, 'http://fixture.test').pathname;
       response.setHeader('Access-Control-Allow-Origin', '*');
@@ -178,7 +182,28 @@ export const test = base.extend<{ app: App }>({
         /* synthetic PDF bytes */
       }
       api.calls.push({ route, body });
-      const def = Object.entries(ROUTES).find(([, value]) => value.path === route)?.[0] as RouteName | undefined;
+      if (api.tracker && (route.startsWith('/api/') || route.startsWith('/open/'))) {
+        const tracker = api.tracker;
+        tracker.release = () => { tracker.holdClaims = false; heldClaims.splice(0).forEach((resolve) => resolve()); };
+        if (route.startsWith('/open/')) {
+          const timestamp = new Date().toISOString();
+          tracker.events.push({ id: 'own-reload-proxy', tracking_id: tracker.email.tracking_id, type: 'OPEN', timestamp, classification: 'PROXY_LIKELY', user_agent: 'Mozilla/5.0 (via ggpht.com GoogleImageProxy)' });
+          tracker.email.open_count += 1; tracker.email.first_opened_at = timestamp; tracker.email.last_opened_at = timestamp;
+          response.setHeader('Content-Type', 'image/gif');
+          response.end(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64')); return;
+        }
+        if (route.endsWith('/self-view')) {
+          if (tracker.holdClaims) await new Promise<void>((resolve) => heldClaims.push(resolve));
+          const reclassifiedEventIds = tracker.events.filter((event) => event.classification === 'PROXY_LIKELY').map((event) => event.id);
+          tracker.events.forEach((event) => { if (reclassifiedEventIds.includes(event.id)) { event.classification = 'SELF_LIKELY'; event.suspected_self_open = true; } });
+          const opens = tracker.events.filter((event) => event.type === 'OPEN' && event.classification === 'RECIPIENT_LIKELY');
+          tracker.email.open_count = opens.length; tracker.email.first_opened_at = opens[0]?.timestamp || null; tracker.email.last_opened_at = opens.at(-1)?.timestamp || null;
+          response.end(JSON.stringify({ ok: true, open_count: tracker.email.open_count, reclassifiedEventIds, first_opened_at: tracker.email.first_opened_at, last_opened_at: tracker.email.last_opened_at, click_count: 0, first_clicked_at: null, last_clicked_at: null })); return;
+        }
+        const data = route === '/api/emails' ? [tracker.email] : route.endsWith('/events') || route === '/api/events/recent' ? tracker.events : tracker.email;
+        response.end(JSON.stringify(data)); return;
+      }
+      const def = Object.entries(ROUTES).find(([, value]) => value.path === route && value.method === request.method)?.[0] as RouteName | undefined;
       let data: unknown;
       if (route === '/v1/capabilities') data = { plan: 'cloud', capabilities };
       else if (def === 'connections')
@@ -234,7 +259,10 @@ export const test = base.extend<{ app: App }>({
           drafts: [],
           retrieval: { strategies: ['lexical'], candidates: 1, used: 1, window: { from: null, to: null } },
         };
-      } else if (def === 'approvals') data = { approvals: [], pending: 0 };
+      } else if (def === 'tasks') data = { tasks };
+      else if (def === 'taskCreate') { tasks.push({ id: String(body.id), title: String(body.title), threadId: body.threadId ? String(body.threadId) : null, accountId: body.threadId ? accountId : null, dueAt: null, status: 'open', createdAt: at }); data = { tasks }; }
+      else if (def === 'taskUpdate') { tasks = tasks.map((task) => task.id === body.id ? { ...task, status: body.status as SavedTask['status'] } : task); data = { tasks }; }
+      else if (def === 'approvals') data = { approvals: [], pending: 0 };
       else if (def === 'followUps') data = { followUps: [], generatedAt: at };
       else if (def === 'auditList') data = { events: [], nextCursor: null };
       else if (def === 'automationRuns') data = { runs: [] };
@@ -366,7 +394,7 @@ export const test = base.extend<{ app: App }>({
     await context.route('https://mail.google.com/**', (route) =>
       route.fulfill({
         contentType: 'text/html',
-        body: '<!doctype html><html><body style="font-family:Arial"><a aria-label="Google Account: Owner (owner@fixture.test)">Owner</a><input aria-label="Search mail"><div role="main" data-thread-perm-id="abc123"><h2 class="hP">Pricing</h2><div data-legacy-message-id="abcd"><span email="maya@fixture.test">Maya</span><div class="a3s">Can you send a quote?</div></div><button aria-label="Reply">Reply</button><div role="region" aria-label="Reply"><input name="draft" value="abc999"><div contenteditable="true" aria-label="Message Body" style="min-height:80px">Existing text</div><button aria-label="Send" onclick="document.body.dataset.sent=\'true\'">Send</button></div></div></body></html>',
+        body: '<!doctype html><html><body style="font-family:Arial"><a href="https://accounts.google.com/" aria-label="Google Account: Owner (owner@fixture.test)">Owner</a><input aria-label="Search mail"><div role="main" data-thread-perm-id="abc123"><h2 class="hP">Pricing</h2><div data-legacy-message-id="abcd"><span email="maya@fixture.test">Maya</span><div class="a3s">Can you send a quote?</div></div><button aria-label="Reply">Reply</button><div role="region" aria-label="Reply"><input name="draft" value="abc999"><div contenteditable="true" aria-label="Message Body" style="min-height:80px">Existing text</div><button aria-label="Send" onclick="document.body.dataset.sent=\'true\'">Send</button></div></div></body></html>',
       }),
     );
     const app: App = {
@@ -376,9 +404,9 @@ export const test = base.extend<{ app: App }>({
       api,
       page: async (name, cloud = false) => {
         const setup = await context.newPage();
-        await setup.goto(`chrome-extension://${id}/popup.html`);
+        await setup.goto(`chrome-extension://${id}/settings.html`);
         await setup.evaluate(
-          async ({ defaults, baseUrl, cloud }) => {
+          async ({ defaults, baseUrl, cloud, name }) => {
             await chrome.runtime.sendMessage({
               type: 'SAVE_SETTINGS',
               settings: {
@@ -408,15 +436,16 @@ export const test = base.extend<{ app: App }>({
               const checked = await chrome.runtime.sendMessage({ type: 'CLOUD_REFRESH' });
               if (checked?.state?.cloud?.status !== 'ready') throw new Error('Synthetic Cloud session did not become ready');
             }
-            await chrome.storage.session.set({ panelState: { mode: cloud ? 'cloud' : 'inbox' } });
+            await chrome.storage.local.set({ workspaceState: { mode: cloud ? 'home' : 'inbox', splitCategory: 'RESPOND', cloudSection: 'overview', display: name === 'sidepanel' ? 'dock' : 'float', open: true } });
           },
-          { defaults: DEFAULT_SETTINGS, baseUrl: api.baseUrl, cloud },
+          { defaults: DEFAULT_SETTINGS, baseUrl: api.baseUrl, cloud, name },
         );
         if (name === 'sidepanel') await setup.setViewportSize({ width: 420, height: 900 });
         await setup.goto(`chrome-extension://${id}/${name}.html`);
         return setup;
       },
       gmail: async () => {
+        await worker.evaluate(async () => { const stored = await chrome.storage.local.get('workspaceState'); await chrome.storage.local.set({ workspaceState: { ...stored.workspaceState, mode: 'home', cloudSection: 'overview', display: 'float', open: true } }); });
         const page = await context.newPage();
         await page.goto('https://mail.google.com/mail/u/0/#inbox/abc123');
         return page;
@@ -424,6 +453,7 @@ export const test = base.extend<{ app: App }>({
     };
       await use(app);
     } finally {
+      api.tracker?.release();
       await closeContext?.close();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(profile, { recursive: true, force: true });

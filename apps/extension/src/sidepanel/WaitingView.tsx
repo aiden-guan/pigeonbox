@@ -147,7 +147,7 @@ export function WaitingView(props: {
                     <span className="truncate text-[13px] font-semibold tracking-[-0.02em]">{thread.sender}</span>
                     <span className="gi-time shrink-0">{relative(thread.timestamp)}</span>
                   </div>
-                  <div className="mt-0.5 truncate text-[13px] text-[#e7e2d7]">{thread.subject || '(no subject)'}</div>
+                  <div className="mt-0.5 truncate text-[13px] text-[color:var(--pb-fg)]">{thread.subject || '(no subject)'}</div>
                   <div className="mt-1.5"><span className="gi-open-state">Not tracked</span></div>
                 </button>
               </li>
@@ -177,7 +177,7 @@ function TrackedRow(props: {
           <span className="truncate text-[13px] font-semibold tracking-[-0.02em]">to {recipients(email.recipients)}</span>
           <span className="gi-time shrink-0">{relative(email.sentAt || email.createdAt || '')}</span>
         </div>
-        <div className="mt-0.5 truncate text-[13px] text-[#e7e2d7]">{email.subject || '(no subject)'}</div>
+        <div className="mt-0.5 truncate text-[13px] text-[color:var(--pb-fg)]">{email.subject || '(no subject)'}</div>
         <div className="mt-1.5 flex items-center gap-2 text-[11px]">
           <span className="gi-open-state" data-opened={engaged}>
             <i aria-hidden="true" />

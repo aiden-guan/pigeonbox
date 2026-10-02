@@ -1,9 +1,12 @@
 import { test, expect } from './fixtures';
+import { ownerPerspectiveKey } from '../../packages/shared/src/owner';
 import type { Page } from '@playwright/test';
 
 /** Explicitly synthetic mail, written only to the test fixture's disposable profile. */
 async function seedDispatch(page: Page, count = 8) {
-  await page.evaluate(async (size) => {
+  await page.evaluate(async ({ size, perspective }) => {
+    await chrome.runtime.sendMessage({ type: 'LIST_SPLIT', category: 'RESPOND' });
+    await chrome.storage.local.set({ mailboxIdentities: { '0': { email: 'owner@fixture.test', name: 'Owner' } } });
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('gi_mailbox_v1');
       request.onsuccess = () => resolve(request.result);
@@ -16,26 +19,26 @@ async function seedDispatch(page: Page, count = 8) {
       const category = ['RESPOND', 'WAITING', 'FYI', 'WAITING'][index % 4];
       const subject = index === 0 ? 'Final review on the launch note' : index === 4 ? 'Budget for the next sprint' : `Dispatch fixture ${index + 1}: a longer subject with enough words to test truncation`;
       const at = new Date(Date.UTC(2026, 9, 1, 16, 42 - index)).toISOString();
-      tx.objectStore('threads').put({ threadId: id, accountId: 'fixture', subject, participants: [], latestSender: { name: names[index % 4], email: 'sender@fixture.test' }, latestTimestamp: at, messageCount: 2, snippet: 'Review requested before Friday.', route: 'inbox', lastIndexedAt: Date.now(), contentFingerprint: id, classification: category, priority: index === 0 ? 'HIGH' : 'NORMAL', archivedLocally: false, requiresResponse: category === 'RESPOND', awaitingResponse: category === 'WAITING', virtualLabels: [] });
-      tx.objectStore('thread_summaries').put({ threadId: id, fingerprint: id, source: 'model', aiStatus: 'success', createdAt: Date.now(), summary: { oneLine: 'Two edits are needed before Friday’s 10:00 review.', keyPoints: ['Final launch review'], actionItems: ['Soften the opening', 'Replace the screenshot'], dates: ['Friday · 10:00 AM'], decisions: [], unansweredQuestions: [], commitments: [] } });
+      tx.objectStore('threads').put({ threadId: id, accountId: 'fixture', mailboxEmail: 'owner@fixture.test', subject, participants: [], latestSender: { name: names[index % 4], email: 'sender@fixture.test' }, latestTimestamp: at, messageCount: 2, snippet: 'Review requested before Friday.', route: 'inbox', lastIndexedAt: Date.now(), contentFingerprint: id, classification: category, priority: index === 0 ? 'HIGH' : 'NORMAL', archivedLocally: false, requiresResponse: category === 'RESPOND', awaitingResponse: category === 'WAITING', virtualLabels: [] });
+      tx.objectStore('thread_summaries').put({ threadId: id, fingerprint: id, sourceFingerprint: id, ownerPerspective: perspective, source: 'model', aiStatus: 'success', createdAt: Date.now(), summary: { oneLine: 'Two edits are needed before Friday’s 10:00 review.', keyPoints: ['Final launch review'], actionItems: ['Soften the opening', 'Replace the screenshot'], dates: ['Friday · 10:00 AM'], decisions: [], unansweredQuestions: [], commitments: [] } });
       tx.objectStore('search_documents').put({ id, threadId: id, text: `${subject} Maya review Friday launch`, subject, senders: names[index % 4], recipients: 'owner@fixture.test', labels: category, timestamp: at, fingerprint: id });
     }
     await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
     db.close();
-  }, count);
+  }, { size: count, perspective: ownerPerspectiveKey({ email: 'owner@fixture.test', name: 'Owner' }) });
   await page.reload();
 }
 
-test('Dispatch popup: launcher morph, focus, category geometry, brief and responsive widths', async ({ app }) => {
-  const page = await app.page('popup');
+test('Workspace: launcher morph, focus, category geometry, brief and responsive widths', async ({ app }) => {
+  const page = await app.page('workspace');
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await seedDispatch(page);
   await expect(page.getByRole('button', { name: 'Read brief: Final review on the launch note' })).toBeVisible();
-  await expect(page.locator('.pb-overview-count strong')).toHaveText('8');
+  await expect(page.getByRole('button', { name: 'Cloud', exact: true })).toHaveCount(0);
   await page.setViewportSize({ width: 448, height: 700 });
   await page.waitForTimeout(450);
-  await page.screenshot({ path: 'test-results/dispatch-popup-448.png' });
+  await page.screenshot({ path: 'test-results/workspace-448.png' });
   const launcher = page.locator('[data-command-launcher]');
   const origin = await launcher.boundingBox();
   await launcher.focus();
@@ -44,7 +47,7 @@ test('Dispatch popup: launcher morph, focus, category geometry, brief and respon
   const dialog = await page.getByRole('dialog').boundingBox();
   expect(Math.abs(dialog!.x - origin!.x)).toBeLessThan(2);
   expect(Math.abs(dialog!.y - origin!.y)).toBeLessThan(2);
-  await expect(page.getByRole('combobox')).toBeFocused();
+  await expect(page.getByRole('combobox', { name: 'Ask Pigeon or run a command' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
   await page.waitForTimeout(450);
@@ -55,25 +58,24 @@ test('Dispatch popup: launcher morph, focus, category geometry, brief and respon
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(launcher).toBeFocused();
   for (const category of ['Waiting', 'FYI', 'Follow-ups', 'Respond']) {
-    await page.getByRole('button', { name: new RegExp(`^${category}`) }).first().click();
+    await page.getByLabel('Inbox category').selectOption(category === 'Follow-ups' ? 'FOLLOW_UPS' : category.toUpperCase());
     await page.waitForTimeout(450); // Normal-speed capture after authored choreography settles.
-    await expect(page.locator('.pb-dispatch-categories button[aria-pressed="true"]')).toContainText(category);
+    await expect(page.getByLabel('Inbox category')).toHaveValue(category === 'Follow-ups' ? 'FOLLOW_UPS' : category.toUpperCase());
   }
   const thread = page.getByRole('button', { name: 'Read brief: Final review on the launch note' });
   await thread.click();
   await expect(page.getByRole('region', { name: 'Pidgy Brief' })).toContainText('Two edits');
   await page.waitForTimeout(450);
-  await page.screenshot({ path: 'test-results/dispatch-popup-brief.png' });
+  await page.screenshot({ path: 'test-results/workspace-brief.png' });
   await page.getByRole('button', { name: '← RESPOND' }).click();
   await expect(thread).toBeFocused();
   await page.waitForTimeout(450);
   for (const width of [320, 360, 380, 448]) {
     await page.setViewportSize({ width, height: 700 });
-    await page.addStyleTag({ content: `html:has(body.gi-popup),body.gi-popup,body.gi-popup #root{width:${width}px}` });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.locator('.gi-popup-app').evaluate((node) => { node.scrollTop = 0; window.scrollTo(0, 0); });
+    await page.locator('.pb-panel').evaluate((node) => { node.scrollTop = 0; window.scrollTo(0, 0); });
     await page.waitForTimeout(100);
-    await page.screenshot({ path: `test-results/dispatch-popup-${width}.png` });
+    await page.screenshot({ path: `test-results/workspace-${width}.png` });
   }
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await launcher.click();
@@ -150,7 +152,7 @@ test('Dispatch preferences, onboarding and isolated Gmail companion', async ({ a
   await expect(onboarding.getByText('Ready for Gmail.', { exact: true })).toBeVisible();
   const gmail = await app.gmail();
   gmail.on('pageerror', (error) => errors.push(error.message));
-  await expect(gmail.locator('[data-gi-ui="thread-panel"]')).toHaveCount(1);
+  await expect(gmail.locator('[data-gi-ui="workspace"]')).toHaveCount(1);
   await gmail.waitForTimeout(700);
   await gmail.screenshot({ path: 'test-results/dispatch-gmail.png' });
   await gmail.setViewportSize({ width: 760, height: 800 });
@@ -158,23 +160,18 @@ test('Dispatch preferences, onboarding and isolated Gmail companion', async ({ a
   expect(errors).toEqual([]);
 });
 
-test('Dispatch zero and large index, connected Gmail and meaningful system activity', async ({ app }) => {
-  const page = await app.page('popup');
+test('Workspace hides zero statistics and retains access to a large local index', async ({ app }) => {
+  const page = await app.page('workspace');
   await page.setViewportSize({ width: 448, height: 700 });
-  await expect(page.locator('.pb-overview-count strong')).toHaveText('0');
-  await page.screenshot({ path: 'test-results/dispatch-popup-zero.png' });
-  const gmail = await app.gmail();
-  await expect(gmail.locator('[data-gi-ui="thread-panel"]')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(page.getByText('Needs your reply', { exact: true })).toBeVisible();
+  await expect(page.getByText(/threads indexed|threads analyzed/)).toHaveCount(0);
   await seedDispatch(page, 347);
-  await expect(page.locator('[data-connection="gmail"]')).toContainText('Connected');
-  const count = Number((await page.locator('.pb-overview-count strong').innerText()).replaceAll(',', ''));
-  expect(count).toBeGreaterThanOrEqual(347);
-  await page.waitForTimeout(450);
-  await page.screenshot({ path: 'test-results/dispatch-popup-large-connected.png' });
+  await page.getByRole('button', { name: 'Inbox', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Read brief: Final review on the launch note' })).toBeVisible();
   await page.locator('[data-command-launcher]').click();
-  await page.waitForTimeout(450);
-  await page.getByRole('combobox').fill('Find important emails');
-  await page.keyboard.press('Enter');
-  // The command uses the original sidePanel.open user gesture and closes the popup.
-  await expect.poll(() => page.isClosed()).toBe(true);
+  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Maya launch review');
+  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
+  await expect(page.getByText('Sources', { exact: true })).toBeVisible();
+  expect(page.isClosed()).toBe(false);
 });

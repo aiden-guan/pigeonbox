@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { safeRedirectUrl, classifyClick, deriveTrackingStats, isSelfViewCorrelated, normalizeGmailId, decideTrackedOpen, normalizeUserAgentFamily, senderFingerprintMatches, openEventMatchesSenderClaim, pickActiveClaim, pickRecentConsumedClaim, planPageReloadProxy, selectSenderProxyClaim, type DerivedTrackingStats } from './helpers.js';
+import { safeRedirectUrl, classifyClick, deriveTrackingStats, isSelfViewCorrelated, normalizeGmailId, decideTrackedOpen, normalizeUserAgentFamily, senderFingerprintMatches, openEventMatchesSenderClaim, pickActiveClaim, pickRecentConsumedClaim, planPageReloadProxy, pageReloadProxyReclassifications, planJustSentProxy, selectSenderProxyClaim, type DerivedTrackingStats } from './helpers.js';
 import { getStore, StoreError, type ClaimRow, type EmailRow, type TrackerStore } from './store.js';
 export { createMemoryState, createMemoryStore, StoreError, STATS_EVENT_LIMIT } from './store.js';
 export type { ClaimRow, EmailRow, EventRow, LinkRow, MemoryState, StatsEventRow, TrackerStore } from './store.js';
@@ -488,7 +488,12 @@ async function handleSelfView(
         claimId: claim?.id || `clm_${selfViewEventId}`,
         claimExpiresAt: claim?.expires_at || new Date(selfMs + CLAIM_TTL_MS).toISOString(),
         open_count: existing.open_count,
-        reclassifiedEventIds: [],
+        click_count: existing.click_count,
+        first_opened_at: existing.first_opened_at,
+        last_opened_at: existing.last_opened_at,
+        first_clicked_at: existing.first_clicked_at,
+        last_clicked_at: existing.last_clicked_at,
+        reclassifiedEventIds: events.filter((event) => (event.type === 'OPEN' || event.type === 'CLICK') && event.classification === 'SELF_LIKELY').map((event) => event.id),
       });
     }
   }
@@ -611,6 +616,24 @@ async function handleSelfView(
     }
   }
 
+  if (source !== 'PAGE_RELOAD' && source !== 'ROW_INTERACTION') {
+    const claim = await store.getClaim(claimId);
+    const plan = claim ? planJustSentProxy(events.map((event) => ({ ...event, eventId: event.id, userAgent: event.user_agent })), {
+      sentAtMs: existing.sent_at ? Date.parse(existing.sent_at) : null,
+      selfViewMs: selfMs,
+      proxySlotConsumed: Boolean(claim.proxy_consumed_by_event_id),
+      quotedRender: body.quotedRender === true,
+    }) : null;
+    if (plan && claim) {
+      for (const evt of events) {
+        if (!plan.reclassifyEventIds.includes(evt.id) || evt.classification === 'SELF_LIKELY') continue;
+        await store.updateEvent(evt.id, { classification: 'SELF_LIKELY', suspected_self_open: true, confidence: 1 });
+        reclassifiedEventIds.push(evt.id);
+      }
+      await store.updateClaim(claimId, { proxy_consumed_by_event_id: plan.proxyConsumedByEventId, proxy_consumed_at: plan.proxyConsumedAt });
+    }
+  }
+
   if (source === 'PAGE_RELOAD') {
     const reloadEvents = await store.listEvents(id);
     const claim = await store.getClaim(claimId);
@@ -629,8 +652,8 @@ async function handleSelfView(
       selfMs,
       observedProxy,
     );
-    if (plan.reclassifyEventId) {
-      const evt = reloadEvents.find((row) => row.id === plan.reclassifyEventId);
+    for (const id of pageReloadProxyReclassifications(reloadEvents, plan, selfMs)) {
+      const evt = reloadEvents.find((row) => row.id === id);
       if (evt && evt.classification !== 'SELF_LIKELY') {
         await store.updateEvent(evt.id, {
           classification: 'SELF_LIKELY',
@@ -667,6 +690,11 @@ async function handleSelfView(
     claimId,
     claimExpiresAt,
     open_count: stats.openCount,
+    click_count: stats.clickCount,
+    first_opened_at: stats.firstOpenedAt,
+    last_opened_at: stats.lastOpenedAt,
+    first_clicked_at: stats.firstClickedAt,
+    last_clicked_at: stats.lastClickedAt,
     reclassifiedEventIds,
   });
 }

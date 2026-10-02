@@ -10,6 +10,7 @@ import {
   openEventMatchesSenderClaim,
   planJustSentProxy,
   planPageReloadProxy,
+  pageReloadProxyReclassifications,
   selectSenderProxyClaim,
   senderFingerprintMatches,
 } from "./openRequest";
@@ -267,7 +268,12 @@ export const recordSelfView = internalMutation({
         claimId: existingClaim?.claimId || `clm_${args.eventId}`,
         claimExpiresAt: existingClaim?.expiresAt || new Date(selfMs + CLAIM_TTL_MS).toISOString(),
         openCount: email.openCount,
-        reclassifiedEventIds: [],
+        clickCount: email.clickCount,
+        firstOpenedAt: email.firstOpenedAt,
+        lastOpenedAt: email.lastOpenedAt,
+        firstClickedAt: email.firstClickedAt,
+        lastClickedAt: email.lastClickedAt,
+        reclassifiedEventIds: (await getAllEventsForEmail(ctx, args.trackingId)).filter((event) => (event.type === 'OPEN' || event.type === 'CLICK') && event.classification === 'SELF_LIKELY').map((event) => event.eventId),
       };
     }
 
@@ -490,8 +496,8 @@ export const recordSelfView = internalMutation({
         selfMs,
         observedProxy,
       );
-      if (plan.reclassifyEventId) {
-        const evt = reloadEvents.find((row) => row.eventId === plan.reclassifyEventId);
+      for (const id of pageReloadProxyReclassifications(reloadEvents, plan, selfMs)) {
+        const evt = reloadEvents.find((row) => row.eventId === id);
         if (evt && evt.classification !== "SELF_LIKELY") {
           await ctx.db.patch(evt._id, {
             classification: "SELF_LIKELY",
@@ -529,7 +535,7 @@ export const recordSelfView = internalMutation({
       ok: true,
       claimId,
       claimExpiresAt,
-      openCount: stats.openCount,
+      ...stats,
       reclassifiedEventIds,
     };
   },

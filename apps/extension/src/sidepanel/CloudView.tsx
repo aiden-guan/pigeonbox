@@ -14,6 +14,7 @@ import { CloudPreview } from './CloudPreview';
 import { useProductState } from '../ui/product-state';
 import { openCloud, availableCloudFeatures } from '../ui/cloud-features';
 import { mailStatus, type DraftFilter } from './cloud-presenters';
+import { useWorkspaceInput } from '../workspace/session';
 import type { ReviewTarget } from './DraftReview';
 const BriefingsView = lazy(() => import('./BriefingsView').then((m) => ({ default: m.BriefingsView })));
 const RulesView = lazy(() => import('./RulesView').then((m) => ({ default: m.RulesView })));
@@ -175,7 +176,7 @@ function Focus(props: { initialSection?: string; onOpenThread: (threadId: string
                       <span className="truncate text-[13px] font-semibold tracking-[-0.02em]">{item.who}</span>
                       <span className="gi-time shrink-0">{relative(item.lastMessageAt)}</span>
                     </div>
-                    <div className="mt-0.5 truncate text-[13px] text-[#e7e2d7]">{item.subject || '(no subject)'}</div>
+                    <div className="mt-0.5 truncate text-[13px] text-[color:var(--pb-fg)]">{item.subject || '(no subject)'}</div>
                     {item.reasons.length ? <div className="gi-muted mt-0.5 truncate text-[12px]">{item.reasons.slice(0, 2).join(' · ')}</div> : null}
                   </button>
                 </li>
@@ -251,26 +252,30 @@ function CloudStatusLine(props: { overview: OverviewState; onRefresh: () => void
   );
 }
 
-const PRIMARY = ['overview', 'drafts', 'approvals', 'activity'];
 
-export function CloudView(props: { initialSection?: string; onOpenThread: (threadId: string, accountId?: string) => void; onApprovalCount: (count: number) => void }) {
+export function CloudView(props: { initialSection?: string; onSectionChange?: (section: string) => void; onOpenThread: (threadId: string, accountId?: string) => void; onApprovalCount: (count: number) => void }) {
   const product = useProductState();
   const [view, setView] = useState(props.initialSection ?? 'overview');
-  const [review, setReview] = useState<ReviewTarget | null>(null);
+  const [savedReview, saveReview, reviewReady] = useWorkspaceInput<ReviewTarget | null>(`cloud:review:${product.state.cloud.email || 'signed-out'}`, null);
+  const [review, updateReview] = useState<ReviewTarget | null>(null);
+  const reviewTouched = useRef(false);
+  useEffect(() => { if (reviewReady && !reviewTouched.current) updateReview(savedReview); }, [savedReview, reviewReady]);
+  const setReview = (target: ReviewTarget | null) => {
+    reviewTouched.current = true;
+    // Keep the list's current draft in memory. Only source IDs survive moving shells.
+    updateReview(target);
+    saveReview(target ? { threadId: target.threadId, accountId: target.accountId, from: target.from } : null);
+  };
   const [draftFilter, setDraftFilter] = useState<DraftFilter | undefined>();
   const [approvalFocus, setApprovalFocus] = useState<string | undefined>();
   const [draftsRevision, setDraftsRevision] = useState(0);
-  useEffect(() => { setView(props.initialSection ?? 'overview'); setReview(null); }, [props.initialSection]);
+  useEffect(() => { setView(props.initialSection ?? 'overview'); }, [props.initialSection]);
   const connected = product.state.runMode === 'cloud' && product.state.capabilities.some((capability) => capability.startsWith('cloud_'));
   const mailSync = product.has('cloud_mail_sync');
   const canDraft = product.has('cloud_auto_drafts');
   const overview = useCloudOverview(connected && mailSync, product.state.cloud.email, props.onApprovalCount);
-  const allowed = view === 'overview' || view === 'approvals' || (mailSync && (view === 'focus' || view === 'activity')) || (canDraft && view === 'drafts') || availableCloudFeatures(product.state.capabilities).some((feature) => feature.id === view);
-  const tabs = ([['overview', 'Home'], ['drafts', 'Drafts'], ['approvals', 'Approvals'], ['activity', 'Activity']] as const).filter(([id]) => id !== 'drafts' || canDraft);
-  const counts = overview.data?.prepared;
-  const badge = (id: string) => (id === 'drafts' ? counts?.drafts?.ready : id === 'approvals' ? counts?.approvalsWaiting : 0) || 0;
-
-  function go(next: string) { setReview(null); setView(next); }
+  const allowed = view === 'overview' || (mailSync && (view === 'approvals' || view === 'focus' || view === 'activity')) || (canDraft && view === 'drafts') || availableCloudFeatures(product.state.capabilities).some((feature) => feature.id === view);
+  function go(next: string) { setReview(null); setView(next); props.onSectionChange?.(next); }
   function goTarget(target: HomeTarget) {
     if (target.view === 'drafts') setDraftFilter(target.filter);
     if (target.view === 'approvals') setApprovalFocus(target.approvalId);
@@ -281,15 +286,13 @@ export function CloudView(props: { initialSection?: string; onOpenThread: (threa
   function changed() { setDraftsRevision((value) => value + 1); void overview.refresh(); }
 
   return <div className="flex min-h-0 flex-1 flex-col">
-    {connected && mailSync ? <CloudStatusLine overview={overview} onRefresh={() => { void overview.refresh(); if (view === 'drafts') setDraftsRevision((value) => value + 1); }} /> : null}
-    <nav className="gi-rail pb-cloud-tabs" aria-label="Cloud">
-      {tabs.map(([id, label]) => <button key={id} type="button" className="gi-chip-btn" disabled={connected && id === 'activity' && !mailSync} aria-pressed={view === id} data-active={view === id} onClick={() => { if (id === 'drafts') setDraftFilter(undefined); if (id === 'approvals') setApprovalFocus(undefined); go(id); }}>{label}{badge(id) ? <span className="pb-tab-count" aria-label={`, ${badge(id)} waiting`}>{badge(id)}</span> : null}</button>)}
-    </nav>
+    {connected && mailSync && !review ? <CloudStatusLine overview={overview} onRefresh={() => { void overview.refresh(); if (view === 'drafts') setDraftsRevision((value) => value + 1); }} /> : null}
+    {view !== 'overview' && !review ? <div className="pb-secondary-header"><button type="button" className="pb-back" onClick={() => go('overview')}>← Home</button><h2>{view.charAt(0).toUpperCase() + view.slice(1)}</h2></div> : null}
     <main className="pb-cloud-main min-h-0 flex-1 overflow-auto">
-      {!connected ? <CloudPreview product={product} /> : !allowed ? <p className="gi-muted px-4 pt-3">This tool is not available for your Cloud connection.</p> : <>
-        {overview.error && overview.data && !review && view === 'overview' ? <p className="gi-warn pb-inline-alert" role="alert">Cloud could not refresh. Showing the last loaded data.</p> : null}
-        {overview.error && !overview.data && view === 'overview' ? <div className="pb-inline-alert"><p className="gi-warn" role="alert">Cloud could not load. {overview.error}</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => void overview.refresh()}>Try again</button></div> : null}
-        {!PRIMARY.includes(view) && !review ? <div className="px-4 pt-3"><button type="button" className="pb-back" onClick={() => go('overview')}>← Home</button></div> : null}
+      {!connected ? <CloudPreview product={product} /> : !allowed ? <p className="gi-muted px-4 pt-3">This capability is not available for this connection.</p> : <>
+        {overview.error && overview.data && !review && view === 'overview' ? <p className="gi-warn pb-inline-alert" role="alert">Could not refresh. Showing the last loaded data.</p> : null}
+        {overview.error && !overview.data && view === 'overview' ? <div className="pb-inline-alert"><p className="gi-warn" role="alert">Could not load. {overview.error}</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => void overview.refresh()}>Try again</button></div> : null}
+
         <Suspense fallback={<p className="gi-orb-line gi-muted px-4 pt-3" role="status"><Orb size={18} />Opening…</p>}>
           {review ? <DraftReview key={`${review.accountId}:${review.threadId}`} target={review} onBack={() => setReview(null)} onOpenThread={props.onOpenThread} onChanged={changed} />
           : view === 'overview' && !mailSync ? <div className="px-4"><CloudPreview product={product} /><div className="gi-feature-grid">{availableCloudFeatures(product.state.capabilities).map((feature) => <button type="button" key={feature.id} onClick={() => setView(feature.id)}>{feature.title}</button>)}</div></div>
@@ -302,7 +305,7 @@ export function CloudView(props: { initialSection?: string; onOpenThread: (threa
           : view === 'views' || view === 'automations' ? <RulesView key={view} kind={view} onOpenThread={props.onOpenThread} />
           : view === 'documents' ? <DocumentsView />
           : view === 'contacts' ? <ContactsView onOpenThread={props.onOpenThread} />
-          : <button type="button" className="gi-btn" onClick={() => openCloud(view)}>Open in Cloud ↗</button>}
+          : <button type="button" className="gi-btn" onClick={() => openCloud(view)}>Manage account ↗</button>}
         </Suspense>
       </>}
     </main>

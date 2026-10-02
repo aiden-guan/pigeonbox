@@ -10,6 +10,7 @@ import { DraftSchema } from './mail.js';
  */
 export const AskPigeonRequestSchema = MailboxSelectorSchema.extend({
   query: z.string().min(1).max(2_000),
+  threadId: z.string().max(128).optional(),
   /** Only honoured when the user enabled web research in preferences. */
   includeWeb: z.boolean().optional(),
   timeZone: z.string().max(64).optional(),

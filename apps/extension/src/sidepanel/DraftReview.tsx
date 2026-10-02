@@ -1,9 +1,11 @@
+import { useTransfer } from '../ui/continuity';
 import type { CloudDraft, ThreadIntel } from '@pigeonbox/api-contract';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { trackProductEvent } from '../ui/analytics';
 import { Orb } from '../ui/Orb';
 import { callCloud } from './cloud-api';
 import { ago, draftKindLabel, draftStateLabel, openPlaceholders, personLabel, placementLine } from './cloud-presenters';
+import { useWorkspaceInput } from '../workspace/session';
 import { SourceChips } from './SourceChips';
 
 export type ReviewTarget = {
@@ -29,11 +31,13 @@ const newKey = () => crypto.randomUUID();
  */
 export function DraftReview(props: { target: ReviewTarget; onBack: () => void; onOpenThread: (id: string, accountId?: string) => void; onChanged: () => void }) {
   const { target } = props;
+  const transfer = useTransfer<HTMLElement>(`draft:${target.threadId}`);
   const [intel, setIntel] = useState<ThreadIntel | null>(null);
   const [contextError, setContextError] = useState('');
   const [draft, setDraft] = useState<CloudDraft | null>(target.draft ?? null);
   const [variantId, setVariantId] = useState<string | null>(target.draft?.placedVariantId ?? target.draft?.variants[0]?.id ?? null);
   const [body, setBody] = useState(() => (target.draft?.variants.find((item) => item.id === (target.draft?.placedVariantId ?? target.draft?.variants[0]?.id)) ?? target.draft?.variants[0])?.body ?? '');
+  const [checkpoint, setCheckpoint, checkpointReady] = useWorkspaceInput<{ draftId: string; variantId: string; body: string } | null>(`draft:${target.accountId}:${target.threadId}`, null);
   const [busy, setBusy] = useState<'' | 'place' | 'prepare' | 'regenerate' | 'dismiss'>('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -44,7 +48,7 @@ export function DraftReview(props: { target: ReviewTarget; onBack: () => void; o
   const editor = useRef<HTMLTextAreaElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
-  useEffect(() => { heading.current?.focus(); }, []);
+  useEffect(() => { heading.current?.focus({ preventScroll: true }); }, []);
   useEffect(() => {
     let live = true;
     void callCloud('threadsIntel', { accountId: target.accountId, threadIds: [target.threadId] }).then((result) => {
@@ -71,6 +75,11 @@ export function DraftReview(props: { target: ReviewTarget; onBack: () => void; o
     placeKey.current = newKey();
   }
 
+  useEffect(() => {
+    if (!checkpointReady || !checkpoint || !draft || checkpoint.draftId !== draft.id || !draft.variants.some((variant) => variant.id === checkpoint.variantId)) return;
+    setVariantId(checkpoint.variantId); setBody(checkpoint.body);
+  }, [checkpoint, checkpointReady, draft]);
+
   const variant = draft?.variants.find((item) => item.id === variantId) ?? draft?.variants[0] ?? null;
   const edited = Boolean(variant && body.trim() !== variant.body.trim());
   const open = useMemo(() => openPlaceholders(body), [body]);
@@ -84,6 +93,7 @@ export function DraftReview(props: { target: ReviewTarget; onBack: () => void; o
     if (!next) return;
     setVariantId(id);
     setBody(next.body);
+    setCheckpoint(draft ? { draftId: draft.id, variantId: id, body: next.body } : null);
     placeKey.current = newKey();
   }
 
@@ -104,6 +114,7 @@ export function DraftReview(props: { target: ReviewTarget; onBack: () => void; o
     if (!result.ok) return setError(result.code === 'forbidden' ? `${result.reason} You can turn it on in connection settings.` : result.reason);
     if (result.data.draft) adopt(result.data.draft, true);
     setPlacedText(body.trim());
+    setCheckpoint(null);
     trackProductEvent('prepared_draft_used', { surface: 'sidepanel', mode: 'cloud' });
     setNotice(inGmail ? 'Gmail draft updated. Nothing was sent.' : 'Added to your Gmail Drafts. Nothing was sent.');
     props.onChanged();
@@ -116,7 +127,7 @@ export function DraftReview(props: { target: ReviewTarget; onBack: () => void; o
     setBusy('');
     if (!result.ok) return setError(`This reply could not be prepared. ${result.reason}`);
     if (!result.data.draft) return setError('This reply could not be prepared.');
-    adopt(result.data.draft);
+    setCheckpoint(null); adopt(result.data.draft);
     setNotice(result.data.draft.status === 'user_edited' ? 'You edited this draft in Gmail, so PigeonBox left it alone.' : 'Draft updated from the latest messages.');
     props.onChanged();
   }
@@ -129,7 +140,7 @@ export function DraftReview(props: { target: ReviewTarget; onBack: () => void; o
     setBusy('');
     if (!result.ok) return setError(result.reason);
     props.onChanged();
-    props.onBack();
+    setCheckpoint(null); props.onBack();
   }
 
   const status = draft?.status;
@@ -146,12 +157,12 @@ export function DraftReview(props: { target: ReviewTarget; onBack: () => void; o
             : { label: busy === 'place' ? (inGmail ? 'Updating Gmail…' : 'Adding to Gmail…') : inGmail ? 'Update Gmail draft' : 'Add to Gmail', run: () => void place(), disabled: Boolean(busy) || open.length > 0 || !variant };
 
   return (
-    <article className="pb-review" aria-labelledby="pb-review-title">
+    <article ref={transfer} className="pb-review" aria-labelledby="pb-review-title">
       <button type="button" className="pb-back" onClick={props.onBack}>← {target.from === 'drafts' ? 'Drafts' : 'Home'}</button>
       <header className="pb-review-head">
         <span className="pb-meta">{[draftKindLabel(draft?.kind ?? 'reply') ?? 'Reply', draft ? (draft.status === 'preparing' ? 'Preparing now' : `Prepared ${ago(draft.freshness.createdAt)}`) : null].filter(Boolean).join(' · ')}</span>
-        <h2 id="pb-review-title" ref={heading} tabIndex={-1}>{target.who ?? personLabel(person, subject || 'Prepared reply')}</h2>
-        {subject ? <p className="pb-review-subject">{subject}</p> : null}
+        <h2 id="pb-review-title" ref={heading} tabIndex={-1} data-continuity="sender">{target.who ?? personLabel(person, subject || 'Prepared reply')}</h2>
+        {subject ? <p className="pb-review-subject" data-continuity="subject">{subject}</p> : null}
         {draft ? <span className="pb-state" data-status={draft.status}>{draftStateLabel(draft)}</span> : null}
       </header>
 
@@ -195,7 +206,7 @@ export function DraftReview(props: { target: ReviewTarget; onBack: () => void; o
                 readOnly={status === 'user_edited' || status === 'preparing'}
                 rows={Math.min(14, Math.max(6, body.split('\n').length + 1))}
                 aria-describedby={open.length ? 'pb-placeholders' : undefined}
-                onChange={(event) => { setBody(event.target.value); placeKey.current = newKey(); }}
+                onChange={(event) => { setBody(event.target.value); if (draft && variant) setCheckpoint({ draftId: draft.id, variantId: variant.id, body: event.target.value }); placeKey.current = newKey(); }}
               />
               {open.length ? (
                 <div id="pb-placeholders" className="pb-placeholders">

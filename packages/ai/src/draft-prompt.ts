@@ -1,4 +1,4 @@
-import { splitSuperseded } from '@pigeonbox/shared';
+import { splitSuperseded, createOwnerMatcher } from '@pigeonbox/shared';
 import type { DraftInput, MailboxOwner } from './index.js';
 
 export type DraftKind = 'reply' | 'follow_up';
@@ -175,10 +175,7 @@ function formatContact(contact: MailboxOwner): string {
 }
 
 export function isOwnMessage(sender: string, owner?: MailboxOwner): boolean {
-  if (!owner) return false;
-  const contact = parseContact(sender);
-  if (contact.email) return Boolean(owner.email) && contact.email === owner.email.toLowerCase();
-  return Boolean(owner.name && contact.name && contact.name.toLowerCase() === owner.name.trim().toLowerCase());
+  return createOwnerMatcher({ owner: owner ?? null })(sender);
 }
 
 function isAutomatedAddress(address: string): boolean {

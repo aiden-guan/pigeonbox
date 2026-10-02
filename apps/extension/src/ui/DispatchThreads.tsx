@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LocalThreadIntel } from '../content/thread/ThreadPanel';
+import { DotField } from './DotField';
 import { Pigeon } from './Pigeon';
 import { useDispatchLayout } from './dispatch-motion';
 
@@ -48,8 +49,8 @@ export function DispatchThreads(props: { threads: DispatchThread[]; category: st
       <div className="pb-brief-reveal" data-open={selected === thread.threadId} inert={selected !== thread.threadId}>
         <div>{selected === thread.threadId ? <section className="pb-thread-brief" aria-label="Pidgy Brief">
           <div className="pb-brief-label"><span className="gi-kicker">Pidgy Brief</span><Pigeon state={reading ? 'searching' : error || summary?.aiStatus === 'failed' ? 'attention' : 'idle'} size={36} /></div>
-          {reading ? <p className="gi-muted" role="status">Reading indexed thread…</p> : error ? <p className="gi-danger" role="alert">{error}</p> : brief?.oneLine ? <p className="pb-intelligence">{brief.oneLine}</p> : <p className="gi-muted">No generated brief yet. Open this thread in Gmail to analyze it.</p>}
-          {brief?.oneLine ? <svg key={selected} className="pb-route-line" viewBox="0 0 280 10" aria-hidden="true"><path pathLength="100" d="M0 9H90Q100 9 108 3H280" fill="none" stroke="currentColor" strokeWidth="1" /></svg> : null}
+          {reading ? <p className="gi-muted gi-orb-line" role="status"><DotField state="searching" size={20} />Reading indexed thread…</p> : error ? <p className="gi-danger" role="alert">{error}</p> : brief?.oneLine ? <p className="pb-intelligence">{brief.oneLine}</p> : <p className="gi-muted">No generated brief yet. Open this thread in Gmail to analyze it.</p>}
+
           {brief?.actionItems?.length ? <div className="pb-brief-section"><h3 className="gi-kicker">Next</h3><ul>{brief.actionItems.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
           {brief?.dates?.length ? <div className="pb-brief-section"><h3 className="gi-kicker">Key date</h3><p>{brief.dates.join(' · ')}</p></div> : null}
           <div className="pb-brief-actions"><button type="button" onClick={() => props.onOpen(thread.threadId)}>Open thread in Gmail <span>↗</span></button><button type="button" onClick={() => props.onAsk(`What needs my attention in the thread "${thread.subject}" from ${thread.sender}?`)}>Ask about thread <span>→</span></button></div>

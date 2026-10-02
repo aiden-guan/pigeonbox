@@ -10,6 +10,27 @@ function wait(ms: number): Promise<void> {
 }
 
 describe('event semantics', () => {
+  it('observes thread-to-list hash navigation and reopening the same thread', async () => {
+    location.hash = '#inbox/abc123';
+    const content = '<h2 class="hP" data-legacy-thread-id="abc123">Pricing</h2><div class="a3s" data-legacy-message-id="m1">Reply by Friday</div>';
+    document.body.innerHTML = `<div role="main">${content}</div>`;
+    const events: MailboxEvent[] = [];
+    const adapter = new DomFallbackAdapter({ debounceMs: 0 });
+    await adapter.start((event) => events.push(event));
+    await wait(20);
+    events.length = 0;
+    document.querySelector('[role="main"]')!.innerHTML = '';
+    location.hash = '#inbox';
+    await wait(20);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'ROUTE_CHANGED', route: 'inbox', query: '#inbox' }));
+    document.querySelector('[role="main"]')!.innerHTML = content;
+    location.hash = '#inbox/abc123';
+    await wait(20);
+    expect(events.filter((event) => event.type === 'THREAD_OPENED')).toHaveLength(1);
+    await adapter.stop();
+    events.length = 0; location.hash = '#sent';
+    await wait(20); expect(events).toHaveLength(0);
+  });
   it('treats reorder, read, and archive as list changes, not new mail', async () => {
     document.body.innerHTML = `
       <div role="main">

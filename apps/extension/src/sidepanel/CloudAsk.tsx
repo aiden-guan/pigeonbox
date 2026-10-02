@@ -1,22 +1,28 @@
+import type { WorkspaceContext } from '../workspace/context';
 import { trackProductEvent } from '../ui/analytics';
 import type { AskPigeonResponse } from '@pigeonbox/api-contract';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ContextCard } from '../ui/Primitives';
 import { Orb } from '../ui/Orb';
 import { cloudCall } from './cloud-api';
+import { useWorkspaceInput } from '../workspace/session';
 import { SourceChips } from './SourceChips';
 
 export function CloudAsk(props: {
   onOpenThread: (threadId: string, accountId?: string) => void;
   capabilities: readonly string[];
+  context?: WorkspaceContext | null;
+  onContextQuestion?: (question: string) => Promise<string | null>;
   pendingQuery?: { id: string; query: string } | null;
   onQueryConsumed?: () => void;
 }) {
-  const { pendingQuery, onQueryConsumed } = props;
-  const [query, setQuery] = useState('');
+  const { pendingQuery, onQueryConsumed, onContextQuestion } = props;
+  const [query, setQuery] = useWorkspaceInput(`cloud:ask:${props.context?.owner?.email || 'mailbox'}`, '');
   const [asked, setAsked] = useState('');
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<AskPigeonResponse | null>(null);
   const [error, setError] = useState('');
+  const [actionAnswer, setActionAnswer] = useState('');
   const [calendarConnected, setCalendarConnected] = useState(false);
   const consumed = useRef('');
   const inFlight = useRef(false);
@@ -42,10 +48,13 @@ export function CloudAsk(props: {
     setQuery('');
     setBusy(true);
     setError('');
-    setAnswer(null);
+    setAnswer(null); setActionAnswer('');
     try {
+      const action = await onContextQuestion?.(question);
+      if (action) { setActionAnswer(action); return; }
       const result = await cloudCall<AskPigeonResponse>('askPigeon', {
         query: question,
+        ...(props.context?.owner ? { threadId: props.context.threadId, mailbox: props.context.owner.email } : {}),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       if (result.ok) setAnswer(result.data);
@@ -57,7 +66,7 @@ export function CloudAsk(props: {
       inFlight.current = false;
       setBusy(false);
     }
-  }, []);
+  }, [props.context, onContextQuestion, setQuery]);
   useEffect(() => {
     const pending = pendingQuery;
     if (!pending || consumed.current === pending.id || inFlight.current) return;
@@ -69,13 +78,14 @@ export function CloudAsk(props: {
   const sources = new Map((answer?.sources ?? []).map((source) => [source.id, source]));
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-auto px-4 pb-2">
+      <div className="pb-ask-content min-h-0 flex-1 overflow-auto">
+        {props.context ? <ContextCard subject={props.context.subject} sender={props.context.sender} motionKey={`context:${props.context.threadId}`} /> : null}
         {asked ? (
           <p className="gi-asked">{asked}</p>
         ) : (
           <div className="gi-ask-start">
             <h2>Ask Pigeon</h2>
-            <p>Answers use available synced context and cite their sources.</p>
+            <p>{props.context ? `This thread · ${props.context.subject || 'Current conversation'}` : 'Your synced mailbox'}</p>
             <div className="gi-scope-chips">
               <span>Mail</span>
               {calendarConnected ? <span>Calendar</span> : null}
@@ -99,10 +109,11 @@ export function CloudAsk(props: {
         {busy ? (
           <p className="gi-muted gi-orb-line" role="status">
             <Orb size={18} />
-            Reviewing available Cloud context…
+            Reviewing your mail…
           </p>
         ) : null}
         {error ? <p className="gi-danger">{error}</p> : null}
+        {actionAnswer ? <p className="pb-intelligence" role="status">{actionAnswer}</p> : null}
         {answer ? (
           <section className="pb-answer"><h2 className="gi-kicker">Answer</h2>
             {answer.claims.length ? (

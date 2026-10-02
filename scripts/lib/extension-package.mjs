@@ -127,7 +127,7 @@ const REQUIRED_FILES = [
   'gmail.js',
   'main-world.js',
   'offscreen.html',
-  'popup.html',
+  'workspace.html',
   'settings.html',
   'sidepanel.html',
   'onboarding.html',

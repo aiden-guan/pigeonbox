@@ -85,7 +85,7 @@ describe('compact provider', () => {
       ],
     });
     expect(users[0]).toBe(
-      'Subject: I-9 verification\nEarlier:\n- me: Can you send HR my contact info?\nNewest message, from Jordan Park to me:\n"""\nI just emailed them your contact info.\n"""\nSummarize this for me.',
+      'Subject: I-9 verification\nEarlier:\n- you (me): Can you send HR my contact info?\nNewest message, from Jordan Park to me:\n"""\nI just emailed them your contact info.\n"""\nSummarize this for me.',
     );
     expect(result.actionItems).toEqual(['Meet HR for Section 2']);
   });

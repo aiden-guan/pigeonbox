@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pidgy · Future designs</title>
+<style>
+  :root { color-scheme: light; font-family: system-ui, sans-serif; background: #f6f3ed; color: #282930; }
+  body { max-width: 1100px; margin: 48px auto; padding: 0 24px 48px; }
+  h1 { font-size: clamp(28px, 4vw, 42px); letter-spacing: -.045em; margin-bottom: 8px; }
+  p { line-height: 1.6; color: #67676b; }
+  nav { display: flex; gap: 10px; flex-wrap: wrap; margin: 24px 0 40px; }
+  button { font: inherit; color: inherit; background: transparent; border: 1px solid #a5a1a0; padding: 9px 14px; border-radius: 8px; cursor: pointer; }
+  button:focus-visible { outline: 3px solid #bc7445; outline-offset: 3px; }
+  section { margin: 32px 0; }
+  h2 { font-size: 22px; letter-spacing: -.025em; }
+  img { display: block; width: 100%; height: auto; image-rendering: pixelated; background: #fff; border-radius: 12px; }
+  .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .row { padding: 16px; border: 1px solid #d5d1cb; border-radius: 12px; }
+  .frame { width: 160px; margin: 8px auto 16px; background-repeat: no-repeat; image-rendering: pixelated; }
+  label { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  input { width: 100%; margin: 18px 0 0; accent-color: #b16d45; }
+  .dark { background: #23242a; color: #efede9; color-scheme: dark; }
+  .dark p { color: #b5b2b0; }
+  .dark img { background: #303138; }
+  .dark .row { border-color: #55555b; }
+  @media(max-width: 600px) { .rows { grid-template-columns: 1fr; } body { margin-top: 28px; } }
+</style>
+<h1>Pidgy, with a little more personality.</h1>
+<p>Four new sheets, eight little scenarios. Same friendly messenger pigeon.</p>
+<nav><button id="theme" aria-pressed="false">Dark background</button><button id="play" aria-pressed="false">Play poses</button></nav>
+<main>
+  <section data-id="cozy"><h2>Cozy Pidgy</h2><img src="sheets/pidgy-cozy.png" alt="Pidgy sipping tea and taking a sleepy rest, four poses each."></section>
+  <section data-id="delivery"><h2>Mail adventures</h2><img src="sheets/pidgy-delivery.png" alt="Pidgy presenting a parcel and playing with a paper airplane, four poses each."></section>
+  <section data-id="cheer"><h2>Little celebrations</h2><img src="sheets/pidgy-cheer.png" alt="Pidgy waving and celebrating with a copper star, four poses each."></section>
+  <section data-id="explorer"><h2>Curious explorer</h2><img src="sheets/pidgy-explorer.png" alt="Pidgy reading a map and inspecting a lantern, four poses each."></section>
+</main>
+<p id="status">Use the complete frame rectangles in manifest.json when integrating these designs.</p>
+<script src="manifest.js"></script>
+<script>
+const theme = document.querySelector('#theme');
+theme.onclick = () => {
+  const dark = document.documentElement.classList.toggle('dark');
+  theme.setAttribute('aria-pressed', String(dark));
+  theme.textContent = dark ? 'Light background' : 'Dark background';
+};
+const players = [];
+const play = document.querySelector('#play');
+let timer;
+function stop() { clearInterval(timer); timer = undefined; play.textContent = 'Play poses'; play.setAttribute('aria-pressed', 'false'); }
+play.onclick = () => {
+  if (timer) return stop();
+  if (!players.length) return;
+  play.textContent = 'Pause poses'; play.setAttribute('aria-pressed', 'true');
+  timer = setInterval(() => players.forEach(p => p.show((Number(p.range.value) + 1) % 4)), 240);
+};
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
+Promise.resolve(window.pidgyManifest).then(data => {
+  if (!data?.sheets) throw Error('manifest');
+  for (const sheet of data.sheets) {
+    const section = document.querySelector(`[data-id="${sheet.id}"]`);
+    const rows = document.createElement('div'); rows.className = 'rows';
+    sheet.animations.forEach((animation, row) => {
+      const box = document.createElement('div'); box.className = 'row';
+      const frame = document.createElement('div'); frame.className = 'frame'; frame.setAttribute('aria-hidden', 'true');
+      frame.style.backgroundImage = `url('${sheet.file}')`;
+      const label = document.createElement('label'); label.htmlFor = `${sheet.id}-${row}`;
+      const name = document.createElement('span'); name.textContent = animation.name;
+      const pose = document.createElement('span'); label.append(name, pose);
+      const range = document.createElement('input'); range.type = 'range'; range.min = '0'; range.max = '3'; range.step = '1'; range.value = '0'; range.id = label.htmlFor;
+      const show = col => {
+        range.value = String(col); pose.textContent = `Pose ${col + 1} / 4`;
+        const rect = sheet.frames[animation.frames[col]].rect;
+        const scale = 160 / rect.width;
+        frame.style.height = `${rect.height * scale}px`;
+        frame.style.backgroundSize = `${sheet.width * scale}px ${sheet.height * scale}px`;
+        frame.style.backgroundPosition = `${-rect.x * scale}px ${-rect.y * scale}px`;
+      };
+      range.oninput = () => { stop(); show(Number(range.value)); };
+      box.append(frame, label, range); rows.append(box); players.push({range, show}); show(0);
+    });
+    section.append(rows);
+  }
+}).catch(() => { document.querySelector('#status').textContent = 'The full sheets are shown above. Run validate-sheets.py to restore the pose gallery manifest.'; play.disabled = true; });
+</script>
+</html>

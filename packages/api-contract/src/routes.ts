@@ -1,3 +1,4 @@
+import { TasksSchema, TaskCreateSchema, TaskUpdateSchema } from './tasks.js';
 import { MemoryListRequestSchema, MemoryListResponseSchema, MemoryIdRequestSchema, MemoryResponseSchema, MemoryUpdateRequestSchema, MemoryPurgeRequestSchema, MemoryPurgeResponseSchema } from './memory.js';
 import type { z } from 'zod';
 import {
@@ -227,6 +228,9 @@ export const ROUTES = {
   memoryPurge: { method: 'POST', path: '/v1/memory/purge', auth: 'user', request: MemoryPurgeRequestSchema, response: MemoryPurgeResponseSchema },
 
   // Ask Pigeon.
+  tasks: { method: 'GET', path: '/v1/tasks', auth: 'user', response: TasksSchema, capability: 'cloud_mail_sync' },
+  taskCreate: { method: 'POST', path: '/v1/tasks', auth: 'user', request: TaskCreateSchema, response: TasksSchema, capability: 'cloud_mail_sync' },
+  taskUpdate: { method: 'POST', path: '/v1/tasks/update', auth: 'user', request: TaskUpdateSchema, response: TasksSchema, capability: 'cloud_mail_sync' },
   askPigeon: { method: 'POST', path: '/v1/ask', auth: 'user', request: AskPigeonRequestSchema, response: AskPigeonResponseSchema, capability: 'cloud_semantic_search' },
 
   // Calendar Copilot and briefings.

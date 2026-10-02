@@ -377,6 +377,49 @@ describe('AI job asynchronous lifecycle and deduplication', () => {
     // Job 1 finished. If the ownership check works, job 2's entry was NOT deleted by job 1's finally block
     // Calling without force while job 2 is still running (or finished with res2) should not resurrect a stale state
     const job1Row = await db.ai_jobs.get(res1.jobId);
-    expect(job1Row?.status).toBe('succeeded');
+    expect(job1Row?.status).toBe('failed');
+    expect(job1Row?.error).toMatch(/superseded/i);
+    expect((await db.thread_summaries.get(input.threadId))?.generationId).toBeTruthy();
+  });
+});
+
+describe('owner-aware generations', () => {
+  const owner = { email: 'aiden@gmail.com', name: 'Aiden Guan' };
+  const input = { threadId: 'perspective', fingerprint: 'body-v1', subject: 'Pricing', messages: [{ sender: 'Aiden Guan <aiden@gmail.com>', bodyText: 'I sent the revised pricing.', timestamp: '' }] };
+  function loop(db: ReturnType<typeof getMailboxDb>, ai: AIProvider | null, events: string[] = []) {
+    return new AgentLoop({ db, ai, queue: new AIJobQueue(), settings: () => ({ ...DEFAULT_SETTINGS, aiMode: ai ? 'remote' : 'disabled' }), archiveViaGmail: async () => ({ success: false }), insertDraftViaGmail: async () => ({ success: false }), log: async () => 'log', onIntel: (_id, kind) => events.push(kind) });
+  }
+  it('does not infer or save while Gmail owner identity is still loading', async () => {
+    const db = getMailboxDb(`perspective_wait_${Math.random()}`); const model = vi.fn();
+    const agent = loop(db, { summarizeThread: model } as unknown as AIProvider);
+    const result = await agent.startSummaryJob({ ...input, requireOwner: true });
+    expect(result.ok).toBe(false); expect(result.reason).toMatch(/Resolving Gmail account/);
+    expect(model).not.toHaveBeenCalled(); expect(await db.thread_summaries.get(input.threadId)).toBeUndefined();
+  });
+  it('discards an ownerless result after a newer owner-aware job, even after agent rebuild', async () => {
+    const db = getMailboxDb(`perspective_rebuild_${Math.random()}`); const events: string[] = [];
+    let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; });
+    const old = loop(db, { summarizeThread: async () => { await gate; return { result: { oneLine: 'Aiden sent the pricing.', keyPoints: [], actionItems: [], dates: [], decisions: [], commitments: [], unansweredQuestions: [] } }; } } as unknown as AIProvider, events);
+    const queued = await old.startSummaryJob(input);
+    const current = loop(db, { summarizeThread: async (request) => { expect(request.messages[0]?.authorRole).toBe('owner'); return { result: { oneLine: 'You sent the pricing.', keyPoints: [], actionItems: [], dates: [], decisions: [], commitments: [], unansweredQuestions: [] } }; } } as AIProvider, events);
+    await current.startSummaryJob({ ...input, owner, requireOwner: true });
+    await vi.waitFor(async () => expect((await db.thread_summaries.get(input.threadId))?.summary.oneLine).toBe('You sent the pricing.'));
+    release();
+    await vi.waitFor(async () => expect((await db.ai_jobs.get(queued.jobId))?.status).toBe('failed'));
+    expect((await db.thread_summaries.get(input.threadId))?.summary.oneLine).toBe('You sent the pricing.');
+    expect(events.filter((kind) => kind === 'THREAD_SUMMARY_READY')).toHaveLength(1);
+  });
+  it('invalidates cached summaries when owner changes and rejects third-person model output', async () => {
+    const db = getMailboxDb(`perspective_cache_${Math.random()}`);
+    const model = vi.fn(async () => ({ result: { oneLine: 'Aiden sent the pricing.', keyPoints: [], actionItems: [], dates: [], decisions: [], commitments: [], unansweredQuestions: [] } }));
+    const agent = loop(db, { summarizeThread: model } as unknown as AIProvider);
+    await agent.startSummaryJob({ ...input, owner });
+    await vi.waitFor(async () => expect((await db.thread_summaries.get(input.threadId))?.aiStatus).toBe('failed'));
+    expect((await db.thread_summaries.get(input.threadId))?.summary.oneLine).not.toMatch(/^Aiden (?:sent|did)/);
+    const first = (await db.thread_summaries.get(input.threadId))!.fingerprint;
+    await agent.startSummaryJob({ ...input, owner: { email: 'maya@gmail.com', name: 'Maya' } });
+    await vi.waitFor(async () => expect((await db.thread_summaries.get(input.threadId))?.source).toBe('model'));
+    expect((await db.thread_summaries.get(input.threadId))!.fingerprint).not.toBe(first);
+    expect(model).toHaveBeenCalledTimes(2);
   });
 });

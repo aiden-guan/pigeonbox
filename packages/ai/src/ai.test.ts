@@ -298,9 +298,9 @@ describe('summary thread formatting and coercion', () => {
     });
 
     expect(formatted).toContain('Subject: Bug report: login failure');
-    expect(formatted).toContain('--- Message 1 from john@example.com at 2026-09-23 10:00 ---');
+    expect(formatted).toContain('--- Message 1 from john@example.com [authorRole=other] at 2026-09-23 10:00 ---');
     expect(formatted).toContain('Login fails on iOS 17.');
-    expect(formatted).toContain('--- Message 2 from sarah@example.com at 2026-09-23 10:15 ---');
+    expect(formatted).toContain('--- Message 2 from sarah@example.com [authorRole=other] at 2026-09-23 10:15 ---');
     expect(formatted).toContain('Confirmed, hotfix tomorrow.');
   });
 

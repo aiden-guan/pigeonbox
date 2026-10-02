@@ -1,3 +1,4 @@
+import { motionOptions } from './motion';
 import { useLayoutEffect, useRef } from 'react';
 
 export const DISPATCH_EASE = 'cubic-bezier(.22, 1, .36, 1)';
@@ -31,10 +32,10 @@ export function useDispatchLayout<T extends HTMLElement>(revision: unknown) {
         if (!old || Math.abs(x) + Math.abs(y) > .5) animations.current.push(node.animate([
           { transform: `translate(${x}px, ${y}px)`, opacity: old ? 1 : 0 },
           { transform: 'translate(0, 0)', opacity: 1 },
-        ], { duration: 340, delay: old ? 0 : Math.min(index * 20, 100), easing: DISPATCH_EASE, fill: 'backwards' }));
+        ], { ...motionOptions(node, old ? 'expressive' : 'standard'), delay: old ? 0 : Math.min(index * 12, 48), fill: 'backwards' }));
       });
       before.forEach(({ node, rect }, id) => {
-        if (next.has(id) || !id.startsWith('thread:')) return;
+        if (next.has(id) || !id.startsWith('thread:') && !id.startsWith('task:')) return;
         const ghost = node.cloneNode(true) as HTMLElement;
         ghost.removeAttribute('id');
         ghost.removeAttribute('hidden');
@@ -43,7 +44,7 @@ export function useDispatchLayout<T extends HTMLElement>(revision: unknown) {
         ghost.inert = true;
         Object.assign(ghost.style, { position: 'fixed', top: `${rect.top}px`, left: `${rect.left}px`, width: `${rect.width}px`, margin: '0', pointerEvents: 'none', zIndex: '5' });
         document.body.append(ghost);
-        const animation = ghost.animate([{ opacity: .6, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(6px)' }], { duration: 140, easing: DISPATCH_EASE });
+        const animation = ghost.animate([{ opacity: .6, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(6px)' }], motionOptions(root, 'quick'));
         animation.finished.then(() => ghost.remove()).catch(() => ghost.remove());
         animations.current.push(animation);
       });

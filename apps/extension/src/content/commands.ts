@@ -8,7 +8,7 @@ export const VISIBLE_COMMANDS = [
   { id: 'mark_respond', label: 'Mark Respond' },
   { id: 'mark_waiting', label: 'Mark Waiting' },
   { id: 'mark_fyi', label: 'Mark FYI' },
-  { id: 'cloud', label: 'PigeonBox Cloud Overview' },
+  { id: 'cloud', label: 'PigeonBox Home' },
   { id: 'cloud_approvals', label: 'Open approvals' },
   { id: 'cloud_activity', label: 'Open Activity' },
   { id: 'cloud_briefings', label: 'Open briefing' },

@@ -19,6 +19,7 @@ export interface MailboxSource {
 }
 
 export type IngestThread = {
+  mailboxEmail?: string;
   threadId: string;
   subject: string;
   participants: Contact[];
@@ -52,6 +53,7 @@ export type AccountRow = {
 };
 
 export type ThreadRow = {
+  mailboxEmail?: string;
   threadId: string;
   accountId: string;
   subject: string;
@@ -115,6 +117,10 @@ export type ClassificationRow = {
 };
 
 export type SummaryRow = {
+  /** Owner perspective that produced this summary; legacy ownerless rows are not reused. */
+  ownerPerspective?: string;
+  sourceFingerprint?: string;
+  generationId?: string;
   threadId: string;
   fingerprint: string;
   summary: ThreadSummary;

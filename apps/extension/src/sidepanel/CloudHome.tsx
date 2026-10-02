@@ -1,7 +1,9 @@
+import { Pigeon } from '../ui/Pigeon';
+import { rememberTransfer } from '../ui/continuity';
 import type { Briefing, CloudOverview, FocusItem } from '@pigeonbox/api-contract';
 import { useState } from 'react';
 import { Orb } from '../ui/Orb';
-import { availableCloudFeatures, openCloud } from '../ui/cloud-features';
+import { openCloud } from '../ui/cloud-features';
 import { BriefingReader } from './BriefingReader';
 import { SourceChips } from './SourceChips';
 import { ago, awaySummary, sinceLabel, preparedRows, readyItem, readyList, type DraftFilter, type PreparedRow } from './cloud-presenters';
@@ -73,7 +75,7 @@ export function CloudHome(props: {
         )}
       </section>
 
-      {data.work || data.prepared ? (
+      {rows.length || preparing ? (
         <section className="pb-home-section" aria-labelledby="pb-prepared-title">
           <div className="pb-section-head">
             <h2 id="pb-prepared-title" className="pb-home-kicker">Prepared for you</h2>
@@ -92,7 +94,7 @@ export function CloudHome(props: {
         <SectionFailure label="Prepared work" />
       )}
 
-      {data.work ? (
+      {away.length ? (
         <section className="pb-home-section pb-away" aria-labelledby="pb-away-title">
           <div className="pb-section-head">
             <h2 id="pb-away-title" className="pb-home-kicker">While you were away</h2>
@@ -106,7 +108,7 @@ export function CloudHome(props: {
         </section>
       ) : null}
 
-      {capabilities.includes('cloud_automations') ? (
+      {capabilities.includes('cloud_automations') && (brief || data.unavailable.includes('briefing')) ? (
         <section className="pb-home-section" aria-labelledby="pb-brief-title">
           <div className="pb-section-head">
             <h2 id="pb-brief-title" className="pb-home-kicker">Latest briefing</h2>
@@ -157,20 +159,6 @@ export function CloudHome(props: {
         </section>
       ) : data.unavailable.includes('automatic') ? <SectionFailure label="Automatic work" /> : null}
 
-      <section className="pb-home-section" aria-labelledby="pb-tools-title">
-        <h2 id="pb-tools-title" className="pb-home-kicker">Your Cloud tools</h2>
-        <ul className="pb-tool-list pb-tool-grid">
-          {availableCloudFeatures(capabilities).map((feature) => {
-            const inPanel = ['briefings', 'views', 'automations', 'documents', 'contacts'].includes(feature.id);
-            return (
-              <li key={feature.id}><button type="button" className="pb-tool" onClick={() => (inPanel ? onNavigate(feature.id) : openCloud(feature.id))}>
-                <strong>{feature.title}{inPanel ? null : <span aria-label="opens in a new tab"> ↗</span>}</strong>
-                <span>{feature.detail}</span>
-              </button></li>
-            );
-          })}
-        </ul>
-      </section>
     </div>
   );
 }
@@ -185,10 +173,10 @@ function ReadyRow(props: { item: FocusItem; canDraft: boolean; onOpenThread: (id
     else props.onOpenThread(item.threadId, item.accountId);
   };
   return (
-    <li className="pb-ready-item">
+    <li className="pb-ready-item" data-prepared={action.kind === 'draft'}>
       <div className="pb-ready-copy">
-        <span className="pb-ready-who">{item.who || item.subject}</span>
-        <span className="pb-ready-subject">{item.subject}</span>
+        <span className="pb-ready-who" data-continuity="sender">{item.who || item.subject}{action.kind === 'draft' ? <Pigeon state="ready" size={24} /> : null}</span>
+        <span className="pb-ready-subject" data-continuity="subject">{item.subject}</span>
         {view.flags.length ? (
           <span className="pb-flags">
             {view.flags.map((flag) => <span key={flag.text} className="pb-flag" data-urgent={flag.urgent}>{flag.text}</span>)}
@@ -197,7 +185,7 @@ function ReadyRow(props: { item: FocusItem; canDraft: boolean; onOpenThread: (id
         {view.reason ? <span className="pb-ready-reason">{view.reason}</span> : null}
       </div>
       <div className="pb-ready-actions">
-        <button type="button" className="gi-btn pb-btn-sm" onClick={primary} aria-label={`${action.label}: ${item.subject}`}>{action.label}</button>
+        <button type="button" className="gi-btn pb-btn-sm" onClick={(event) => { if (action.kind === 'draft') rememberTransfer(event.currentTarget.closest<HTMLElement>('.pb-ready-item')!, `draft:${item.threadId}`); primary(); }} aria-label={`${action.label}: ${item.subject}`}>{action.label}</button>
         {action.kind !== 'thread' ? <button type="button" className="gi-text-btn" onClick={() => props.onOpenThread(item.threadId, item.accountId)} aria-label={`Open thread: ${item.subject}`}>Open thread</button> : null}
       </div>
     </li>

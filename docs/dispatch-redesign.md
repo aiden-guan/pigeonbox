@@ -1,3 +1,5 @@
+> Historical redesign notes. The popup and primary side panel model below were superseded by [the shared workspace](workspace-refactor.md).
+
 # PigeonBox Dispatch redesign
 
 Implemented locally on October 1, 2026. No commit, push, deployment, account change, or backend migration was performed.

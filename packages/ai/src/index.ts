@@ -8,6 +8,9 @@ import {
   type NeedsReplyResult,
   type ThreadSummary,
   type VoiceProfile,
+  summaryPerspectiveIssue,
+  type MailboxIdentity,
+  type AuthorRole,
 } from '@pigeonbox/shared';
 import { z } from 'zod';
 import { EMAIL_SUMMARY_SYSTEM_PROMPT, formatThreadForSummary, summaryUserContent } from './summary-prompt.js';
@@ -28,12 +31,12 @@ export type ClassifyInput = {
 export type SummarizeInput = {
   subject: string;
   /** `sender` is an address or `Name <address>`. */
-  messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
+  messages: Array<{ sender: string; bodyText: string; timestamp: string; authorRole?: AuthorRole }>;
   owner?: MailboxOwner;
 };
 
 /** The Gmail account the draft is written from. */
-export type MailboxOwner = { email: string; name?: string };
+export type MailboxOwner = MailboxIdentity;
 
 export type DraftInput = {
   /** Optional Cloud context selectors; local providers ignore these. */
@@ -41,7 +44,7 @@ export type DraftInput = {
   recipientEmails?: string[];
   subject: string;
   /** `sender` is an address or `Name <address>`. */
-  messages: Array<{ sender: string; bodyText: string; timestamp: string }>;
+  messages: Array<{ sender: string; bodyText: string; timestamp: string; authorRole?: AuthorRole }>;
   owner?: MailboxOwner;
   voice: VoiceProfile;
   mode?: 'direct' | 'warm' | 'short';
@@ -179,17 +182,21 @@ export abstract class OpenAICompatibleProvider implements AIProvider {
       subject: input.subject,
       messages: input.messages.slice(-8).map((message) => ({
         sender: message.sender,
+        authorRole: message.authorRole,
         timestamp: message.timestamp,
         bodyText: message.bodyText.slice(0, 4000),
       })),
       owner: input.owner,
     });
-    const { data, usage } = await this.chatJson(
-      EMAIL_SUMMARY_SYSTEM_PROMPT,
-      summaryUserContent(formatted),
-      z.preprocess(coerceThreadSummary, ThreadSummarySchema) as z.ZodType<ThreadSummary>,
-    );
-    return { result: data, usage };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data, usage } = await this.chatJson(
+        EMAIL_SUMMARY_SYSTEM_PROMPT,
+        summaryUserContent(formatted) + (attempt ? '\nCorrect the actor perspective. Messages from you belong to the reader.' : ''),
+        z.preprocess(coerceThreadSummary, ThreadSummarySchema) as z.ZodType<ThreadSummary>,
+      );
+      if (!summaryPerspectiveIssue(data, input)) return { result: data, usage };
+    }
+    throw new Error('The model returned an inconsistent owner perspective.');
   }
 
   async draftReply(input: DraftInput): Promise<{ result: DraftSuggestion; usage?: UsageStats }> {

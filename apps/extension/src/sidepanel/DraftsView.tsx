@@ -1,3 +1,4 @@
+import { rememberTransfer } from '../ui/continuity';
 import type { DraftListItem, DraftListResponse } from '@pigeonbox/api-contract';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Orb } from '../ui/Orb';
@@ -107,10 +108,10 @@ function DraftRow(props: { item: DraftListItem; retrying: boolean; onReview: (it
   return (
     <li className="pb-draft" data-status={draft.status}>
       <div className="pb-draft-top">
-        <span className="pb-draft-who">{who}</span>
+        <span className="pb-draft-who" data-continuity="sender">{who}</span>
         <span className="pb-state" data-status={draft.status}>{draftStateLabel(draft)}</span>
       </div>
-      <span className="pb-draft-subject">{subject}</span>
+      <span className="pb-draft-subject" data-continuity="subject">{subject}</span>
       <span className="pb-meta">
         {[kind, draft.status === 'preparing' ? 'Preparing now' : `Prepared ${ago(draft.freshness.createdAt)}`, fill ? `${fill} ${fill === 1 ? 'detail' : 'details'} to fill in` : null].filter(Boolean).join(' · ')}
       </span>
@@ -120,7 +121,7 @@ function DraftRow(props: { item: DraftListItem; retrying: boolean; onReview: (it
         {draft.status === 'failed' ? (
           <button type="button" className="gi-btn pb-btn-sm" disabled={props.retrying} onClick={props.onRetry}>{props.retrying ? 'Preparing draft…' : 'Try again'}</button>
         ) : variant ? (
-          <button type="button" className="gi-btn pb-btn-sm" onClick={() => props.onReview(props.item)} aria-label={`Review draft: ${subject}`}>Review</button>
+          <button type="button" className="gi-btn pb-btn-sm" onClick={(event) => { rememberTransfer(event.currentTarget.closest<HTMLElement>('.pb-draft')!, `draft:${draft.threadId}`); props.onReview(props.item); }} aria-label={`Review draft: ${subject}`}>Review</button>
         ) : null}
         <button type="button" className="gi-text-btn" onClick={() => props.onOpenThread(draft.threadId, draft.accountId)} aria-label={`Open thread: ${subject}`}>Open thread</button>
       </div>

@@ -1,5 +1,4 @@
-import { splitSuperseded } from '@pigeonbox/shared';
-import { isOwnMessage } from './draft-prompt.js';
+import { splitSuperseded, tagAuthors, type AuthorRole } from '@pigeonbox/shared';
 import type { MailboxOwner } from './index.js';
 
 /**
@@ -41,11 +40,11 @@ Example output:
 
 export function formatThreadForSummary(input: {
   subject: string;
-  messages: Array<{ sender: string; bodyText: string; timestamp?: string }>;
+  messages: Array<{ sender: string; bodyText: string; timestamp?: string; authorRole?: AuthorRole }>;
   includeOlder?: boolean;
   owner?: MailboxOwner;
 }): string {
-  const messages = input.messages.filter((m) => m.bodyText.trim().length > 0);
+  const messages = tagAuthors(input.messages.filter((m) => m.bodyText.trim().length > 0), input.owner);
   const latestCurrent = splitSuperseded(messages.at(-1)?.bodyText || '').current;
   const subject = input.includeOlder === false ? currentSubject(input.subject, latestCurrent) : input.subject;
   const parts: string[] = [`Subject: ${subject || '(no subject)'}`];
@@ -60,8 +59,7 @@ export function formatThreadForSummary(input: {
 
   messages.forEach((msg, idx) => {
     const time = msg.timestamp ? ` at ${msg.timestamp}` : '';
-    const mine = isOwnMessage(msg.sender, input.owner) ? ' (me)' : '';
-    const sender = msg.sender ? ` from ${msg.sender}${mine}` : '';
+    const sender = msg.authorRole === 'owner' ? ' from you (me) [authorRole=owner]' : ` from ${msg.sender || 'someone'} [authorRole=other]`;
     parts.push(`\n--- Message ${idx + 1}${sender}${time} ---`);
     const { current, older } = splitSuperseded(msg.bodyText);
     parts.push(current.trim());

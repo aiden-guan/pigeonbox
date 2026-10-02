@@ -1,5 +1,6 @@
+import { motionOptions } from './motion';
 import { useLayoutEffect, useRef } from 'react';
-import { DISPATCH_EASE, reducedMotion } from './dispatch-motion';
+import { reducedMotion } from './dispatch-motion';
 
 /** Roll the confirmed count when it changes; never invent intermediate totals. */
 export function DispatchCount({ value }: { value: number }) {
@@ -8,7 +9,7 @@ export function DispatchCount({ value }: { value: number }) {
   useLayoutEffect(() => {
     const node = ref.current;
     if (node && previous.current !== value && !reducedMotion() && typeof node.animate === 'function') {
-      const animation = node.animate([{ opacity: .3, transform: `translateY(${value > previous.current ? 6 : -6}px)` }, { opacity: 1, transform: 'translateY(0)' }], { duration: 280, easing: DISPATCH_EASE });
+      const animation = node.animate([{ opacity: .3, transform: `translateY(${value > previous.current ? 6 : -6}px)` }, { opacity: 1, transform: 'translateY(0)' }], motionOptions(node,'standard'));
       previous.current = value;
       return () => animation.cancel();
     }

@@ -1,3 +1,4 @@
+import { useAppearance, AppearanceButton } from '../ui/appearance';
 import { MemorySettings } from './MemorySettings';
 import { AnalyticsPreference } from './AnalyticsPreference';
 import { Section, Toggle, Field } from './SettingsComponents';
@@ -25,6 +26,7 @@ import {
 const CATEGORIES: ThreadCategory[] = ['RESPOND', 'WAITING', 'FYI', 'NOTIFICATIONS', 'PROMOTIONS', 'NEWS'];
 
 export function SettingsApp() {
+  useAppearance();
   const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
   const [advanced, setAdvanced] = useState(false);
@@ -230,11 +232,11 @@ export function SettingsApp() {
     <div className="gi-app gi-settings min-h-full">
       <div className="gi-settings-layout">
       <header className="gi-settings-header">
-        <Brand />
+        <div className="pb-settings-brand"><Brand /><AppearanceButton /></div>
         <div className="gi-settings-title"><div><div className="gi-kicker">PigeonBox / Preferences</div><h1 className="gi-display">Settings.</h1><p className="gi-muted mt-3 text-sm">Choose how PigeonBox works for you.</p></div><Pigeon size={54} /></div>
       </header>
 
-      <nav aria-label="Settings sections" className="gi-settings-nav">{[["General", "pigeonbox"], ["AI", "ai"], ["Inbox", "inbox"], ["Tracking", "tracking"], ["Cloud", "cloud"], ["Memory", "memory"], ["Personalization", "personalization"], ["Privacy & data", "privacy"]].filter(([, id]) => (id !== "cloud" && id !== "memory") || cloudMode).map(([label, id]) => <a key={id} className="gi-text-btn" href={`#${id}`}>{label}</a>)}</nav>
+      <nav aria-label="Settings sections" className="gi-settings-nav">{[["PigeonBox", "pigeonbox"], ["AI", "ai"], ["Inbox", "inbox"], ["Tracking", "tracking"], ["Cloud / Sync", "cloud"], ["Memory", "memory"], ["Personalization", "personalization"], ["Privacy & data", "privacy"]].filter(([, id]) => (id !== "ai" || !cloudMode) && ((id !== "cloud" && id !== "memory") || cloudMode)).map(([label, id]) => <a key={id} className="gi-text-btn" href={`#${id}`}>{label}</a>)}</nav>
       <Section title="PigeonBox" id="pigeonbox">
         <RunModePanel
           product={product}
@@ -244,10 +246,12 @@ export function SettingsApp() {
             requestAnimationFrame(() => document.getElementById('advanced')?.scrollIntoView({ behavior: 'smooth' }));
           }}
         />
+        <p className="gi-muted text-xs">The toolbar icon opens your Gmail workspace. ⌘/Ctrl K finds actions.</p>
+        <button type="button" className="gi-text-btn" onClick={() => void chrome.runtime.sendMessage({ type: 'RESET_WORKSPACE_LAYOUT' })}>Reset workspace position &amp; size</button>
       </Section>
 
       <Section title="Inbox" id="inbox">
-        <Toggle label="AI Inbox" checked={(cloudMode || settings.aiMode !== 'disabled') && settings.autoClassify} onChange={(on) => update('autoClassify', on)} />
+        <Toggle label="Organize inbox automatically" checked={settings.autoClassify} onChange={(on) => update('autoClassify', on)} />
         <Toggle label="Email tracking" checked={settings.trackingEnabled} onChange={(on) => update('trackingEnabled', on)} />
         <Toggle label="Desktop alerts" checked={settings.desktopNotifications} onChange={(on) => update('desktopNotifications', on)} />
       </Section>
@@ -297,12 +301,11 @@ export function SettingsApp() {
         )}
       </Section>
 
-      <Section title="Agent">
-        <Toggle label="Organize inbox automatically" checked={settings.autoClassify} onChange={(on) => update('autoClassify', on)} />
+      <Section title="Drafts & follow-ups">
         <Toggle label="Generate reply drafts" checked={settings.autoDraft} onChange={(on) => update('autoDraft', on)} />
         <Toggle label="Follow-up reminders" checked={settings.autoReminders} onChange={(on) => update('autoReminders', on)} />
         <Toggle label="Auto archive low-priority mail" checked={settings.autoArchive} onChange={(on) => update('autoArchive', on)} />
-        <p className="gi-muted text-xs">Drafts stay local until you click Draft reply. Nothing is sent automatically.</p>
+        <p className="gi-muted text-xs">{cloudMode ? 'Prepared replies follow your sync preferences below. Sending requires your approval.' : 'Drafts stay on this computer until you add them to Gmail.'}</p>
       </Section>
 
       {cloudMode ? null : (
@@ -366,7 +369,7 @@ export function SettingsApp() {
         </p>
       </Section>
 
-      {cloudMode && product.has("cloud_mail_sync") ? <Section title="Cloud" id="cloud"><CloudPreferences capabilities={product.state.capabilities} /></Section> : null}
+      {cloudMode && product.has("cloud_mail_sync") ? <Section title="Cloud / Sync" id="cloud"><CloudPreferences capabilities={product.state.capabilities} /></Section> : null}
       <Section title="Personalization" id="personalization">
         <ProfileFields voice={settings.voiceProfile} onChange={(voiceProfile) => update('voiceProfile', voiceProfile)} />
         <Field label="Greeting">
@@ -449,7 +452,6 @@ export function SettingsApp() {
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.sendMessage({ type: 'INDEX_INBOX', mode: '30d' })}>Index older messages</button>
             <button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.sendMessage({ type: 'PAUSE_INDEX' })}>Pause</button>
-            <button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.sendMessage({ type: 'CLEAR_INDEX' })}>Clear local mail index</button>
             <button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.sendMessage({ type: 'RUN_DIAGNOSTICS' }, (next) => setDiag(next))}>Run diagnostics</button>
           </div>
           {diag?.trackingReport ? <pre className="gi-pre">{String(diag.trackingReport)}</pre> : null}

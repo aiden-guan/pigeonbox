@@ -62,12 +62,14 @@ async function type(area: HTMLTextAreaElement, value: string) {
 }
 
 beforeEach(() => {
+  const values: Record<string, unknown> = {};
+  vi.stubGlobal('chrome', { storage: { session: { get: vi.fn(async (key: string) => ({ [key]: values[key] })), set: vi.fn(async (items: Record<string, unknown>) => { Object.assign(values, items); }) } } });
   calls.length = 0;
   for (const key of Object.keys(responses)) delete responses[key];
   Object.defineProperty(globalThis, 'crypto', { value: { randomUUID: () => `key-${Math.random().toString(36).slice(2, 12)}` }, configurable: true });
   responses.threadsIntel = () => ({ threads: {}, synced: true, accountId: ACCOUNT });
 });
-afterEach(() => { act(() => root.unmount()); host.remove(); });
+afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 describe('draft review', () => {
   const target = (overrides: Partial<CloudDraft> = {}) => ({ threadId: 't1', accountId: ACCOUNT, draft: draft(overrides), subject: 'Uniforms needed by September 30', person: { email: 'boosters@school.test', name: 'Track Boosters' }, from: 'drafts' as const });
@@ -160,8 +162,8 @@ describe('cloud home', () => {
     await render(<CloudHome data={data as CloudOverview} loading={false} capabilities={['cloud_mail_sync', 'cloud_auto_drafts']} visitSince={at} onOpenThread={() => undefined} onReviewDraft={() => undefined} onGo={() => undefined} onNavigate={() => undefined} />);
     const text = host.textContent!;
     expect(text.indexOf('Ready for you')).toBeLessThan(text.indexOf('Prepared for you'));
-    expect(text.indexOf('Prepared for you')).toBeLessThan(text.indexOf('While you were away'));
-    expect(text).toContain('Nothing new since your last visit.');
+    expect(text).not.toContain('While you were away');
+    expect(text).not.toContain('Nothing new since your last visit.');
     expect(text).not.toMatch(/Threads analyzed|analyzed/i);
     expect(host.querySelectorAll('.pb-away-list li')).toHaveLength(0);
   });

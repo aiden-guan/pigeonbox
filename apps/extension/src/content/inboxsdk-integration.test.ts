@@ -1,11 +1,13 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { InboxSdkLike } from '@pigeonbox/gmail';
 import { CompositeGmailAdapter } from '@pigeonbox/gmail';
 import { mountSdkUi } from './index';
 
+beforeEach(() => vi.stubGlobal('chrome', { runtime: { id: 'fixture', sendMessage: vi.fn((_message, callback) => { callback?.({}); return Promise.resolve({}); }), getURL: (path: string) => `chrome-extension://fixture/${path}` } }));
+afterEach(() => vi.unstubAllGlobals());
 describe('InboxSDK UI and handler integration', () => {
   it('mountSdkUi() no longer registers handlers or NavMenu items directly on sdk', () => {
     const mockSdk = {
@@ -142,12 +144,14 @@ describe('InboxSDK UI and handler integration', () => {
     threadCb!(mockThreadView);
     await vi.waitFor(() => {
       expect(addSidebarContentPanel).not.toHaveBeenCalled();
-      expect(document.getElementById('gi-thread-panel')).not.toBeNull();
+      expect(document.getElementById('gi-thread-panel')).toBeNull();
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_WORKSPACE_CONTEXT' }), expect.any(Function));
     });
 
     destroyCbs.forEach((cb) => cb());
     await vi.waitFor(() => {
       expect(document.getElementById('gi-thread-panel')).toBeNull();
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_WORKSPACE_CONTEXT', context: null }), expect.any(Function));
     });
 
     // Row view sets thread id attribute

@@ -55,7 +55,6 @@ export function CloudCompanion(props: { intel: ThreadIntel; onUseDraft: (body: s
   const draft = intel.draft && intel.draft.status !== 'discarded' && intel.draft.status !== 'sent' ? intel.draft : null;
   const [variantIndex, setVariantIndex] = useState(0);
   useEffect(() => { if (props.intel.draft) trackProductEvent('first_prepared_draft_seen', { surface: 'gmail', mode: 'cloud' }); }, [props.intel.draft]);
-  const [openedAt] = useState(() => Date.now());
   const variant = draft?.variants[Math.min(variantIndex, (draft?.variants.length ?? 1) - 1)] ?? null;
   const open = [...new Set(variant?.body.match(PLACEHOLDER) ?? [])];
   const mine = intel.commitments.filter((item) => item.direction === 'mine' && item.status === 'open');
@@ -63,13 +62,12 @@ export function CloudCompanion(props: { intel: ThreadIntel; onUseDraft: (body: s
   const state = intel.state;
 
   return (
-    <div className="gi-section gi-cloud" aria-label="PigeonBox Cloud">
-      <div className="gi-section-heading">Cloud</div>
+    <div className="gi-section gi-cloud" aria-label="Prepared work">
       <div className="gi-cloud-state">
         <strong>{STATE_LABEL[state.state] ?? state.state}</strong>
       </div>
       {state.importanceReason ? <p className="gi-cloud-why">{state.importanceReason}</p> : null}
-      {state.nextAction.label ? <div className="gi-cloud-next"><span className="gi-section-heading">Next action</span><strong>{state.nextAction.label}</strong></div> : null}
+      {state.nextAction.label ? <div className="gi-cloud-next"><strong>{state.nextAction.label}</strong></div> : null}
       {state.deadline ? <span className="gi-date">Due {shortDate(state.deadline.at)}</span> : null}
       {intel.injectionSuspected ? (
         <p className="gi-cloud-warn" role="note">
@@ -111,8 +109,7 @@ export function CloudCompanion(props: { intel: ThreadIntel; onUseDraft: (body: s
       <CloudContext intel={intel} capabilities={props.capabilities ?? []} mailbox={props.mailbox} onInsert={props.onUseDraft} />
       {draft && variant ? (
         <>
-          <div className="gi-section-heading">Prepared draft</div>
-          <p className="gi-cloud-why">{Date.parse(draft.freshness.createdAt) < openedAt ? 'Prepared before you opened this thread' : 'Prepared for this conversation'}</p>
+          <p className="gi-cloud-why">Reply prepared</p>
           {draft.variants.length > 1 ? (
             <div className="gi-cloud-variants" role="tablist" aria-label="Draft options">
               {draft.variants.map((item, index) => (
@@ -136,7 +133,7 @@ export function CloudCompanion(props: { intel: ThreadIntel; onUseDraft: (body: s
           {draft.sources.length ? <details className="gi-cloud-context"><summary>Used to prepare this draft</summary><ul className="gi-points">{draft.sources.map((source) => <li key={source.id}>{source.gmailThreadId ? <a className="gi-link" target="_blank" rel="noreferrer" href={`https://mail.google.com/mail/?authuser=${encodeURIComponent(props.mailbox || '0')}#all/${encodeURIComponent(source.gmailThreadId)}`}>{source.title}</a> : <span>{source.title}</span>}</li>)}</ul></details> : null}
           <div className="gi-actions">
             <button type="button" className="gi-action" onClick={() => { trackProductEvent('prepared_draft_used', { surface: 'gmail', mode: 'cloud' }); props.onUseDraft(variant.body); }}>
-              Use this draft
+              Use prepared reply
             </button>
           </div>
         </>

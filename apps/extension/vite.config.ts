@@ -46,7 +46,7 @@ function flattenExtensionHtml(): Plugin {
       const pages: Array<[string, string]> = [
         ['src/settings/index.html', 'settings.html'],
         ['src/onboarding/index.html', 'onboarding.html'],
-        ['src/popup/index.html', 'popup.html'],
+        ['src/workspace/index.html', 'workspace.html'],
         ['src/sidepanel/index.html', 'sidepanel.html'],
       ];
       for (const [from, to] of pages) {
@@ -176,7 +176,7 @@ export default defineConfig(({ mode }) => ({
         content: resolve(__dirname, 'src/content/index.ts'),
         mainWorld: resolve(__dirname, 'src/main-world/index.ts'),
         sidepanel: resolve(__dirname, 'src/sidepanel/index.html'),
-        popup: resolve(__dirname, 'src/popup/index.html'),
+        workspace: resolve(__dirname, 'src/workspace/index.html'),
         settings: resolve(__dirname, 'src/settings/index.html'),
         onboarding: resolve(__dirname, 'src/onboarding/index.html'),
         offscreen: resolve(__dirname, 'offscreen.html'),

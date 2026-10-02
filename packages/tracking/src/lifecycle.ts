@@ -281,6 +281,16 @@ export function planPageReloadProxy(
   };
 }
 
+/** Reconcile the same short duplicate burst handled by the live pixel classifier. */
+export function pageReloadProxyReclassifications(events: PageReloadProxyEvent[], plan: PageReloadProxyPlan, navigationStartedAt: number): string[] {
+  const consumedAt = plan.proxyConsumedAt ? Date.parse(plan.proxyConsumedAt) : Number.NaN;
+  if (!Number.isFinite(consumedAt) || consumedAt < navigationStartedAt || consumedAt > navigationStartedAt + PAGE_RELOAD_PROXY_WINDOW_MS) return [];
+  return events.filter((event) => event.type === 'OPEN' && event.classification === 'PROXY_LIKELY'
+    && detectOpenRequestSource(event.userAgent ?? event.user_agent) === 'google_image_proxy'
+    && Date.parse(event.timestamp) >= consumedAt && Date.parse(event.timestamp) <= consumedAt + SENDER_PROXY_BURST_MS)
+    .map((event) => pageReloadEventKey(event)).filter(Boolean);
+}
+
 function machineOpenVerdict(source: OpenRequestSource): OpenVerdict | null {
   if (source === 'headless' || source === 'scanner') {
     return {

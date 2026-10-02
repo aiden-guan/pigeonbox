@@ -1,7 +1,7 @@
 /**
  * Trust boundaries for runtime messages.
  *
- * Extension pages (settings, popup, side panel, onboarding, offscreen) run in the
+ * Extension pages (workspace, settings, side panel, onboarding, offscreen) run in the
  * extension origin and are trusted. Content scripts run inside Gmail's renderer
  * process; they may only send the message types Gmail integration needs, and
  * they never receive secrets.
@@ -10,6 +10,10 @@
 /** Messages a Gmail content script is allowed to send. Everything else needs an extension page. */
 const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   'PING',
+  'GET_WORKSPACE_PRESENTATION',
+  'WORKSPACE_PRESENTATION',
+  'SET_WORKSPACE_CONTEXT',
+  'OPEN_WORKSPACE_COMMANDS',
   'PRODUCT_EVENT',
   'GET_PUBLIC_SETTINGS',
   'GET_THREAD_INTEL',
@@ -34,6 +38,7 @@ const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   'SET_NO_REPLY_NOTIFY',
   'TRACKING_POLL',
   'TRACKING_SELF_VIEW',
+  'TRACKING_INSPECTION_READY',
   // Counted opens and clicks for the tracking card on a sent message. Read-only, no credentials.
   'GET_TRACKING_TIMELINE',
   'SET_CATEGORY',
@@ -55,7 +60,7 @@ function extensionOrigin(): string {
   return `chrome-extension://${chrome.runtime.id}`;
 }
 
-/** A page served from this extension (settings, popup, side panel, onboarding, offscreen). */
+/** A page served from this extension (workspace, settings, side panel, onboarding, offscreen). */
 export function isExtensionPageSender(sender: Sender): boolean {
   if (sender.id !== chrome.runtime.id) return false;
   const origin = sender.origin ?? (sender.url ? safeOrigin(sender.url) : null);

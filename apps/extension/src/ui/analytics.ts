@@ -24,7 +24,7 @@ export const PRODUCT_EVENTS = [
 ] as const;
 export type ProductEvent = (typeof PRODUCT_EVENTS)[number];
 type SafeMetadata = {
-  surface?: 'popup' | 'sidepanel' | 'gmail' | 'onboarding' | 'settings';
+  surface?: 'workspace' | 'sidepanel' | 'gmail' | 'onboarding' | 'settings';
   mode?: 'local' | 'cloud';
   outcome?: 'success' | 'failure' | 'denied';
   latency?: 'fast' | 'normal' | 'slow';
@@ -38,7 +38,7 @@ export function configureAnalytics(next?: Provider) {
   provider = next;
 }
 const VALUES = {
-  surface: ['popup', 'sidepanel', 'gmail', 'onboarding', 'settings'],
+  surface: ['workspace', 'sidepanel', 'gmail', 'onboarding', 'settings'],
   mode: ['local', 'cloud'],
   outcome: ['success', 'failure', 'denied'],
   latency: ['fast', 'normal', 'slow'],

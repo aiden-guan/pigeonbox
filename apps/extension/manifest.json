@@ -47,7 +47,6 @@
     }
   ],
   "action": {
-    "default_popup": "popup.html",
     "default_title": "PigeonBox",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -76,7 +75,8 @@
         "main-world.js",
         "inboxsdk/pageWorld.js",
         "assets/*",
-        "brand/*"
+        "brand/*",
+        "workspace.html"
       ],
       "matches": [
         "https://mail.google.com/*"

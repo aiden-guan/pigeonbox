@@ -26,10 +26,10 @@ test('Home puts current work first and collapses zero activity', async ({ app })
   app.api.quiet = true;
   const page = await app.page('sidepanel', true);
   await expect(page.getByRole('heading', { name: 'Ready for you' })).toBeVisible();
-  await expect(page.getByText('Nothing new since your last visit.')).toBeVisible();
+  await expect(page.getByText('Nothing new since your last visit.')).toHaveCount(0);
   const order = await page.locator('.pb-home-kicker').allTextContents();
-  expect(order.indexOf('Ready for you')).toBeLessThan(order.indexOf('While you were away'));
-  expect(order.indexOf('Prepared for you')).toBeLessThan(order.indexOf('While you were away'));
+  expect(order).toContain('Ready for you');
+  expect(order).not.toContain('While you were away');
   await expect(page.getByText(/threads analyzed/i)).toHaveCount(0);
   const item = page.locator('.pb-ready-item').first();
   await expect(item).toContainText('Maya');
@@ -92,7 +92,9 @@ for (const [label, width] of [['narrow', 320], ['normal', 400], ['widened', 960]
     if (width >= 720) expect(prepared!.x).toBeGreaterThan(ready!.x + ready!.width - 1);
     else expect(prepared!.y).toBeGreaterThan(ready!.y);
     await page.screenshot({ path: `test-results/cloud-home-${label}.png`, fullPage: true });
-    await page.getByRole('button', { name: /^Drafts/ }).click();
+    await page.locator('[data-command-launcher]').click();
+    await page.getByRole('combobox').fill('Prepared drafts');
+    await page.getByRole('combobox').press('Enter');
     await expect(page.locator('.pb-draft').first()).toBeVisible();
     expect(await fits()).toBe(true);
     await page.screenshot({ path: `test-results/cloud-drafts-${label}.png`, fullPage: true });

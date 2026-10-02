@@ -1,0 +1,34 @@
+{
+  "passed": true,
+  "frameCount": 32,
+  "requiredVisibleContentGutterPx": 16,
+  "contentBoundsMinimumAlpha": 4,
+  "residualAlpha": "Values 1-3 are recorded as noise; source alpha is preserved",
+  "pixelEdits": false,
+  "sheets": [
+    {
+      "sheet": "cozy",
+      "frames": 8,
+      "minimumVisibleContentGutterPx": 31,
+      "passed": true
+    },
+    {
+      "sheet": "delivery",
+      "frames": 8,
+      "minimumVisibleContentGutterPx": 16,
+      "passed": true
+    },
+    {
+      "sheet": "cheer",
+      "frames": 8,
+      "minimumVisibleContentGutterPx": 28,
+      "passed": true
+    },
+    {
+      "sheet": "explorer",
+      "frames": 8,
+      "minimumVisibleContentGutterPx": 26,
+      "passed": true
+    }
+  ]
+}

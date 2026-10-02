@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Keeps the dev-reload helper (scripts/dev-reload.mjs) running in the
- * background on macOS via a per-user LaunchAgent, so the popup's
+ * background on macOS via a per-user LaunchAgent, so Settings’
  * "Reload extension" button always rebuilds first.
  *
  *   npm run dev:reload:install     start now and at every login

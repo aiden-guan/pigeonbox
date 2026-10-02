@@ -24,6 +24,19 @@ export class TrackingNotificationHistory {
     return next;
   }
 
+  /** A claim can become provisional while the history write is awaiting storage. */
+  release(target: string, ids: string[]): Promise<void> {
+    const next = this.pending.then(async () => {
+      if (!ids.length) return;
+      const history = (await this.storage.get(STORAGE_KEY))[STORAGE_KEY] as History | undefined;
+      if (!history || !Array.isArray(history[target])) return;
+      const held = new Set(ids);
+      await this.storage.set({ [STORAGE_KEY]: { ...history, [target]: history[target].filter((id) => !held.has(id)) } });
+    });
+    this.pending = next.catch(() => undefined);
+    return next;
+  }
+
   private async claimNow(target: string, events: TrackingEvent[]): Promise<TrackingEvent[]> {
     const value = (await this.storage.get(STORAGE_KEY))[STORAGE_KEY];
     const history: History = value && typeof value === 'object' && !Array.isArray(value) ? value as History : {};

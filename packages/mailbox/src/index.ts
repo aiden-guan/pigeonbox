@@ -60,6 +60,10 @@ export class MailboxIngestor {
   }> {
     const quality = inferQuality(thread);
     const existing = await this.db.threads.get(thread.threadId);
+    if (thread.mailboxEmail && existing?.mailboxEmail !== thread.mailboxEmail && existing) {
+      await this.db.threads.update(thread.threadId, { mailboxEmail: thread.mailboxEmail });
+      existing.mailboxEmail = thread.mailboxEmail;
+    }
     if (existing && thread.route === 'sent' && !existing.seenInSent) {
       await this.db.threads.update(thread.threadId, { seenInSent: true });
       existing.seenInSent = true;
@@ -93,6 +97,7 @@ export class MailboxIngestor {
     }
 
     const threadRow: ThreadRow = {
+      mailboxEmail: thread.mailboxEmail || existing?.mailboxEmail,
       threadId: thread.threadId,
       accountId: this.accountId,
       subject: thread.subject,

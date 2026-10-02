@@ -598,7 +598,7 @@ describe('InboxSDK MessageView view-state and self-view integration', () => {
     });
     handler.handleMessageView(mv);
     await vi.waitFor(() =>
-      expect(onSelfView).toHaveBeenCalledWith('trk_A', 'thread_X', 'abc123', navigationStartedAt, 'PAGE_RELOAD'),
+      expect(onSelfView).toHaveBeenCalledWith('trk_A', null, null, navigationStartedAt, 'PAGE_RELOAD'),
     );
     await handler.reinspectActive();
     mv.setState('COLLAPSED');

@@ -24,3 +24,5 @@ export * from './overview.js';
 export * from './routes.js';
 
 export * from './memory.js';
+
+export * from './tasks.js';

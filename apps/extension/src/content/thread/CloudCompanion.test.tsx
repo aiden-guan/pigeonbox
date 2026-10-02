@@ -70,7 +70,7 @@ describe('Cloud thread companion', () => {
     const host = render(<CloudCompanion intel={intel()} onUseDraft={use} />);
     const shorter = [...host.querySelectorAll('button')].find((button) => button.textContent === 'Shorter')!;
     act(() => shorter.click());
-    act(() => [...host.querySelectorAll('button')].find((button) => button.textContent === 'Use this draft')!.click());
+    act(() => [...host.querySelectorAll('button')].find((button) => button.textContent === 'Use prepared reply')!.click());
     expect(use).toHaveBeenCalledWith('Hi Jordan, sending a quote shortly.');
   });
 

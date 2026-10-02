@@ -6,10 +6,11 @@ test('MV3 worker boots; Local starts first and survives a failed Cloud', async (
   const page = await app.page('sidepanel');
   expect(app.worker.url()).toContain('/background.js');
   await expect(page.getByRole('button', { name: 'Inbox', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cloud', exact: true }).click();
-  await expect(page.getByText('Works while Gmail is closed.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cloud', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(page.getByText('Needs your reply', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Inbox', exact: true }).click();
-  await expect(page.getByText('A quiet little corner.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Nothing needs you here.' })).toBeVisible();
 });
 test('Cloud overview loads through the real worker/client and retains sections on partial failure', async ({ app }) => {
   app.api.partial = true;
@@ -34,7 +35,7 @@ test('Cloud disconnection offers Google setup; failure preserves the last loaded
   await expect(page.getByRole('button', { name: 'Connect Google', exact: true })).toBeVisible();
   app.api.fail = true;
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(page.getByText('Cloud could not refresh. Showing the last loaded data.')).toBeVisible();
+  await expect(page.getByText('Could not refresh. Showing the last loaded data.')).toBeVisible();
   await expect(page.getByText('Could not refresh', { exact: true })).toBeVisible();
   await expect(page.getByText('Reviewed 7 conversations')).toBeVisible();
 });
@@ -43,7 +44,7 @@ test('Cloud Ask shows loading, grounded claims and account-bound sources', async
   await page.getByRole('button', { name: 'Ask', exact: true }).click();
   await page.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('What needs a reply?');
   await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
-  await expect(page.getByText('Reviewing available Cloud context…')).toBeVisible();
+  await expect(page.getByText('Reviewing your mail…')).toBeVisible();
   await expect(page.getByText('Maya needs pricing.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Pricing', exact: true })).toBeVisible();
   await expect(page.getByText('Only fixture mail was checked.')).toBeVisible();
@@ -51,32 +52,34 @@ test('Cloud Ask shows loading, grounded claims and account-bound sources', async
 test('Gmail SPA lifecycle mounts one companion, palette restores focus and ignores editors', async ({ app }) => {
   await app.page('sidepanel');
   const page = await app.gmail();
-  await expect(page.locator('[data-gi-ui="thread-panel"]')).toHaveCount(1);
+  await expect(page.locator('[data-gi-ui="workspace"]')).toHaveCount(1);
   await page.evaluate(() => {
     location.hash = '#sent/abc123';
   });
-  await expect(page.locator('[data-gi-ui="thread-panel"]')).toHaveCount(1);
+  await expect(page.locator('[data-gi-ui="workspace"]')).toHaveCount(1);
   await page.locator('[aria-label="Message Body"]').focus();
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
   await expect(page.locator('[data-gi-ui="cmdk"]')).toHaveCount(0);
   await page.locator('[aria-label="Message Body"]').blur();
-  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.getByRole('heading', { name: 'Pricing', exact: true }).click();
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
-  await expect(page.getByRole('dialog', { name: 'PigeonBox commands' })).toBeVisible();
-  await page.keyboard.press('ArrowDown');
-  await expect(page.getByRole('combobox')).toHaveAttribute('aria-activedescendant', 'pigeon-command-1');
-  await page.keyboard.press('Escape');
-  await expect(page.locator('[data-gi-ui="cmdk"]')).toHaveCount(0);
+  const workspace = page.frameLocator('iframe[title="PigeonBox"]');
+  await expect(workspace.getByRole('dialog')).toBeVisible();
+  await workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('ArrowDown');
+  await expect(workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' })).toHaveAttribute('aria-activedescendant', /command/);
+  await workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Escape');
+  await expect(workspace.getByRole('dialog')).toHaveCount(0);
 });
 test('prepared variants render from the real Cloud transport; insert changes compose without sending', async ({
   app,
 }) => {
   await app.page('sidepanel', true);
   const page = await app.gmail();
-  await expect(page.getByText('Prepared before you opened this thread')).toBeVisible();
-  await expect(page.getByText('Fill in [CONFIRM PRICE] before sending.')).toBeVisible();
-  await page.getByRole('tab', { name: 'Shorter' }).click();
-  await page.getByRole('button', { name: 'Use this draft', exact: true }).click();
+  const workspace = page.frameLocator('iframe[title="PigeonBox"]');
+  await expect(workspace.getByText('Reply prepared', { exact: true }).first()).toBeVisible();
+  await expect(workspace.getByText('Fill in [CONFIRM PRICE] before sending.')).toBeVisible();
+  await workspace.getByRole('tab', { name: 'Shorter' }).click();
+  await workspace.getByRole('button', { name: 'Use prepared reply', exact: true }).click();
   await expect(page.locator('[aria-label="Message Body"]')).toContainText('Hi Maya');
   expect(await page.locator('body').getAttribute('data-sent')).toBeNull();
 });
@@ -97,14 +100,16 @@ test('side panel palette opens capability-aware tools and submits Cloud question
   const page = await app.page('sidepanel', true);
   await page.locator('body').click({ position: { x: 4, y: 4 } });
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
-  await page.getByRole('combobox').fill('What needs a reply?');
+  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('What needs a reply?');
   await page.keyboard.press('Enter');
   await expect(page.getByText('Maya needs pricing.', { exact: true })).toBeVisible();
   expect(app.api.calls.filter((call) => call.route === '/v1/ask').length).toBeLessThanOrEqual(1);
 });
 test('Smart View previews explainable actions and saves only in Shadow Mode', async ({ app }) => {
   const page = await app.page('sidepanel', true);
-  await page.getByRole('button', { name: /^Smart Views/ }).click();
+  await page.locator('[data-command-launcher]').click();
+  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Open Smart Views');
+  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
   await page.getByLabel('Describe the mail and what should happen').fill('Archive receipts');
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByText('PigeonBox understood: Receipts')).toBeVisible();
@@ -117,7 +122,9 @@ test('PDF upload uses authenticated worker transport and creates recipient-speci
   app,
 }) => {
   const page = await app.page('sidepanel', true);
-  await page.getByRole('button', { name: /^Documents/ }).click();
+  await page.locator('[data-command-launcher]').click();
+  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Open Documents');
+  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
   await page
     .getByLabel('Upload PDF')
     .setInputFiles({
@@ -154,7 +161,7 @@ test('tracking instruments the controlled composer, transforms only outbound HTM
 test('Chrome permission boundary grants declared Gmail access and denies undeclared access on a direct gesture', async ({
   app,
 }) => {
-  const page = await app.page('popup');
+  const page = await app.page('workspace');
   await page.evaluate(() => {
     const button = document.createElement('button');
     button.textContent = 'Permission fixture';
@@ -183,9 +190,9 @@ test('profiles synthetic Cloud overview, Ask, thread mount and SPA navigation wi
   start = Date.now(); await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
   await expect(page.getByText('Maya needs pricing.', { exact: true })).toBeVisible(); timings.askIncluding300msFixtureMs = Date.now() - start;
   start = Date.now(); const gmail = await app.gmail();
-  await expect(gmail.getByText('Prepared before you opened this thread')).toBeVisible(); timings.gmailNavigationAndThreadMountMs = Date.now() - start;
+  await expect(gmail.frameLocator('iframe[title="PigeonBox"]').getByText('Reply prepared', { exact: true }).first()).toBeVisible(); timings.gmailNavigationAndThreadMountMs = Date.now() - start;
   start = Date.now(); await gmail.evaluate(() => { location.hash = '#sent/abc123'; });
-  await expect(gmail.locator('[data-gi-ui="thread-panel"]')).toHaveCount(1); timings.spaRouteAndCompanionCheckMs = Date.now() - start;
+  await expect(gmail.locator('[data-gi-ui="workspace"]')).toHaveCount(1); timings.spaRouteAndCompanionCheckMs = Date.now() - start;
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await writeFile(test.info().outputPath('fixture-performance.json'), JSON.stringify({ synthetic: true, timings }, null, 2));
   await test.info().attach('fixture-performance.json', { body: JSON.stringify({ synthetic: true, timings }, null, 2), contentType: 'application/json' });

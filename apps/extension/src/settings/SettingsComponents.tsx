@@ -34,7 +34,7 @@ export function Toggle(props: { label: string; description?: string; checked: bo
 
 export function Field(props: { label: string; children: ReactNode }) {
   return (
-    <label className="block text-xs text-[#aba99e]">
+    <label className="block text-xs text-[color:var(--pb-fg-muted)]">
       {props.label}
       <div className="mt-1.5">{props.children}</div>
     </label>

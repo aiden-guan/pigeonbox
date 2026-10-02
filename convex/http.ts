@@ -400,6 +400,11 @@ http.route({
       claimExpiresAt: result.claimExpiresAt,
       open_count: result.openCount,
       openCount: result.openCount,
+      click_count: result.clickCount,
+      first_opened_at: result.firstOpenedAt,
+      last_opened_at: result.lastOpenedAt,
+      first_clicked_at: result.firstClickedAt,
+      last_clicked_at: result.lastClickedAt,
       reclassifiedEventIds: result.reclassifiedEventIds,
     });
   }),

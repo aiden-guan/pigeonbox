@@ -65,7 +65,7 @@ Prepared in this repository:
 - [x] Privacy policy: [PRIVACY.md](../PRIVACY.md), covering Local and Cloud
 - [x] Store description consistent with the README and the Local-only build
 - [x] Screenshots (1280×800), small promo tile (440×280) and marquee (1400×560) in `docs/store/`, generated from real UI with fictional mail by `apps/extension/scripts/make-store-assets.py`
-- [x] Store installs hide the GitHub update check and the popup's Reload button; Chrome updates them
+- [x] Store installs hide the GitHub update check and the developer Reload button; Chrome updates them
 
 Only the account owner can do:
 

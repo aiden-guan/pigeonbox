@@ -79,6 +79,7 @@ export class DomFallbackAdapter implements GmailAdapter {
   private lastComposeId = '';
   private lastRoute = '';
   private started = false;
+  private readonly onHashChange = () => { this.emitRoute(); this.scheduleScan(); };
 
   constructor(private readonly opts: { debounceMs?: number } = {}) {}
 
@@ -109,6 +110,7 @@ export class DomFallbackAdapter implements GmailAdapter {
     });
     const root = document.body ?? document.documentElement;
     this.observer.observe(root, { childList: true, subtree: true });
+    window.addEventListener('hashchange', this.onHashChange);
     this.scheduleScan();
     this.emitRoute();
     handler({
@@ -119,6 +121,7 @@ export class DomFallbackAdapter implements GmailAdapter {
   }
 
   async stop(): Promise<void> {
+    if (typeof window !== 'undefined') window.removeEventListener('hashchange', this.onHashChange);
     this.observer?.disconnect();
     this.observer = null;
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
@@ -148,8 +151,8 @@ export class DomFallbackAdapter implements GmailAdapter {
   private emitRoute(): void {
     const route = routeFromLocation();
     const query = typeof location !== 'undefined' ? location.hash : '';
-    if (route === this.lastRoute && this.lastRoute) return;
-    this.lastRoute = route;
+    if (query === this.lastRoute && this.lastRoute) return;
+    this.lastRoute = query;
     this.emit({ type: 'ROUTE_CHANGED', route, query, at: Date.now() });
   }
 
@@ -178,7 +181,7 @@ export class DomFallbackAdapter implements GmailAdapter {
           at: Date.now(),
         });
       }
-    }
+    } else { this.lastThreadId = ''; this.lastThreadKey = ''; }
     const compose = this.extractCompose(document);
     if (compose && compose.composeId !== this.lastComposeId) {
       this.lastComposeId = compose.composeId;

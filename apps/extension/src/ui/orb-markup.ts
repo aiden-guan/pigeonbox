@@ -1,6 +1,6 @@
-/** Compatibility export: loading is now a dispatch route, shared with DOM toasts. */
+/** Plain DOM loading uses the same finite dot vocabulary as React surfaces. */
 export function orbSvg(): string {
-  return '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path class="gi-route-track" d="M3 18V9a3 3 0 0 1 3-3h12"/><path class="gi-route-progress" pathLength="100" d="M3 18V9a3 3 0 0 1 3-3h12"/><path class="gi-route-end" d="m15 3 3 3-3 3"/></svg>';
+  return `<svg viewBox="0 0 40 30" fill="currentColor" aria-hidden="true" focusable="false">${Array.from({ length: 35 }, (_, id) => `<circle cx="${5 + id % 7 * 5}" cy="${5 + Math.floor(id / 7) * 5}" r="1" opacity="${id % 3 === 0 ? .9 : .5}"/>`).join('')}</svg>`;
 }
 
 export type OrbTone = 'paper' | 'bare' | 'on-accent';

@@ -182,6 +182,11 @@ export class TrackingClient {
     claimExpiresAt?: string;
     open_count?: number;
     openCount?: number;
+    click_count?: number;
+    first_opened_at?: string | null;
+    last_opened_at?: string | null;
+    first_clicked_at?: string | null;
+    last_clicked_at?: string | null;
     reclassifiedEventIds?: string[];
   }> {
     return this.request('self-view', `/api/emails/${encodeURIComponent(id)}/self-view`, { method: 'POST', body: data || {} });
@@ -951,6 +956,7 @@ export {
   openEventMatchesSenderClaim,
   PAGE_RELOAD_PROXY_WINDOW_MS,
   planPageReloadProxy,
+  pageReloadProxyReclassifications,
   probeTracker,
   selectSenderProxyClaim,
   senderProxySuppressionMode,
@@ -995,3 +1001,5 @@ export {
   extractTrackingIdsFromMessageBody,
 } from './pixel-identity.js';
 export type { PixelCandidateElement, PixelCandidateRoot, TrackerBase } from './pixel-identity.js';
+
+export { SelfViewAttribution, type PendingSelfView, type AttributionSnapshot } from './attribution';

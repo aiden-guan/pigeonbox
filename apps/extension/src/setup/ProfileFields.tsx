@@ -92,7 +92,7 @@ function Segments<T extends string>(props: { value: T; options: Array<[T, string
 
 function Labeled(props: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="block text-xs text-[#aba99e]">
+    <div className="block text-xs text-[color:var(--pb-fg-muted)]">
       <div>{props.label}</div>
       <div className="mt-1.5">{props.children}</div>
       {props.hint ? <div className="gi-muted mt-1 text-[11px]">{props.hint}</div> : null}

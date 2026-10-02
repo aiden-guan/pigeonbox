@@ -1,3 +1,5 @@
+> Current UI and consistency model: [Unified workspace implementation](workspace-refactor.md).
+
 # Architecture
 
 ```
@@ -53,7 +55,7 @@ Not allowed: the extension importing Cloud server source, Cloud importing extens
 
 | Package | Responsibility |
 |---|---|
-| `apps/extension` | The PigeonBox client: Manifest V3, service worker, Gmail content scripts, popup, side panel, onboarding, settings, Chrome messaging and storage, and orchestration between the packages below. |
+| `apps/extension` | The PigeonBox client: Manifest V3, service worker, Gmail content scripts, shared floating workspace, optional side panel, onboarding, settings, Chrome messaging and storage, and orchestration between the packages below. |
 | `packages/core` | Product and runtime policy: Local vs Cloud mode, capability resolution and privacy boundaries. No UI. |
 | `packages/shared` | Shared primitives: settings types and migration, extension message schemas, constants and small utilities. |
 | `packages/gmail` | Gmail integration primitives: InboxSDK and DOM adapters, event and thread/message ID normalization, selectors, Gmail actions and draft placement. No AI reasoning. |
@@ -88,18 +90,18 @@ apps/extension/src/
 │   ├── tracking/            compose tracking, tracking session, sent status, self-view detection
 │   └── shell/               shadow-DOM surface, floating drag, toasts, placeholder send guard
 ├── local-model/             WebGPU / Gemini Nano runtime (offscreen)
-├── main-world/  offscreen/  onboarding/  popup/  settings/  setup/  sidepanel/  ui/  preview/
+├── main-world/  offscreen/  onboarding/  workspace/  settings/  setup/  sidepanel/  ui/  preview/
 ```
 
 ## Runtime contexts
 
 | Context | File | Trust | Does |
 |---|---|---|---|
-| Content script (isolated world on `mail.google.com`) | `apps/extension/src/content/index.ts` | Low: runs in Gmail's renderer | Reads Gmail through `packages/gmail`, renders the thread card and chips, sends typed messages to the worker. Never sees keys, tokens or full settings. |
+| Content script (isolated world on `mail.google.com`) | `apps/extension/src/content/index.ts` | Low: runs in Gmail's renderer | Reads Gmail through `packages/gmail`, owns the floating presentation host and chips, and sends allowlisted messages to the worker. The application renders in a trusted extension iframe. The content script never sees keys, tokens or full settings. |
 | MAIN world | `apps/extension/src/main-world/index.ts` | None | Intentionally empty. InboxSDK injects its own `pageWorld.js`. |
 | Background service worker | `apps/extension/src/background/index.ts` | High | Owns settings, secrets, the Cloud session, the AI provider, the agent loop, tracking calls, IndexedDB. |
 | Offscreen document | `apps/extension/src/offscreen/offscreen.ts` | High | Runs WebGPU models (transformers.js + ONNX Runtime Web) and Gemini Nano. |
-| Extension pages | `settings`, `popup`, `sidepanel`, `onboarding` | High | UI. Talk to the worker with messages. |
+| Extension pages | `workspace`, `settings`, `sidepanel`, `onboarding` | High | UI. Talk to the worker with messages. |
 
 ### Message trust
 
@@ -113,10 +115,10 @@ apps/extension/src/
 
 `background/cloud/` connects the extension to PigeonBox Cloud's always-on service (`thread-state.ts`, `page-calls.ts`, `notifications.ts`). This is an optional Cloud capability of the same extension, not a separate application. It is active only in Cloud mode, signed in, with `cloud_mail_sync`; Local mode never calls it.
 
-- `CLOUD_THREAD_INTEL` (the only Cloud message a content script may send) returns read-only thread state for the thread card: state and next action, deadline, promises, follow-up stage and the prepared draft with its sources and placeholders. Results are batched and cached for 20 seconds (`InflightCache`), and the card renders local data first so Cloud latency never blocks it.
+- `CLOUD_THREAD_INTEL` (the only Cloud message a content script may send) returns read-only thread state: next action, deadline, promises, follow-up stage and the prepared draft with its sources and placeholders. Results are batched and cached for 20 seconds (`InflightCache`). The shared workspace renders its shell and local state immediately.
 - `CLOUD_CALL` (extension pages only) calls an allowlisted contract route: approvals, Focus Queue, Ask Pigeon, connections and preferences. Billing, account deletion and token management are not on the list.
 - A two-minute alarm polls Cloud notifications and shows approvals, due follow-ups, mentions, assignments and sync problems as desktop notifications when enabled.
-- The side panel's Cloud tab holds the approval queue (edit, approve, reject; approval is blocked while placeholders remain), the Cloud Focus Queue and Ask Pigeon with source chips. Settings shows the Google connection, which is made on Google's consent screen; credentials stay in Cloud.
+- The shared workspace integrates prepared replies and follow-ups into Home, and current-conversation intelligence into the same surface. Approvals, activity, memory and other capability-gated features remain available through command search. Ask inherits the current thread. The optional side panel renders this same application. Settings shows Google connection and execution/privacy controls; credentials stay in Cloud.
 - In every mode, `content/shell/placeholder-guard.ts` stops a message that still contains `[… NEEDED]` or `[CONFIRM …]` from sending unless the person confirms.
 
 ## Run mode and capabilities

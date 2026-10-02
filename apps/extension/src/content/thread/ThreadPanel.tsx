@@ -1,11 +1,8 @@
-import { Pigeon, type PigeonState } from '../../ui/Pigeon';
+import { FlightPath } from '../../ui/FlightPath';
 import { Orb } from '../../ui/Orb';
-import { useState, type MouseEvent } from 'react';
 import type { ThreadIntel } from '@pigeonbox/api-contract';
 import { categoryLabel } from './chips';
 import { CloudCompanion } from './CloudCompanion';
-
-export type IslandMode = 'docked' | 'open' | 'expanded';
 
 /** What PigeonBox derived on this computer for a thread (classification, summary, draft). */
 export type LocalThreadIntel = {
@@ -37,6 +34,8 @@ export type ThreadTrackingStatus = {
   headline: string;
   detail: string;
   countLabel: string;
+  sentAt?: string | null;
+  firstOpenedAt?: string | null;
 };
 
 export function ThreadPanel(props: {
@@ -44,11 +43,8 @@ export function ThreadPanel(props: {
   pending?: string | null;
   preview?: string | null;
   tracking?: ThreadTrackingStatus | null;
-  mode?: IslandMode;
-  variant?: 'float' | 'sidebar';
   canDraft?: boolean;
   drafting?: boolean;
-  onMode?: (mode: IslandMode) => void;
   onDraft: () => void;
   onRemind: () => void;
   onRetrySummary?: () => void;
@@ -58,10 +54,8 @@ export function ThreadPanel(props: {
   mailbox?: string;
   onUseCloudDraft?: (body: string) => void;
 }) {
-  const [uncontrolled, setUncontrolled] = useState<IslandMode>('open');
-  const mode = props.mode ?? uncontrolled;
   const category = categoryLabel(props.intel?.classification?.category);
-  const analyzing = /analyzing/i.test(props.pending || '');
+  const analyzing = /analyzing|resolving/i.test(props.pending || '');
   const summaryReady =
     !analyzing &&
     ((props.intel?.summary?.source === 'model' && props.intel?.summary?.aiStatus === 'success') ||
@@ -69,7 +63,7 @@ export function ThreadPanel(props: {
     Boolean(props.intel?.summary?.summary?.oneLine);
   const summary = summaryReady ? props.intel?.summary?.summary?.oneLine || null : null;
   const needsReply = Boolean(props.intel?.classification?.needsReply || props.intel?.draft?.suggestion?.body);
-  const canDraft = props.canDraft ?? needsReply;
+  const canDraft = (props.canDraft ?? needsReply) && !props.cloud?.draft?.variants.length;
   const brief = summaryReady ? props.intel?.summary?.summary : null;
   const points = sanitizeList(brief?.keyPoints || []);
   const dates = sanitizeDateTags(brief?.dates || []);
@@ -77,72 +71,18 @@ export function ThreadPanel(props: {
   const modelFailed = !analyzing && (props.intel?.summary?.aiStatus === 'failed' || /failed|could not|too long/i.test(props.pending || ''));
   const line = presentSummary(summary || props.pending || 'No summary yet.');
   const waiting = !summary && Boolean(props.pending);
-  const pigeonState: PigeonState = props.drafting ? 'drafting' : modelFailed ? 'error' : waiting ? 'indexing' : props.tracking?.opened ? 'opened' : 'idle';
-  const pigeonLabel = props.drafting ? 'Finding the right words' : modelFailed ? 'Let’s try that again' : waiting ? 'Reading between the lines' : props.tracking?.opened ? 'An open was detected' : summaryReady ? 'The thread, untangled' : 'Ready when you are';
-
-  const floating = (props.variant || 'float') === 'float';
-
-  function setMode(next: IslandMode) {
-    if (props.mode == null) setUncontrolled(next);
-    props.onMode?.(next);
-  }
-
-  function keep(event: MouseEvent) {
-    event.stopPropagation();
-  }
-
-  if (mode === 'docked') {
-    return (
-      <button
-        type="button"
-        className="gi-pill"
-        data-gi-drag
-        aria-expanded="false"
-        aria-label="Show intelligence"
-        onMouseDown={keep}
-        onClick={(event) => {
-          keep(event);
-          setMode('open');
-        }}
-      >
-        <Pigeon state={pigeonState} size={30} />
-        <span className="gi-pill-label">{category || 'Inbox'}</span>
-        <span className={waiting ? 'gi-dot is-live' : needsReply ? 'gi-dot' : 'gi-dot is-quiet'} />
-      </button>
-    );
-  }
-
   return (
-    <div
-      className="gi-shell"
-      data-mode={mode}
-      data-variant={props.variant || 'float'}
-      aria-label="Intelligence"
-      onMouseDown={keep}
-      onClick={keep}
-    >
+    <div className="gi-shell" aria-label="Intelligence">
       <div className="gi-core">
-        <div className="gi-bar" data-gi-drag={floating || undefined} title={floating ? 'Drag to move · double-click to reset' : undefined}>
-          <div className="gi-brand">
-            <Pigeon state={pigeonState} size={30} />
-            <span className="gi-kicker">Pidgy / Thread brief</span>
-          </div>
-          <button type="button" className="gi-hide" aria-label="Hide intelligence" onClick={() => setMode('docked')}>
-            Hide
-          </button>
-        </div>
-        <div className="gi-thread-mascot" data-gi-drag={floating || undefined}><Pigeon state={pigeonState} size={44} /><div><strong>{pigeonLabel}</strong><small>THREAD BRIEF</small></div></div>
         <div className="gi-catrow">
           <div className="gi-cat">{category || 'Inbox'}</div>
           {props.intel?.manual ? <span className="gi-you">Set by you</span> : null}
           {props.pending && !waiting && /analyzing/i.test(props.pending) ? (
-            <span className="gi-pending-tag" style={{ fontSize: '11px', opacity: 0.7, marginLeft: 'auto' }}>
+            <span className="gi-pending-tag" style={{ fontSize: 'var(--pb-size-meta)', opacity: 0.7, marginLeft: 'auto' }}>
               {props.pending}
             </span>
           ) : null}
         </div>
-        <div className="gi-section-heading">Summary</div>
-        {summaryReady ? <svg key={summary} className="pb-route-line" viewBox="0 0 280 10" aria-hidden="true"><path pathLength="100" d="M0 9H90Q100 9 108 3H280" fill="none" stroke="currentColor" strokeWidth="1" /></svg> : null}
         <p className={waiting ? 'gi-sum is-wait' : 'gi-sum'}>{waiting && !modelFailed ? <span className="gi-orb-line"><Orb size={14} tone="bare" />{line}</span> : line}</p>
         {modelFailed && props.onRetrySummary ? (
           <div className="gi-retry-row">
@@ -156,7 +96,7 @@ export function ThreadPanel(props: {
           </div>
         ) : null}
         {dates.length ? (
-          <div className="gi-section"><div className="gi-section-heading">Key date</div><div className="gi-dates">
+          <div className="gi-section"><div className="gi-dates">
             {dates.map((date) => (
               <span className="gi-date" key={date}>
                 {date}
@@ -165,7 +105,7 @@ export function ThreadPanel(props: {
           </div></div>
         ) : null}
         {points.length ? (
-          <div className="gi-section"><div className="gi-section-heading">Key details</div><ul className="gi-points">
+          <div className="gi-section"><ul className="gi-points">
             {points.map((point) => (
               <li key={point}>{point}</li>
             ))}
@@ -178,9 +118,10 @@ export function ThreadPanel(props: {
         ) : null}
         {props.tracking ? (
           <div className="gi-open">
+            <FlightPath points={[{ label: props.tracking.sentAt ? "Sent" : "Tracking on", detail: props.tracking.sentAt ? "Tracking enabled for this sent email." : "Tracking is enabled; a send time is not available.", at: props.tracking.sentAt }, { label: props.tracking.opened ? "Open detected" : "Waiting", detail: props.tracking.headline, at: props.tracking.firstOpenedAt, uncertain: props.tracking.opened, current: true }]} note={props.tracking.detail} />
             <div className={props.tracking.opened ? 'gi-open-label is-open' : 'gi-open-label'}>{props.tracking.markLabel}</div>
-            <p className="gi-open-line">{props.tracking.headline}</p>
-            <p className="gi-open-sub">{props.tracking.detail}</p>
+
+
             <div className={props.tracking.opened ? 'gi-open-count is-open' : 'gi-open-count'}>{props.tracking.countLabel}</div>
           </div>
         ) : null}
@@ -196,16 +137,9 @@ export function ThreadPanel(props: {
               {props.drafting ? <span className="gi-orb-line"><Orb size={13} tone={needsReply ? 'on-accent' : 'bare'} />Drafting…</span> : 'Draft reply'}
             </button>
           ) : null}
-          <button
-            type="button"
-            className={canDraft && !needsReply ? 'gi-action' : 'gi-action is-ghost'}
-            onClick={props.onRemind}
-          >
-            Remind
-          </button>
+          <details className="pb-thread-more"><summary aria-label="More thread actions">···</summary><div className="pb-thread-menu"><button type="button" className="gi-text-btn" onClick={props.onRemind}>Remind me</button>{props.onRetrySummary ? <button type="button" className="gi-text-btn" onClick={props.onRetrySummary}>Refresh summary</button> : null}</div></details>
         </div>
       </div>
-      {floating ? <div className="gi-resize" data-gi-resize aria-hidden="true" /> : null}
     </div>
   );
 }

@@ -340,6 +340,60 @@ export function planPageReloadProxy(
   };
 }
 
+export const JUST_SENT_SELF_VIEW_MS = 30_000;
+export type JustSentProxyPlan = { reclassifyEventIds: string[]; proxyConsumedByEventId: string; proxyConsumedAt: string };
+
+export function planJustSentProxy(
+  events: PageReloadProxyEvent[],
+  opts: { sentAtMs: number | null; selfViewMs: number; proxySlotConsumed: boolean; quotedRender?: boolean },
+): JustSentProxyPlan | null {
+  const { sentAtMs, selfViewMs } = opts;
+  if (opts.proxySlotConsumed) return null;
+  if (sentAtMs == null || !Number.isFinite(sentAtMs) || !Number.isFinite(selfViewMs)) return null;
+  const justSent = Math.abs(selfViewMs - sentAtMs) <= JUST_SENT_SELF_VIEW_MS;
+  if (!justSent && !opts.quotedRender) return null;
+  // Gmail renders a just-sent reply at send time, which can be well before the first self-view.
+  const windowStart = justSent
+    ? Math.min(selfViewMs - SELF_VIEW_PRE_WINDOW_MS, sentAtMs)
+    : selfViewMs - SELF_VIEW_PRE_WINDOW_MS;
+  const windowEnd = selfViewMs + PAGE_RELOAD_PROXY_WINDOW_MS;
+  const proxies = events
+    .filter((evt) => {
+      if (evt.type !== "OPEN" || !pageReloadEventKey(evt)) return false;
+      if (detectOpenRequestSource(evt.userAgent ?? evt.user_agent ?? null) !== "google_image_proxy") return false;
+      const ts = Date.parse(evt.timestamp);
+      return Number.isFinite(ts) && ts >= windowStart && ts <= windowEnd;
+    })
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+  const first = proxies[0];
+  if (!first) return null;
+  // The send-time render was already left uncounted by the delivery window; it still spends the slot.
+  if (first.classification === "MACHINE_LIKELY") {
+    return { reclassifyEventIds: [], proxyConsumedByEventId: pageReloadEventKey(first), proxyConsumedAt: first.timestamp };
+  }
+  // A proxy already marked SELF_LIKELY means this render was handled; later ones are recipients.
+  if (first.classification !== "PROXY_LIKELY") return null;
+  const firstMs = Date.parse(first.timestamp);
+  const reclassifyEventIds = proxies
+    .filter((evt) => evt.classification === "PROXY_LIKELY" && Date.parse(evt.timestamp) - firstMs <= SENDER_PROXY_BURST_MS)
+    .map(pageReloadEventKey);
+  return {
+    reclassifyEventIds,
+    proxyConsumedByEventId: pageReloadEventKey(first),
+    proxyConsumedAt: first.timestamp,
+  };
+}
+
+/** Reconcile the same short duplicate burst handled by the live pixel classifier. */
+export function pageReloadProxyReclassifications(events: PageReloadProxyEvent[], plan: PageReloadProxyPlan, navigationStartedAt: number): string[] {
+  const consumedAt = plan.proxyConsumedAt ? Date.parse(plan.proxyConsumedAt) : Number.NaN;
+  if (!Number.isFinite(consumedAt) || consumedAt < navigationStartedAt || consumedAt > navigationStartedAt + PAGE_RELOAD_PROXY_WINDOW_MS) return [];
+  return events.filter((event) => event.type === 'OPEN' && event.classification === 'PROXY_LIKELY'
+    && detectOpenRequestSource(event.userAgent ?? event.user_agent) === 'google_image_proxy'
+    && Date.parse(event.timestamp) >= consumedAt && Date.parse(event.timestamp) <= consumedAt + SENDER_PROXY_BURST_MS)
+    .map((event) => pageReloadEventKey(event)).filter(Boolean);
+}
+
 function machineOpenVerdict(source: OpenRequestSource): {
   classification: OpenClassification;
   suspected: boolean;

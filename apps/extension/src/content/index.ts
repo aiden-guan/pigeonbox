@@ -1,6 +1,6 @@
-import { mountCommandPalette } from './shell/command-palette';
-import { createElement } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { ensureWorkspace, showFloatingWorkspace, updateFloatingWorkspace } from './shell/workspace';
+import { mailboxOwner, observeMailboxOwner } from './gmail-owner';
+import { ownerPerspectiveKey } from '@pigeonbox/shared';
 import type { PublicExtensionSettings } from '@pigeonbox/shared';
 import { DEFAULT_SETTINGS, toPublicSettings, buildThreadSnapshot, localThreadSummary } from '@pigeonbox/shared';
 import {
@@ -36,7 +36,7 @@ import {
 } from '@pigeonbox/tracking';
 import { applyCategoryChip, rowsForThread } from './thread/chips';
 import { attachDocumentAction, insertDocumentLink } from './compose/documents';
-import { isVisibleCommand, paletteCommands, type CommandId } from './commands';
+import { isVisibleCommand, type CommandId } from './commands';
 import { attachSdkComposeTracking, type ComposeTrackingSession } from './tracking/compose-tracking';
 import { attachPlaceholderGuard } from './shell/placeholder-guard';
 import {
@@ -47,10 +47,9 @@ import {
   type SelfViewSource,
 } from './tracking/message-self-view';
 import { installSentStatus, type SentStatusController } from './tracking/sent-status';
-import { ensureSurface, floatPanelRightPx, shadowMount } from './shell/surface';
-import type { ThreadIntel } from '@pigeonbox/api-contract';
-import { ThreadPanel, type IslandMode, type LocalThreadIntel } from './thread/ThreadPanel';
-import { installFloatDrag, placeFloat, type FloatPos } from './shell/float-drag';
+import { observeDomSelfViews } from './tracking/dom-self-view';
+import { ensureSurface } from './shell/surface';
+import { type LocalThreadIntel } from './thread/ThreadPanel';
 import { showBusyToast, showToast } from './shell/toasts';
 import { SelfViewDeduplicator } from './tracking/self-view-dedupe';
 
@@ -60,16 +59,16 @@ let sdkReady = false;
 let sdkOwnsCompose = false;
 let sentStatus: SentStatusController | null = null;
 let messageSelfView: MessageSelfViewController | null = null;
+let domSelfView: ReturnType<typeof observeDomSelfViews> | null = null;
 let booted = false;
 let pageReload: PageReloadContext | null = null;
 let paletteBound = false;
-const panelRoots = new Map<HTMLElement, Root>();
-let islandMode: IslandMode | null = null;
 let currentThreadId: string | null = null;
 let currentNormalizedThread: NormalizedThread | null = null;
 
 const summaryNotes = new Map<string, { pending: boolean; reason: string | null; preview: string | null }>();
 const draftJobs = new Set<string>();
+const summaryRequestVersions = new Map<string, number>();
 const summaryKeys = new Map<string, string>();
 let cachedTrackedEmails: TrackedEmailSummary[] = [];
 const selfViewDeduplicator = new SelfViewDeduplicator();
@@ -82,17 +81,17 @@ function reportTrackingSelfView(
   source: SelfViewSource = 'MESSAGE_EXPANDED',
   reconcileGmailIds = false,
   quotedRender = false,
-): void {
+): Promise<void> {
   const normMessageId = normalizeGmailId(gmailMessageId);
   const normThreadId = normalizeGmailId(gmailThreadId);
 
   if (!selfViewDeduplicator.shouldReport(trackingId, normMessageId, observedAt, source)) {
-    return;
+    return Promise.resolve();
   }
 
   const selfViewEventId = buildSelfViewEventId(trackingId, normMessageId, source, observedAt);
 
-  void send({
+  return send({
     type: 'TRACKING_SELF_VIEW',
     trackingId,
     gmailThreadId: normThreadId,
@@ -102,7 +101,7 @@ function reportTrackingSelfView(
     selfViewEventId,
     reconcileGmailIds,
     quotedRender,
-  });
+  }).then(() => undefined);
 }
 
 function runtimeAlive(): boolean {
@@ -191,25 +190,11 @@ function reportRuntime(lastAction?: { success: boolean; action: string; reason?:
   });
 }
 
-function currentIslandMode(): IslandMode {
-  if (islandMode) return islandMode;
-  try {
-    const stored = sessionStorage.getItem('gi.island');
-    if (stored === 'docked' || stored === 'open' || stored === 'expanded') {
-      islandMode = stored === 'expanded' ? 'open' : stored;
-      return islandMode;
-    }
-  } catch {
-    /* sessionStorage can throw on hardened pages */
-  }
-  islandMode = 'open';
-  return 'open';
-}
-
 function updateCachedEmails(emails: TrackedEmailSummary[]): void {
   cachedTrackedEmails = emails;
   sentStatus?.setEmails(emails);
-  void messageSelfView?.reinspectActive();
+  if (domSelfView) domSelfView.refresh();
+  else if (messageSelfView && (messageSelfView.getActiveCount() > 0 || !isOpenThreadRoute(location.hash))) void messageSelfView.reinspectActive().then(() => send({ type: 'TRACKING_INSPECTION_READY' }));
 }
 
 async function boot(): Promise<void> {
@@ -220,6 +205,14 @@ async function boot(): Promise<void> {
   const navigationStartedAt = performance.timeOrigin;
   pageReload = isReload && Number.isFinite(navigationStartedAt) ? { navigationStartedAt } : null;
   ensureSurface();
+  ensureWorkspace();
+  setupCommandPalette();
+  observeMailboxOwner(() => {
+    reportRuntime();
+    publishWorkspaceContext();
+    summaryKeys.clear();
+    if (currentNormalizedThread) void summarizeOpenThread(currentNormalizedThread);
+  });
   await refreshSettings();
 
   sentStatus = installSentStatus({
@@ -231,8 +224,7 @@ async function boot(): Promise<void> {
     },
     onStatus: () => {
       if (!currentThreadId) return;
-      const panel = document.getElementById('gi-thread-panel');
-      if (panel) void refreshPanel(panel, currentThreadId);
+      publishWorkspaceContext();
     },
     onLink: (trackingId, gmailThreadId) => {
       linkTracked({ trackingId, gmailThreadId, gmailMessageId: null });
@@ -259,7 +251,7 @@ async function boot(): Promise<void> {
       const route = routeFromLocation();
       const threads = event.rows.map((row) => normalizeVisibleRow(row, adapter.getActiveIntegration() === 'inboxsdk' ? 'inboxsdk' : 'dom', route));
       if (threads.length) {
-        void send({ type: 'INGEST_THREADS', direction: route === 'sent' ? 'outbound' : 'inbound', threads });
+        void send({ type: 'INGEST_THREADS', owner: mailboxOwner(), direction: route === 'sent' ? 'outbound' : 'inbound', threads });
         void paintVisibleChips(threads.map((thread) => thread.threadId));
       }
     }
@@ -273,12 +265,12 @@ async function boot(): Promise<void> {
           subject: thread.subject,
           pageMessages: thread.messages,
         });
-        if (summaryKeys.get(thread.threadId) !== snapshot.fingerprint) {
-          summaryKeys.set(thread.threadId, snapshot.fingerprint);
+        if (summaryKeys.get(thread.threadId) !== `${snapshot.fingerprint}:${ownerPerspectiveKey(mailboxOwner())}`) {
+          summaryKeys.set(thread.threadId, `${snapshot.fingerprint}:${ownerPerspectiveKey(mailboxOwner())}`);
           void summarizeOpenThread(thread);
         }
       })();
-      showDomThreadPanel(event.thread.threadId);
+      publishWorkspaceContext();
     }
     if (event.type === 'COMPOSE_OPENED' && !sdkOwnsCompose) {
       reportTracking(null);
@@ -286,10 +278,11 @@ async function boot(): Promise<void> {
     if (event.type === 'ROUTE_CHANGED' && !isOpenThreadRoute(location.hash)) {
       currentThreadId = null;
       currentNormalizedThread = null;
-      hideDomThreadPanel();
+      publishWorkspaceContext();
     }
     reportRuntime();
   });
+  if (!sdkReady) domSelfView = observeDomSelfViews(initMessageSelfView(), () => { void send({ type: 'TRACKING_INSPECTION_READY' }); });
   if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local') {
@@ -384,10 +377,10 @@ function initMessageSelfView(): MessageSelfViewController {
       },
       onSelfView: (trackingId, threadId, msgId, observedAt, source) => {
         const reconcileGmailIds = pendingReconcile.delete(trackingId);
-        reportTrackingSelfView(trackingId, threadId, msgId, observedAt, source, reconcileGmailIds);
+        return reportTrackingSelfView(trackingId, threadId, msgId, observedAt, source, reconcileGmailIds);
       },
       onQuotedSelfView: (trackingId, observedAt, source) => {
-        reportTrackingSelfView(trackingId, null, null, observedAt, source, false, true);
+        return reportTrackingSelfView(trackingId, null, null, observedAt, source, false, true);
       },
       onCollapsed: (trackingId, msgId) => {
         selfViewDeduplicator.clearRecord(trackingId, msgId);
@@ -422,7 +415,7 @@ export function mountSdkUi(
       void threadIdPromise.then((threadId) => {
         if (threadId) {
           currentThreadId = threadId;
-          showDomThreadPanel(threadId);
+          publishWorkspaceContext();
         }
       });
       threadView.on?.('destroy', () => {
@@ -430,7 +423,7 @@ export function mountSdkUi(
           if (tid && currentThreadId === tid) {
             currentThreadId = null;
             currentNormalizedThread = null;
-            hideDomThreadPanel();
+            publishWorkspaceContext();
           }
         });
       });
@@ -452,49 +445,10 @@ export function mountSdkUi(
   }
 }
 
-function defaultFloatPos(): FloatPos {
-  const main = document.querySelector<HTMLElement>('[role="main"]');
-  const rect = main?.getBoundingClientRect();
-  const scrollbar = main ? Math.max(0, main.offsetWidth - main.clientWidth) : 0;
-  const right = rect ? floatPanelRightPx(window.innerWidth, rect.right, scrollbar) : 28;
-  return { right, top: 72 };
-}
-
-function placeFloatPanel(panel: HTMLElement): void {
-  placeFloat(panel, defaultFloatPos());
-}
-
-function showDomThreadPanel(threadId: string): void {
-  ensureSurface();
-  let panel = document.getElementById('gi-thread-panel');
-  if (!panel) {
-    panel = document.createElement('aside');
-    panel.id = 'gi-thread-panel';
-    panel.setAttribute('data-gi-ui', 'thread-panel');
-    panel.addEventListener('mousedown', (event) => event.stopPropagation());
-    panel.addEventListener('click', (event) => event.stopPropagation());
-    document.documentElement.append(panel);
-    installFloatDrag(panel, defaultFloatPos);
-    window.addEventListener('resize', () => {
-      const current = document.getElementById('gi-thread-panel');
-      if (current) placeFloatPanel(current);
-    });
-  }
-  placeFloatPanel(panel);
-  void refreshPanel(panel, threadId);
-}
-
-function hideDomThreadPanel(): void {
-  const panel = document.getElementById('gi-thread-panel');
-  if (!panel) return;
-  const mount = panel.shadowRoot?.querySelector<HTMLElement>('#gi-mount');
-  if (mount) {
-    panelRoots.get(mount)?.unmount();
-    panelRoots.delete(mount);
-  }
-  panelRoots.get(panel)?.unmount();
-  panelRoots.delete(panel);
-  panel.remove();
+function publishWorkspaceContext() {
+  const thread = currentNormalizedThread;
+  const note = thread ? summaryNotes.get(thread.threadId) : undefined;
+  void send({ type: 'SET_WORKSPACE_CONTEXT', context: thread ? { threadId: thread.threadId, subject: thread.subject, sender: thread.messages[thread.messages.length - 1]?.sender?.name || thread.messages[thread.messages.length - 1]?.sender?.email || '', owner: mailboxOwner(), pending: note?.pending ? note.reason || 'Analyzing…' : note?.reason || null, drafting: draftJobs.has(thread.threadId) } : null });
 }
 
 async function refreshThread(threadId: string): Promise<void> {
@@ -503,8 +457,7 @@ async function refreshThread(threadId: string): Promise<void> {
     const category = intel?.classification?.category;
     if (category) applyCategoryChip(row, category, Boolean(intel?.manual));
   }
-  const panel = document.getElementById('gi-thread-panel');
-  if (panel && currentThreadId === threadId) await refreshPanel(panel, threadId);
+  if (currentThreadId === threadId) publishWorkspaceContext();
 }
 
 async function paintVisibleChips(threadIds: string[]): Promise<void> {
@@ -515,81 +468,6 @@ async function paintVisibleChips(threadIds: string[]): Promise<void> {
     if (!category) continue;
     for (const row of rowsForThread(threadId)) applyCategoryChip(row, category, Boolean(intel[threadId]?.manual));
   }
-}
-
-async function refreshPanel(el: HTMLElement, threadId: string): Promise<void> {
-  const host = el.id === 'gi-mount' ? ((el.getRootNode() as ShadowRoot).host as HTMLElement) : el;
-  const mount = shadowMount(host);
-  const intel = await getIntel(threadId);
-  // Cloud state never delays the card: render what we have, then again when Cloud answers.
-  const cloud = cloudIntel.get(threadId)?.value ?? null;
-  if (!cloudIntel.has(threadId) || Date.now() - cloudIntel.get(threadId)!.at > 20_000) {
-    cloudIntel.set(threadId, { value: cloud, at: Date.now() });
-    void getCloudIntel(threadId).then((value) => {
-      const before = JSON.stringify(cloud);
-      cloudIntel.set(threadId, { value, at: Date.now() });
-      if (JSON.stringify(value) !== before && currentThreadId === threadId) void refreshPanel(host, threadId);
-    });
-  }
-  let root = panelRoots.get(mount);
-  if (!root) {
-    root = createRoot(mount);
-    panelRoots.set(mount, root);
-  }
-  const tracking = sentStatus?.openThreadStatus() ?? null;
-  const note = summaryNotes.get(threadId);
-  const hasModelSummary = intel?.summary?.source === 'model' && intel?.summary?.aiStatus === 'success';
-  const summaryLine = hasModelSummary ? intel?.summary?.summary?.oneLine : undefined;
-  const preview = summaryLine ? null : note?.preview || intel?.summary?.summary?.oneLine || null;
-  const isAnalyzing = Boolean(note?.pending);
-  const pending = isAnalyzing
-    ? (settings.aiModel ? `Analyzing with ${settings.aiModel}…` : 'Analyzing email…')
-    : (note?.reason || (intel?.summary?.aiStatus === 'failed' ? (intel?.summary?.aiError ? `AI summary failed: ${intel.summary.aiError}` : 'AI summary failed.') : (intel?.classification || hasModelSummary ? null : 'Analyzing thread…')));
-  root.render(
-    createElement(ThreadPanel, {
-      intel,
-      tracking,
-      pending,
-      preview,
-      mode: currentIslandMode(),
-      variant: 'float',
-      canDraft: true,
-      drafting: draftJobs.has(threadId),
-      onMode: (mode) => {
-        islandMode = mode;
-        try {
-          sessionStorage.setItem('gi.island', mode);
-        } catch {
-          /* ignore */
-        }
-        void refreshPanel(host, threadId);
-      },
-      onDraft: () => void draftReply(threadId),
-      onRemind: () => void remind(threadId),
-      cloud,
-      cloudCapabilities,
-      mailbox: mailboxOwner()?.email,
-      onUseCloudDraft: (body: string) => void insertDraft(threadId, body).then((result) => {
-        if (!result.success) showToast('Could not open a reply here. Open the thread and try again.');
-      }),
-      onRetrySummary: () => {
-        showBusyToast('Retrying summary…');
-        const opened = currentNormalizedThread?.threadId === threadId ? currentNormalizedThread : null;
-        if (opened) {
-          void summarizeOpenThread(opened, true);
-          return;
-        }
-        void adapter.getCurrentThread().then((curr) => {
-          if (!curr.thread) {
-            showToast('Could not read this thread. Reopen it and try again.');
-            return;
-          }
-          const normalized = normalizeOpenedThread(curr.thread, adapter.getActiveIntegration() === 'inboxsdk' ? 'inboxsdk' : 'dom');
-          void summarizeOpenThread(normalized, true);
-        });
-      },
-    }),
-  );
 }
 
 function previewLine(thread: NormalizedThread): string | null {
@@ -611,6 +489,16 @@ async function summarizeOpenThread(thread: NormalizedThread, force = false): Pro
       }
     }
   }
+  const requestVersion = (summaryRequestVersions.get(thread.threadId) || 0) + 1;
+  summaryRequestVersions.set(thread.threadId, requestVersion);
+  const owner = mailboxOwner();
+  const perspective = ownerPerspectiveKey(owner);
+  const stillCurrent = () => summaryRequestVersions.get(thread.threadId) === requestVersion && ownerPerspectiveKey(mailboxOwner()) === perspective;
+  if (!owner) {
+    summaryNotes.set(thread.threadId, { pending: true, reason: 'Resolving Gmail account…', preview: null });
+    await refreshThread(thread.threadId);
+    return;
+  }
   const hasBody = thread.messages.some((message) => message.bodyText.trim().length > 0);
   const preview = previewLine(thread);
   summaryNotes.set(thread.threadId, {
@@ -622,7 +510,7 @@ async function summarizeOpenThread(thread: NormalizedThread, force = false): Pro
 
   try {
     const direction = thread.route === 'sent' ? 'outbound' : 'inbound';
-    const ingestPromise = send({ type: 'INGEST_THREAD', direction, thread });
+    const ingestPromise = send({ type: 'INGEST_THREAD', owner: mailboxOwner(), direction, thread });
     if (!hasBody) {
       summaryNotes.set(thread.threadId, {
         pending: false,
@@ -642,18 +530,22 @@ async function summarizeOpenThread(thread: NormalizedThread, force = false): Pro
       error?: string;
     }>({
       type: 'REQUEST_SUMMARY',
+      owner,
       threadId: thread.threadId,
       subject: thread.subject,
       force,
       messages: thread.messages.map((message) => ({
         messageId: message.messageId,
         sender: message.sender?.email || 'unknown@local',
+        senderName: message.sender?.name,
         recipients: message.recipients?.map((r) => r.email) || [],
         bodyText: message.bodyText,
         timestamp: message.timestamp || '',
         loaded: message.loaded ?? (message.bodyText.trim().length > 0),
       })),
     });
+    if (!stillCurrent()) return;
+    if (res?.status === 'waiting_owner') return;
     if (res?.status === 'succeeded' && res.oneLine) {
       summaryNotes.set(thread.threadId, {
         pending: false,
@@ -662,7 +554,7 @@ async function summarizeOpenThread(thread: NormalizedThread, force = false): Pro
       });
       await refreshThread(thread.threadId);
     } else if (res?.jobId && (res.status === 'queued' || res.status === 'running')) {
-      void waitForSummaryJob(thread.threadId, res.jobId, preview);
+      void waitForSummaryJob(thread.threadId, res.jobId, preview, stillCurrent);
     } else if (res && !res.ok) {
       summaryNotes.set(thread.threadId, {
         pending: false,
@@ -690,11 +582,12 @@ async function summarizeOpenThread(thread: NormalizedThread, force = false): Pro
   }
 }
 
-async function waitForSummaryJob(threadId: string, jobId: string, preview: string | null): Promise<void> {
+async function waitForSummaryJob(threadId: string, jobId: string, preview: string | null, stillCurrent: () => boolean): Promise<void> {
   const deadline = Date.now() + 310_000;
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && stillCurrent()) {
     await wait(1_500);
     const res = await send<{ job?: { status?: string; error?: string }; oneLine?: string }>({ type: 'GET_AI_JOB_STATUS', jobId });
+    if (!stillCurrent()) return;
     if (res?.job?.status !== 'succeeded' && res?.job?.status !== 'failed') continue;
     summaryNotes.set(threadId, {
       pending: false,
@@ -704,18 +597,9 @@ async function waitForSummaryJob(threadId: string, jobId: string, preview: strin
     await refreshThread(threadId);
     return;
   }
+  if (!stillCurrent()) return;
   summaryNotes.set(threadId, { pending: false, reason: 'AI summary took too long. Retry to try again.', preview });
   await refreshThread(threadId);
-}
-
-const cloudIntel = new Map<string, { value: ThreadIntel | null; at: number }>();
-
-/** PigeonBox Cloud's view of the thread, when Cloud mode is on and Google is connected. Otherwise null. */
-async function getCloudIntel(threadId: string): Promise<ThreadIntel | null> {
-  const res = await send<{ available?: boolean; threads?: Record<string, ThreadIntel>; capabilities?: string[] }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [threadId], mailbox: mailboxOwner()?.email });
-  cloudAvailable = Boolean(res?.available);
-  cloudCapabilities = res?.capabilities ?? [];
-  return res?.available ? (res.threads?.[threadId] ?? null) : null;
 }
 
 /** Whether PigeonBox Cloud's always-on features are on (Cloud mode, Google connected). Learned from the worker. */
@@ -724,7 +608,7 @@ let cloudCapabilities: string[] = [];
 const cloudBoot = send<{ available?: boolean; capabilities?: string[] }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [] }).then((res) => { cloudAvailable = Boolean(res?.available); cloudCapabilities = res?.capabilities ?? []; });
 
 function getIntel(threadId: string): Promise<LocalThreadIntel | undefined> {
-  return send<LocalThreadIntel>({ type: 'GET_THREAD_INTEL', threadId });
+  return send<LocalThreadIntel>({ type: 'GET_THREAD_INTEL', threadId, owner: mailboxOwner() });
 }
 
 async function createTracked(input: CreateTrackedEmailInput): Promise<CreateTrackedEmailResult | null> {
@@ -767,6 +651,22 @@ function linkTracked(link: { trackingId: string; gmailThreadId: string | null; g
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     void (async () => {
+      if (message?.type === 'TOGGLE_PIGEONBOX_WORKSPACE') {
+        showFloatingWorkspace(message.open !== false, true); sendResponse({ ok: true }); return;
+      }
+      if (message?.type === 'WORKSPACE_PRESENTATION_CHANGED') {
+        updateFloatingWorkspace(message.state); sendResponse({ ok: true }); return;
+      }
+      if (message?.type === 'PIGEONBOX_WORKSPACE_ACTION') {
+        if (String(message.threadId) !== currentThreadId) { sendResponse({ ok: false, reason: 'This conversation is no longer open.' }); return; }
+        if (message.id === 'draft') await draftReply(currentThreadId!);
+        else if (message.id === 'remind') await remind(currentThreadId!);
+        else if (message.id === 'use-draft' && typeof message.body === 'string') { sendResponse(await insertDraft(currentThreadId!, message.body)); return; }
+        else if (message.id === 'summarize' && currentNormalizedThread) await summarizeOpenThread(currentNormalizedThread, true);
+        else if (['archive', 'mark_respond', 'mark_waiting', 'mark_fyi'].includes(message.id)) await runCommand(message.id);
+        else { sendResponse({ ok: false, reason: 'Choose an available action.' }); return; }
+        sendResponse({ ok: true }); return;
+      }
       if (message?.type === 'PUBLIC_SETTINGS_CHANGED' && message.settings && typeof message.settings === 'object') {
         settings = { ...settings, ...(message.settings as PublicExtensionSettings) };
         sentStatus?.setTrackerBaseUrl(settings.trackerBaseUrl || '');
@@ -801,7 +701,8 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
         const tid = String(message.threadId || '');
         const note = summaryNotes.get(tid);
         if (note?.pending && message.type === 'THREAD_SUMMARY_READY') {
-          summaryNotes.set(tid, { ...note, pending: false });
+          const intel = await getIntel(tid);
+          if (intel?.summary?.aiStatus === 'success') summaryNotes.set(tid, { ...note, pending: false });
         }
         await refreshThread(tid);
         sendResponse({ ok: true });
@@ -1032,7 +933,7 @@ function setupCommandPalette(): void {
   paletteBound = true;
   document.addEventListener('keydown', (event) => {
     if (!settings.commandPaletteEnabled) return;
-    const mod = navigator.platform.includes('Mac') ? event.metaKey : event.ctrlKey;
+    const mod = event.metaKey || event.ctrlKey;
     if (!mod || event.key.toLowerCase() !== 'k') return;
     const target = event.target as HTMLElement | null;
     if (!settings.commandPaletteOverrideGmail && target?.closest('input, textarea, [contenteditable="true"]')) return;
@@ -1044,7 +945,8 @@ function setupCommandPalette(): void {
 
 function openCommandPalette(): void {
   ensureSurface();
-  mountCommandPalette((filter) => paletteCommands(filter, cloudAvailable, { thread: Boolean(currentThreadId), capabilities: cloudCapabilities }), (id) => void runCommand(id));
+  showFloatingWorkspace(true, true);
+  void send({ type: 'OPEN_WORKSPACE_COMMANDS' });
 }
 
 async function runCommand(id: string): Promise<void> {
@@ -1118,21 +1020,6 @@ async function draftReply(threadId: string): Promise<void> {
     draftJobs.delete(threadId);
     void refreshThread(threadId);
   }
-}
-
-const ADDRESS = /[\w.+%-]+@[\w-]+(?:\.[\w-]+)+/;
-
-/**
- * The signed-in Gmail account, so drafts know who "me" is. The account button's
- * label holds "Name (address)"; the tab title holds the address in every locale.
- */
-function mailboxOwner(): { email: string; name?: string } | undefined {
-  const label = document.querySelector('a[href*="accounts.google.com"][aria-label*="@"]')?.getAttribute('aria-label') || '';
-  const email = (label.match(ADDRESS) || document.title.match(ADDRESS))?.[0];
-  if (!email) return undefined;
-  // "Google Account: Aiden Guan\n(aidenguan@gmail.com)"
-  const name = label.split('(')[0]?.replace(/^[^:]*:\s*/, '').trim();
-  return { email: email.toLowerCase(), name: name && !name.includes('@') ? name : undefined };
 }
 
 async function generateDraftReply(threadId: string): Promise<void> {

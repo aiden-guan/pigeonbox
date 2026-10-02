@@ -1,4 +1,4 @@
-import { splitSuperseded } from '@pigeonbox/shared';
+import { splitSuperseded, tagAuthors, type AuthorRole } from '@pigeonbox/shared';
 import { isOwnMessage, parseContact, type ChatExample } from './draft-prompt.js';
 import type { MailboxOwner, RewriteInput } from './index.js';
 
@@ -31,7 +31,7 @@ const EARLIER_CHARS = 240;
 
 export type CompactThread = {
   subject: string;
-  messages: Array<{ sender: string; bodyText: string }>;
+  messages: Array<{ sender: string; bodyText: string; authorRole?: AuthorRole }>;
   owner?: MailboxOwner;
 };
 
@@ -72,7 +72,7 @@ export const COMPACT_SUMMARY_EXAMPLES: ChatExample[] = [
  * they are on: they turn "I sent them your details" into a to-do for the reader.
  */
 export function compactSummaryUser(thread: CompactThread, maxChars = 4_000): string {
-  const readable = thread.messages
+  const readable = tagAuthors(thread.messages, thread.owner)
     .map((message) => ({ ...message, text: splitSuperseded(message.bodyText).current.trim() }))
     .filter((message) => message.text);
   const latest = readable.at(-1);
@@ -80,9 +80,9 @@ export function compactSummaryUser(thread: CompactThread, maxChars = 4_000): str
   if (!latest) return `${subject}\n"""\n(empty)\n"""\nSummarize this for me.`;
 
   const earlier = readable.slice(0, -1).slice(-EARLIER_MESSAGES).map(
-    (message) => `- ${speaker(message.sender, thread.owner)}: ${clipLine(message.text, EARLIER_CHARS)}`,
+    (message) => `- ${message.authorRole === 'owner' ? 'you (me)' : speaker(message.sender, thread.owner)}: ${clipLine(message.text, EARLIER_CHARS)}`,
   );
-  const latestIsMine = isOwnMessage(latest.sender, thread.owner);
+  const latestIsMine = latest.authorRole === 'owner';
   const heading = latestIsMine ? 'Newest message, from me:' : `Newest message, from ${speaker(latest.sender, thread.owner)} to me:`;
   const budget = Math.max(600, maxChars - subject.length - earlier.join('\n').length - 200);
   return [

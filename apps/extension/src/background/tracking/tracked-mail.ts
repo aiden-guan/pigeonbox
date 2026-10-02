@@ -22,7 +22,7 @@ export async function readTrackedEmails(): Promise<TrackedEmailSummary[]> {
   }
 }
 
-export async function writeTrackedEmails(emails: TrackedEmailSummary[]): Promise<void> {
+async function commitTrackedEmails(emails: TrackedEmailSummary[]): Promise<void> {
   const capped = [...emails]
     .sort((a, b) => ((a.sentAt || a.createdAt || '') < (b.sentAt || b.createdAt || '') ? 1 : (a.sentAt || a.createdAt || '') > (b.sentAt || b.createdAt || '') ? -1 : 0))
     .slice(0, MAX_TRACKED);
@@ -36,24 +36,26 @@ export async function writeTrackedEmails(emails: TrackedEmailSummary[]): Promise
   await broadcastToGmailTabs({ type: 'TRACKED_EMAILS_CHANGED', emails: capped });
 }
 
-export async function upsertTrackedEmail(email: TrackedEmailSummary): Promise<TrackedEmailSummary[]> {
-  const current = await readTrackedEmails();
-  const next = current.filter((item) => item.trackingId !== email.trackingId);
-  next.push(email);
-  await writeTrackedEmails(next);
-  return readTrackedEmails();
+let writes: Promise<unknown> = Promise.resolve();
+/** Every read/modify/write, including poll publication and claim reconciliation, shares this queue. */
+export function updateTrackedEmails(update: (current: TrackedEmailSummary[]) => TrackedEmailSummary[] | Promise<TrackedEmailSummary[]>): Promise<TrackedEmailSummary[]> {
+  const operation = writes.then(async () => {
+    const next = await update(await readTrackedEmails());
+    await commitTrackedEmails(next);
+    return next;
+  });
+  writes = operation.catch(() => undefined);
+  return operation;
 }
-
-export async function patchTrackedEmail(
-  trackingId: string,
-  patch: Partial<TrackedEmailSummary>,
-): Promise<TrackedEmailSummary | null> {
-  const current = await readTrackedEmails();
-  const index = current.findIndex((item) => item.trackingId === trackingId);
-  if (index < 0) return null;
-  current[index] = { ...current[index], ...patch, trackingId };
-  await writeTrackedEmails(current);
-  return current[index];
+export async function writeTrackedEmails(emails: TrackedEmailSummary[]): Promise<void> {
+  await updateTrackedEmails(() => emails);
+}
+export function upsertTrackedEmail(email: TrackedEmailSummary): Promise<TrackedEmailSummary[]> {
+  return updateTrackedEmails((current) => [...current.filter((item) => item.trackingId !== email.trackingId), email]);
+}
+export async function patchTrackedEmail(trackingId: string, patch: Partial<TrackedEmailSummary>): Promise<TrackedEmailSummary | null> {
+  const rows = await updateTrackedEmails((current) => current.map((item) => item.trackingId === trackingId ? { ...item, ...patch, trackingId } : item));
+  return rows.find((item) => item.trackingId === trackingId) || null;
 }
 
 function isSummary(value: unknown): value is TrackedEmailSummary {
