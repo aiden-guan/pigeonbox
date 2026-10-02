@@ -1,6 +1,7 @@
 import type { ExtensionSettings, PublicExtensionSettings } from '@pigeonbox/shared';
 import {
   clickIdFromTrackedUrl,
+  decodeHtmlAttribute,
   normalizeGmailId,
   stableClickId,
   trackedClickUrl,
@@ -64,7 +65,12 @@ export type ComposeTrackingDeps = {
   createTracked: (input: CreateTrackedEmailInput) => Promise<CreateTrackedEmailResult | null>;
   markSent: (patch: TrackedEmailPatch & { trackingId: string }) => void;
   cancelTracked: (trackingId: string) => void;
-  syncLinks: (update: { trackingId: string; links: Array<{ click_id: string; url: string }> }) => void;
+  /**
+   * Store click IDs on the tracker before the message goes out. Resolves true
+   * only when the tracker confirmed them; a link whose ID is not stored would
+   * send the recipient to an error page, so unconfirmed links are sent as-is.
+   */
+  registerLinks: (update: { trackingId: string; links: Array<{ click_id: string; url: string }> }) => Promise<boolean>;
   reportDiagnostics?: (session: ComposeTrackingSession) => void;
   onSent?: (info: { subject: string; recipients: string[]; bodyText: string }) => void;
 };
@@ -278,7 +284,11 @@ async function allocateNow(
     current.pixelUrl = created.pixel_url;
     current.trackerCreatedAt = created.created_at || new Date().toISOString();
     for (const link of created.rewritten_links || []) {
-      if (link.original && link.tracked_url) current.linkMap.set(link.original, link.tracked_url);
+      if (!link.original || !link.tracked_url) continue;
+      current.linkMap.set(link.original, link.tracked_url);
+      // The tracker created these with the email, so they already exist.
+      const clickId = clickIdFromTrackedUrl(link.tracked_url);
+      if (clickId) current.confirmedClickIds.add(clickId);
     }
     current.state = current.modifierRegistered ? 'MODIFIER_REGISTERED' : 'ALLOCATED';
     let pixelHost = '';
@@ -334,11 +344,11 @@ async function registerNow(composeSessionId: string, view: SdkComposeView, deps:
   }
 }
 
-function modifyOutgoing(
+async function modifyOutgoing(
   composeSessionId: string,
   params: { body: string; isPlainText?: boolean },
   deps: ComposeTrackingDeps,
-): { body: string } {
+): Promise<{ body: string }> {
   const session = sessions.get(composeSessionId);
   const body = params.body || '';
   if (!session) return { body };
@@ -359,17 +369,42 @@ function modifyOutgoing(
     return { body };
   }
   const origin = pixelOrigin(session.pixelUrl);
-  const transformed = transformOutgoingHtml(body, {
+  const trackingId = session.trackingId;
+  let transformed = transformOutgoingHtml(body, {
     pixelUrl: session.pixelUrl,
     linkMap: session.linkMap,
     trackOpens: session.trackOpens,
     trackLinks: session.trackLinks,
     allocateTrackedUrl: (original) => {
-      if (!origin || !session.trackingId) return null;
-      const clickId = stableClickId(session.trackingId, original);
+      if (!origin) return null;
+      const clickId = stableClickId(trackingId, original);
       return trackedClickUrl(origin, clickId);
     },
   });
+  const pending = session.trackLinks
+    ? linksFromSession(session, true).filter((link) => !session.confirmedClickIds.has(link.click_id))
+    : [];
+  if (pending.length) {
+    const confirmed = await deps.registerLinks({ trackingId, links: pending }).catch(() => false);
+    if (confirmed) {
+      for (const link of pending) session.confirmedClickIds.add(link.click_id);
+      log(session, 'modifier-links-confirmed', { count: pending.length }, deps);
+    } else {
+      // Send these links untracked: rewrite again with only links the tracker has.
+      for (const [original, tracked] of [...session.linkMap]) {
+        const clickId = clickIdFromTrackedUrl(tracked);
+        if (!clickId || !session.confirmedClickIds.has(clickId)) session.linkMap.delete(original);
+      }
+      session.lastError = 'Links were sent without click tracking because the tracker did not confirm them.';
+      log(session, 'modifier-links-unconfirmed', { count: pending.length }, deps);
+      transformed = transformOutgoingHtml(body, {
+        pixelUrl: session.pixelUrl,
+        linkMap: session.linkMap,
+        trackOpens: session.trackOpens,
+        trackLinks: session.trackLinks,
+      });
+    }
+  }
   session.modifierSawPixel = transformed.pixelPresent;
   log(session, 'modifier-transformed', {
     pixelPresent: transformed.pixelPresent,
@@ -380,8 +415,6 @@ function modifyOutgoing(
     session.lastError = 'Request modifier ran but the tracking pixel was not in the returned HTML.';
     log(session, 'modifier-pixel-missing', {}, deps);
   }
-  const links = linksFromSession(session);
-  if (links.length && session.trackingId) deps.syncLinks({ trackingId: session.trackingId, links });
   return { body: transformed.html };
 }
 
@@ -477,15 +510,19 @@ async function handleSent(
   }, deps);
 }
 
-function linksFromSession(session: ComposeTrackingSession): Array<{ click_id: string; url: string }> {
+/** Links in the session, by default only those the tracker confirmed. */
+function linksFromSession(session: ComposeTrackingSession, includeUnconfirmed = false): Array<{ click_id: string; url: string }> {
   const seen = new Set<string>();
   const links: Array<{ click_id: string; url: string }> = [];
   for (const [original, tracked] of session.linkMap) {
     const clickId = clickIdFromTrackedUrl(tracked);
     if (!clickId || seen.has(clickId)) continue;
-    if (!/^https?:\/\//i.test(original)) continue;
+    if (!includeUnconfirmed && !session.confirmedClickIds.has(clickId)) continue;
+    // linkMap holds both the raw attribute and its decoded URL; the tracker must redirect to the URL.
+    const url = decodeHtmlAttribute(original);
+    if (!/^https?:\/\//i.test(url)) continue;
     seen.add(clickId);
-    links.push({ click_id: clickId, url: original });
+    links.push({ click_id: clickId, url });
   }
   return links;
 }

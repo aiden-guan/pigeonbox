@@ -482,6 +482,12 @@ ${orbCss}
   box-shadow: none;
 }
 .gi-track-warning { margin: 10px 0 0; color: #e7c27a !important; font-size: 12px; line-height: 1.4; }
+.gi-track-note { margin: 10px 0 0; color: #aba99e !important; font-size: 12px; line-height: 1.4; }
+.gi-track-activity { margin: 14px 0 0; padding: 0; list-style: none; }
+.gi-track-activity li { display: grid; grid-template-columns: 6.5em 1fr; gap: 8px; padding: 3px 0; color: #d2cfc5 !important; font-size: 12px; line-height: 1.35; }
+.gi-track-activity time { color: #8f8d84 !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gi-track-activity span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gi-track-activity .is-more { color: #8f8d84 !important; }
 .gi-track-footer {
   display: flex;
   align-items: center;

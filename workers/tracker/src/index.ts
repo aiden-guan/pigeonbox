@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import { safeRedirectUrl, classifyClick, deriveTrackingStats, isSelfViewCorrelated, normalizeGmailId, decideTrackedOpen, normalizeUserAgentFamily, senderFingerprintMatches, openEventMatchesSenderClaim, planPageReloadProxy, selectSenderProxyClaim } from './helpers.js';
+import { safeRedirectUrl, classifyClick, deriveTrackingStats, isSelfViewCorrelated, normalizeGmailId, decideTrackedOpen, normalizeUserAgentFamily, senderFingerprintMatches, openEventMatchesSenderClaim, pickActiveClaim, pickRecentConsumedClaim, planPageReloadProxy, selectSenderProxyClaim, type DerivedTrackingStats } from './helpers.js';
 import { getStore, StoreError, type ClaimRow, type EmailRow, type TrackerStore } from './store.js';
-export { createMemoryState, createMemoryStore, StoreError } from './store.js';
-export type { ClaimRow, EmailRow, EventRow, LinkRow, MemoryState, TrackerStore } from './store.js';
+export { createMemoryState, createMemoryStore, StoreError, STATS_EVENT_LIMIT } from './store.js';
+export type { ClaimRow, EmailRow, EventRow, LinkRow, MemoryState, StatsEventRow, TrackerStore } from './store.js';
 
-export { safeRedirectUrl, classifyOpen, classifyClick, suspectSelfOpen, deriveTrackingStats, isSelfViewCorrelated, normalizeGmailId, detectOpenRequestSource, decideTrackedOpen, normalizeUserAgentFamily, senderFingerprintMatches } from './helpers.js';
+export { safeRedirectUrl, classifyOpen, classifyClick, suspectSelfOpen, deriveTrackingStats, isSelfViewCorrelated, normalizeGmailId, detectOpenRequestSource, decideTrackedOpen, normalizeUserAgentFamily, senderFingerprintMatches, pickActiveClaim, pickRecentConsumedClaim } from './helpers.js';
 
 export interface Env {
   SUPABASE_URL?: string;
@@ -17,6 +17,15 @@ const TRANSPARENT_GIF = Uint8Array.from(
   (c) => c.charCodeAt(0),
 );
 
+/** Management bodies carry metadata only (subject, addresses, IDs, link URLs). */
+export const MAX_BODY_BYTES = 64 * 1024;
+
+/** Tracking, click, claim and event IDs: letters, digits, `_` and `-`. */
+const ID_PATTERN = /^[\w-]{1,80}$/;
+const SELF_VIEW_EVENT_ID_PATTERN = /^[\w-]{1,160}$/;
+
+const SELF_VIEW_SOURCES = ['ROW_INTERACTION', 'MESSAGE_EXPANDED', 'MESSAGE_LOAD', 'CACHE_REINSPECTION', 'PAGE_RELOAD'] as const;
+
 const PatchEmailSchema = z
   .object({
     gmail_thread_id: z.string().max(128).nullable().optional(),
@@ -27,7 +36,7 @@ const PatchEmailSchema = z
     sender: z.string().max(320).optional(),
     recipients: z.array(z.string().max(320)).max(100).optional(),
     links: z
-      .array(z.object({ click_id: z.string().regex(/^[\w-]+$/).max(80), url: z.string().url() }))
+      .array(z.object({ click_id: z.string().regex(/^[\w-]+$/).max(80), url: z.string().max(2048).url() }))
       .max(50)
       .optional(),
   })
@@ -39,7 +48,20 @@ const CreateEmailSchema = z.object({
   recipients: z.array(z.string().max(320)).min(1).max(100),
   gmail_thread_id: z.string().max(128).optional(),
   gmail_message_id: z.string().max(128).optional(),
-  links: z.array(z.object({ url: z.string().url() })).max(50).optional(),
+  links: z.array(z.object({ url: z.string().max(2048).url() })).max(50).optional(),
+});
+
+const SelfViewSchema = z.object({
+  timestamp: z.string().max(40).optional(),
+  gmailThreadId: z.string().max(128).nullable().optional(),
+  gmail_thread_id: z.string().max(128).nullable().optional(),
+  gmailMessageId: z.string().max(128).nullable().optional(),
+  gmail_message_id: z.string().max(128).nullable().optional(),
+  source: z.enum(SELF_VIEW_SOURCES).optional(),
+  selfViewEventId: z.string().max(400).optional(),
+  reconcileGmailIds: z.boolean().optional(),
+  reconcile_gmail_ids: z.boolean().optional(),
+  quotedRender: z.boolean().optional(),
 });
 
 /** Compare secrets without leaking their length or matching prefix through timing. */
@@ -61,10 +83,15 @@ function requireAuth(req: Request, env: Env): Response | null {
   return null;
 }
 
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+} as const;
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...SECURITY_HEADERS },
   });
 }
 
@@ -79,8 +106,23 @@ function gifResponse(): Response {
       Pragma: 'no-cache',
       Expires: '0',
       ETag: `"${crypto.randomUUID()}"`,
-      'X-Content-Type-Options': 'nosniff',
+      ...SECURITY_HEADERS,
     },
+  });
+}
+
+/** What a recipient sees for a link that is malformed, unknown or unsafe. Never JSON, never details. */
+function linkUnavailable(status: number): Response {
+  return new Response('This link is not available.', {
+    status,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY_HEADERS },
+  });
+}
+
+function redirect(destination: string): Response {
+  return new Response(null, {
+    status: 302,
+    headers: { Location: destination, 'Cache-Control': 'no-store', ...SECURITY_HEADERS },
   });
 }
 
@@ -94,9 +136,42 @@ function newId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, '')}`;
 }
 
-function storeFailure(err: unknown): Response | null {
-  if (err instanceof StoreError) return json({ error: err.message }, 500);
-  return null;
+function clientIp(request: Request): string {
+  return (
+    request.headers.get('CF-Connecting-IP') ||
+    request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+    ''
+  );
+}
+
+/** Error class only. Messages can quote request values (JSON parse errors, driver errors). */
+function errorName(err: unknown): string {
+  return err instanceof Error ? err.name : typeof err;
+}
+
+type BodyResult = { ok: true; value: unknown } | { ok: false; response: Response };
+
+/** Read a bounded JSON body. Empty bodies read as `null`. */
+async function readJson(request: Request): Promise<BodyResult> {
+  const declared = Number(request.headers.get('Content-Length') || '0');
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    return { ok: false, response: json({ error: 'payload_too_large' }, 413) };
+  }
+  let text: string;
+  try {
+    text = await request.text();
+  } catch {
+    return { ok: false, response: json({ error: 'bad_request' }, 400) };
+  }
+  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
+    return { ok: false, response: json({ error: 'payload_too_large' }, 413) };
+  }
+  if (!text.trim()) return { ok: true, value: null };
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false, response: json({ error: 'bad_request' }, 400) };
+  }
 }
 
 /**
@@ -112,6 +187,12 @@ export type TrackerDeps = {
   authorize(request: Request): Promise<{ store: TrackerStore } | Response>;
   /** Salt for hashing client IPs. Changing it breaks matching of in-flight self-view claims. */
   ipSalt: string;
+  /**
+   * Run pixel and click bookkeeping after the response is returned (a Worker's
+   * `ctx.waitUntil`), so mail clients and recipients never wait on the store.
+   * Without it, the handler records before it responds.
+   */
+  defer?: (task: Promise<unknown>) => void;
 };
 
 export async function handleTrackerRequest(request: Request, deps: TrackerDeps): Promise<Response> {
@@ -123,11 +204,11 @@ export async function handleTrackerRequest(request: Request, deps: TrackerDeps):
   try {
     // Public pixel
     if (request.method === 'GET' && path.startsWith('/open/')) {
-      return handleOpen(path.slice('/open/'.length), request, salt, store);
+      return await handleOpen(path.slice('/open/'.length), request, salt, store, deps.defer);
     }
     // Public click
     if (request.method === 'GET' && path.startsWith('/c/')) {
-      return handleClick(path.slice('/c/'.length), request, salt, store);
+      return await handleClick(path.slice('/c/'.length), request, salt, store, deps.defer);
     }
 
     // Private management
@@ -137,28 +218,28 @@ export async function handleTrackerRequest(request: Request, deps: TrackerDeps):
       store = authorized.store;
 
       if (request.method === 'POST' && path === '/api/emails') {
-        return handleCreateEmail(request, url.origin, store);
+        return await handleCreateEmail(request, url.origin, store);
       }
       if (request.method === 'GET' && path === '/api/emails') {
-        return handleListEmails(url, store);
+        return await handleListEmails(url, store);
       }
       if (request.method === 'PATCH' && path.startsWith('/api/emails/')) {
-        return handlePatchEmail(path.slice('/api/emails/'.length), request, store);
+        return await handlePatchEmail(path.slice('/api/emails/'.length), request, store);
       }
       if (request.method === 'POST' && path.startsWith('/api/emails/') && path.endsWith('/self-view')) {
         const id = path.slice('/api/emails/'.length, -'/self-view'.length);
-        return handleSelfView(id, request, salt, store);
+        return await handleSelfView(id, request, salt, store);
       }
       if (request.method === 'GET' && path.startsWith('/api/emails/') && path.endsWith('/events')) {
         const id = path.slice('/api/emails/'.length, -'/events'.length);
-        return handleGetEvents(id, store);
+        return await handleGetEvents(id, store);
       }
       if (request.method === 'GET' && path.startsWith('/api/emails/')) {
         const id = path.slice('/api/emails/'.length);
-        return handleGetEmail(id, store);
+        return await handleGetEmail(id, store);
       }
       if (request.method === 'GET' && path === '/api/events/recent') {
-        return handleRecentEvents(store);
+        return await handleRecentEvents(store);
       }
     }
 
@@ -178,9 +259,12 @@ export async function handleTrackerRequest(request: Request, deps: TrackerDeps):
 
     return json({ error: 'not_found' }, 404);
   } catch (err) {
-    const failed = storeFailure(err);
-    if (failed) return failed;
-    console.error(err);
+    // Store and driver messages can echo row values; clients get a code only.
+    if (err instanceof StoreError) {
+      console.error('[tracker] store request failed');
+      return json({ error: 'store_unavailable' }, 503);
+    }
+    console.error('[tracker] request failed', errorName(err));
     return json({ error: 'internal' }, 500);
   }
 }
@@ -197,23 +281,45 @@ export default {
   },
 };
 
+/**
+ * Store a link once. A repeat for the same email is a no-op (sends retry and the
+ * request modifier can run twice); false means the click ID belongs elsewhere.
+ */
+async function insertLinkOnce(store: TrackerStore, click_id: string, tracking_id: string, destination: string): Promise<boolean> {
+  const already = await store.getLink(click_id);
+  if (already) return already.tracking_id === tracking_id;
+  try {
+    await store.insertLink({ click_id, tracking_id, destination });
+    return true;
+  } catch (err) {
+    // A concurrent insert of the same link wins the race; anything else is a real failure.
+    const raced = await store.getLink(click_id);
+    if (raced) return raced.tracking_id === tracking_id;
+    throw err;
+  }
+}
+
 async function handleCreateEmail(
   request: Request,
   origin: string,
   store: TrackerStore,
 ): Promise<Response> {
-  const body = CreateEmailSchema.parse(await request.json());
+  const body = await readJson(request);
+  if (!body.ok) return body.response;
+  const parsed = CreateEmailSchema.safeParse(body.value);
+  if (!parsed.success) return json({ error: 'bad_request' }, 400);
+  const input = parsed.data;
   const tracking_id = newId('trk');
   const created_at = new Date().toISOString();
 
   const email: EmailRow = {
     tracking_id,
     status: 'PENDING',
-    subject: body.subject,
-    sender: body.sender,
-    recipients: body.recipients,
-    gmail_thread_id: normalizeGmailId(body.gmail_thread_id),
-    gmail_message_id: normalizeGmailId(body.gmail_message_id),
+    subject: input.subject,
+    sender: input.sender,
+    recipients: input.recipients,
+    gmail_thread_id: normalizeGmailId(input.gmail_thread_id),
+    gmail_message_id: normalizeGmailId(input.gmail_message_id),
     sent_at: null,
     first_opened_at: null,
     last_opened_at: null,
@@ -225,22 +331,11 @@ async function handleCreateEmail(
   };
   await store.insertEmail(email);
 
-  const rewritten_links: Array<{ click_id: string; original: string; tracked_url: string }> = [];
-  for (const link of body.links || []) {
-    const safe = safeRedirectUrl(link.url);
-    if (!safe) continue;
-    const click_id = newId('clk');
-    await store.insertLink({
-      click_id,
-      tracking_id,
-      destination: safe,
-    });
-    rewritten_links.push({
-      click_id,
-      original: safe,
-      tracked_url: `${origin}/c/${click_id}`,
-    });
-  }
+  const links = (input.links || [])
+    .map((link) => safeRedirectUrl(link.url))
+    .filter((safe): safe is string => Boolean(safe))
+    .map((safe) => ({ click_id: newId('clk'), original: safe }));
+  await Promise.all(links.map((link) => store.insertLink({ click_id: link.click_id, tracking_id, destination: link.original })));
 
   return json({
     tracking_id,
@@ -248,12 +343,12 @@ async function handleCreateEmail(
     status: 'PENDING',
     created_at,
     sent_at: null,
-    rewritten_links,
+    rewritten_links: links.map((link) => ({ ...link, tracked_url: `${origin}/c/${link.click_id}` })),
   });
 }
 
 async function handleGetEmail(id: string, store: TrackerStore): Promise<Response> {
-  if (!id || id.length > 80) return json({ error: 'bad_id' }, 400);
+  if (!ID_PATTERN.test(id)) return json({ error: 'bad_id' }, 400);
   const data = await store.getEmail(id);
   if (!data) return json({ error: 'not_found' }, 404);
   return json(data);
@@ -265,42 +360,63 @@ async function handleListEmails(url: URL, store: TrackerStore): Promise<Response
   return json(await store.listEmails(limit));
 }
 
+/**
+ * The send time to store. A client clock running ahead would push `sent_at`
+ * past real recipient opens and make them read as pre-send fetches, so a
+ * future time is clamped to the tracker's clock.
+ */
+function acceptedSentAt(value: string, nowMs: number): string | null {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(Math.min(ms, nowMs)).toISOString();
+}
+
 async function handlePatchEmail(
   id: string,
   request: Request,
   store: TrackerStore,
 ): Promise<Response> {
-  if (!id || id.length > 80 || id.includes('/') || !/^[\w-]+$/.test(id)) {
-    return json({ error: 'bad_id' }, 400);
-  }
-  const parsed = PatchEmailSchema.safeParse(await request.json().catch(() => null));
+  if (!ID_PATTERN.test(id)) return json({ error: 'bad_id' }, 400);
+  const body = await readJson(request);
+  if (!body.ok) return body.response;
+  const parsed = PatchEmailSchema.safeParse(body.value);
   if (!parsed.success) return json({ error: 'bad_request' }, 400);
   const existing = await store.getEmail(id);
   if (!existing) return json({ error: 'not_found' }, 404);
+  const now = Date.now();
   const patch: Partial<EmailRow> = {};
   if (parsed.data.gmail_thread_id !== undefined) patch.gmail_thread_id = normalizeGmailId(parsed.data.gmail_thread_id);
   if (parsed.data.gmail_message_id !== undefined) patch.gmail_message_id = normalizeGmailId(parsed.data.gmail_message_id);
   if (parsed.data.subject !== undefined) patch.subject = parsed.data.subject;
   if (parsed.data.sender !== undefined) patch.sender = parsed.data.sender;
   if (parsed.data.recipients !== undefined) patch.recipients = parsed.data.recipients;
-  if (parsed.data.status !== undefined) patch.status = parsed.data.status;
-  if (parsed.data.sent_at !== undefined) patch.sent_at = parsed.data.sent_at;
+  // SENT is final: a late discard or retry from another tab must not un-send a delivered message.
+  if (parsed.data.status !== undefined && !(existing.status === 'SENT' && parsed.data.status !== 'SENT')) {
+    patch.status = parsed.data.status;
+  }
+  if (parsed.data.sent_at !== undefined) {
+    if (parsed.data.sent_at === null) {
+      if (existing.status !== 'SENT') patch.sent_at = null;
+    } else {
+      const sentAt = acceptedSentAt(parsed.data.sent_at, now);
+      if (!sentAt) return json({ error: 'bad_request' }, 400);
+      patch.sent_at = sentAt;
+    }
+  }
   if (patch.status === 'SENT' && patch.sent_at === undefined && !existing.sent_at) {
-    patch.sent_at = new Date().toISOString();
+    patch.sent_at = new Date(now).toISOString();
   }
   if (Object.keys(patch).length > 0) await store.updateEmail(id, patch);
-  for (const link of parsed.data.links || []) {
-    const safe = safeRedirectUrl(link.url);
-    if (!safe) continue;
-    const already = await store.getLink(link.click_id);
-    if (already) continue;
-    await store.insertLink({ click_id: link.click_id, tracking_id: id, destination: safe });
-  }
+  const links = (parsed.data.links || [])
+    .map((link) => ({ click_id: link.click_id, destination: safeRedirectUrl(link.url) }))
+    .filter((link): link is { click_id: string; destination: string } => Boolean(link.destination));
+  const stored = await Promise.all(links.map((link) => insertLinkOnce(store, link.click_id, id, link.destination)));
+  if (stored.includes(false)) return json({ error: 'click_id_conflict' }, 409);
   return json(await store.getEmail(id));
 }
 
 async function handleGetEvents(id: string, store: TrackerStore): Promise<Response> {
-  if (!id || id.length > 80) return json({ error: 'bad_id' }, 400);
+  if (!ID_PATTERN.test(id)) return json({ error: 'bad_id' }, 400);
   return json(await store.listEvents(id));
 }
 
@@ -308,20 +424,22 @@ async function handleRecentEvents(store: TrackerStore): Promise<Response> {
   return json(await store.recentEvents());
 }
 
-async function recomputeEmailStats(trackingId: string, store: TrackerStore): Promise<EmailRow | null> {
-  const events = await store.listEvents(trackingId);
-  const stats = deriveTrackingStats(events);
-
-  const patch: Partial<EmailRow> = {
+/**
+ * Recompute an email's counters from every stored event. Reclassification can
+ * move an earlier event out of (or into) the count, so counters are always
+ * derived, never incremented.
+ */
+async function recomputeEmailStats(trackingId: string, store: TrackerStore): Promise<DerivedTrackingStats> {
+  const stats = deriveTrackingStats(await store.listEventsForStats(trackingId));
+  await store.updateEmail(trackingId, {
     open_count: stats.openCount,
     first_opened_at: stats.firstOpenedAt,
     last_opened_at: stats.lastOpenedAt,
     click_count: stats.clickCount,
     first_clicked_at: stats.firstClickedAt,
     last_clicked_at: stats.lastClickedAt,
-  };
-  await store.updateEmail(trackingId, patch);
-  return store.getEmail(trackingId);
+  });
+  return stats;
 }
 
 const CLAIM_TTL_MS = 25_000;
@@ -332,23 +450,17 @@ async function handleSelfView(
   salt: string,
   store: TrackerStore,
 ): Promise<Response> {
-  if (!id || id.length > 80 || id.includes('/') || !/^[\w-]+$/.test(id)) {
-    return json({ error: 'bad_id' }, 400);
-  }
+  if (!ID_PATTERN.test(id)) return json({ error: 'bad_id' }, 400);
+  const raw = await readJson(request);
+  if (!raw.ok) return raw.response;
+  const parsed = SelfViewSchema.safeParse(raw.value ?? {});
+  if (!parsed.success) return json({ error: 'bad_request' }, 400);
   const existing = await store.getEmail(id);
   if (!existing) return json({ error: 'not_found' }, 404);
 
-  const body = (await request.json().catch(() => ({}))) as {
-    timestamp?: string;
-    gmailThreadId?: string | null;
-    gmail_thread_id?: string | null;
-    gmailMessageId?: string | null;
-    gmail_message_id?: string | null;
-    source?: 'ROW_INTERACTION' | 'MESSAGE_EXPANDED' | 'MESSAGE_LOAD' | 'CACHE_REINSPECTION' | 'PAGE_RELOAD';
-    selfViewEventId?: string;
-    reconcileGmailIds?: boolean;
-    reconcile_gmail_ids?: boolean;
-  };
+  const body = parsed.data;
+  // A malformed idempotency key is ignored rather than trusted as a row ID.
+  const selfViewEventId = body.selfViewEventId && SELF_VIEW_EVENT_ID_PATTERN.test(body.selfViewEventId) ? body.selfViewEventId : undefined;
   const ts = body.timestamp && !Number.isNaN(Date.parse(body.timestamp))
     ? new Date(body.timestamp).toISOString()
     : new Date().toISOString();
@@ -359,24 +471,21 @@ async function handleSelfView(
   const source = body.source || 'MESSAGE_EXPANDED';
   const reconcile = body.reconcileGmailIds === true || body.reconcile_gmail_ids === true;
   const ua = request.headers.get('User-Agent');
-  const ip =
-    request.headers.get('CF-Connecting-IP') ||
-    request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
-    '';
+  const ip = clientIp(request);
   const senderIpHash = ip ? await hashIp(ip, salt) : null;
   const senderUaFamily = normalizeUserAgentFamily(ua);
 
   // Idempotency: repeated delivery with the same selfViewEventId
-  if (body.selfViewEventId) {
+  if (selfViewEventId) {
     const events = await store.listEvents(id);
-    const alreadyEvt = events.find((e) => e.id === body.selfViewEventId);
+    const alreadyEvt = events.find((e) => e.id === selfViewEventId);
     if (alreadyEvt) {
       const claim =
         (await store.getActiveClaim(id, normMessage, selfMs)) ||
-        (await store.getClaim(`clm_${body.selfViewEventId}`));
+        (await store.getClaim(`clm_${selfViewEventId}`));
       return json({
         ok: true,
-        claimId: claim?.id || `clm_${body.selfViewEventId}`,
+        claimId: claim?.id || `clm_${selfViewEventId}`,
         claimExpiresAt: claim?.expires_at || new Date(selfMs + CLAIM_TTL_MS).toISOString(),
         open_count: existing.open_count,
         reclassifiedEventIds: [],
@@ -424,7 +533,7 @@ async function handleSelfView(
       await store.updateClaim(activeClaim.id, patch);
     }
   } else {
-    claimId = body.selfViewEventId ? `clm_${body.selfViewEventId}` : newId('clm');
+    claimId = selfViewEventId ? `clm_${selfViewEventId}` : newId('clm');
     claimExpiresAt = new Date(selfMs + CLAIM_TTL_MS).toISOString();
     const existingClaim = await store.getClaim(claimId);
     if (existingClaim) {
@@ -456,10 +565,7 @@ async function handleSelfView(
     }
   }
 
-  const eventId =
-    body.selfViewEventId && /^[\w-]+$/.test(body.selfViewEventId) && body.selfViewEventId.length <= 160
-      ? body.selfViewEventId
-      : newId('evt');
+  const eventId = selfViewEventId ?? newId('evt');
   await store.insertEvent({
     id: eventId,
     tracking_id: id,
@@ -555,14 +661,23 @@ async function handleSelfView(
     }
   }
 
-  const updated = await recomputeEmailStats(id, store);
+  const stats = await recomputeEmailStats(id, store);
   return json({
     ok: true,
     claimId,
     claimExpiresAt,
-    open_count: updated?.open_count ?? 0,
+    open_count: stats.openCount,
     reclassifiedEventIds,
   });
+}
+
+/** Run bookkeeping after the response when the host allows it; never let it fail the response. */
+async function record(task: () => Promise<void>, label: string, defer?: (task: Promise<unknown>) => void): Promise<void> {
+  const run = task().catch((err) => {
+    console.error(`[tracker] ${label} record failed`, errorName(err));
+  });
+  if (defer) defer(run);
+  else await run;
 }
 
 async function handleOpen(
@@ -570,101 +685,96 @@ async function handleOpen(
   request: Request,
   salt: string,
   store: TrackerStore,
+  defer?: (task: Promise<unknown>) => void,
 ): Promise<Response> {
-  // Always return the GIF. Recording is best-effort.
-  if (!trackingId || trackingId.length > 80 || !/^[\w-]+$/.test(trackingId)) {
-    return gifResponse();
-  }
-
-  try {
-    const email = await store.getEmail(trackingId);
-
-    if (email) {
-      const ua = request.headers.get('User-Agent');
-      const ip =
-        request.headers.get('CF-Connecting-IP') ||
-        request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
-        '';
-      const ip_hash = ip ? await hashIp(ip, salt) : null;
-      const now = Date.now();
-      const ts = new Date(now).toISOString();
-      const eventId = newId('evt');
-
-      const activeClaim = await store.getActiveClaim(trackingId, email.gmail_message_id, now);
-      const claimRows = await store.listClaims(trackingId);
-      const proxySelection = selectSenderProxyClaim(
-        claimRows.map((claim) => ({
-          id: claim.id,
-          gmailMessageId: claim.gmail_message_id,
-          lastObservedAt: claim.last_observed_at,
-          expiresAt: claim.expires_at,
-          proxyConsumedByEventId: claim.proxy_consumed_by_event_id ?? null,
-          proxyConsumedAt: claim.proxy_consumed_at ?? null,
-        })),
-        now,
-        email.gmail_message_id,
-      );
-      const recentConsumed = activeClaim
-        ? null
-        : await store.getRecentConsumedClaim(trackingId, now, 1000, ua, ip_hash);
-      const recentMatches = Boolean(
-        recentConsumed &&
-          senderFingerprintMatches(
-            {
-              senderIpHash: recentConsumed.sender_ip_hash || recentConsumed.consumed_ip_hash,
-              senderUaFamily: recentConsumed.sender_ua_family || normalizeUserAgentFamily(recentConsumed.consumed_ua),
-            },
-            { ipHash: ip_hash, userAgent: ua },
-          ),
-      );
-      let selfViewTs: number | null = null;
-      if (!activeClaim && !recentMatches && !(await store.hasClaims(trackingId))) {
-        const events = await store.listEvents(trackingId);
-        const recentSelfView = events.find((e) => {
-          if (e.type !== 'SELF_VIEW') return false;
-          const svMs = Date.parse(e.timestamp);
-          return isSelfViewCorrelated(now, svMs);
-        });
-        selfViewTs = recentSelfView ? Date.parse(recentSelfView.timestamp) : null;
-      }
-      const verdict = decideTrackedOpen({
-        sentAt: email.sent_at,
-        now,
-        ua,
-        ipHash: ip_hash,
-        selfViewTs,
-        activeClaim: activeClaim
-          ? { senderIpHash: activeClaim.sender_ip_hash, senderUaFamily: activeClaim.sender_ua_family }
-          : null,
-        recentConsumedMatches: recentMatches,
-        proxySuppression: proxySelection?.mode ?? 'none',
-      });
-      if (verdict.consumeClaim && activeClaim) {
-        await store.consumeClaim(activeClaim.id, eventId, ts, ua, ip_hash);
-      }
-      if (verdict.consumeProxySuppression && proxySelection) {
-        await store.consumeProxySuppression(proxySelection.claim.id, eventId, ts);
-      }
-
-      await store.insertEvent({
-        id: eventId,
-        tracking_id: trackingId,
-        type: 'OPEN',
-        timestamp: ts,
-        user_agent: ua,
-        ip_hash,
-        suspected_self_open: verdict.suspected,
-        confidence: verdict.confidence,
-        classification: verdict.classification,
-      });
-
-      await recomputeEmailStats(trackingId, store);
-    }
-  } catch (e) {
-    console.error('open record failed', e);
-  }
-
+  // Always return the GIF. Malformed and unknown IDs look exactly like known ones.
+  if (!ID_PATTERN.test(trackingId)) return gifResponse();
+  const ua = request.headers.get('User-Agent');
+  const ip = clientIp(request);
+  const now = Date.now();
+  await record(() => recordOpen(trackingId, ua, ip, now, salt, store), 'open', defer);
   return gifResponse();
+}
+
+async function recordOpen(
+  trackingId: string,
+  ua: string | null,
+  ip: string,
+  now: number,
+  salt: string,
+  store: TrackerStore,
+): Promise<void> {
+  const email = await store.getEmail(trackingId);
+  if (!email) return;
+  const ip_hash = ip ? await hashIp(ip, salt) : null;
+  const ts = new Date(now).toISOString();
+  const eventId = newId('evt');
+
+  // One read of this email's claims answers every claim question below.
+  const claimRows = await store.listClaims(trackingId);
+  const activeClaim = pickActiveClaim(claimRows, email.gmail_message_id, now);
+  const proxySelection = selectSenderProxyClaim(
+    claimRows.map((claim) => ({
+      id: claim.id,
+      gmailMessageId: claim.gmail_message_id,
+      lastObservedAt: claim.last_observed_at,
+      expiresAt: claim.expires_at,
+      proxyConsumedByEventId: claim.proxy_consumed_by_event_id ?? null,
+      proxyConsumedAt: claim.proxy_consumed_at ?? null,
+    })),
+    now,
+    email.gmail_message_id,
+  );
+  const recentConsumed = activeClaim ? null : pickRecentConsumedClaim(claimRows, now, 1000, ua, ip_hash);
+  const recentMatches = Boolean(
+    recentConsumed &&
+      senderFingerprintMatches(
+        {
+          senderIpHash: recentConsumed.sender_ip_hash || recentConsumed.consumed_ip_hash,
+          senderUaFamily: recentConsumed.sender_ua_family || normalizeUserAgentFamily(recentConsumed.consumed_ua),
+        },
+        { ipHash: ip_hash, userAgent: ua },
+      ),
+  );
+  let selfViewTs: number | null = null;
+  if (!activeClaim && !recentMatches && claimRows.length === 0) {
+    // Trackers older than self-view claims only recorded SELF_VIEW events.
+    const events = await store.listEvents(trackingId);
+    const recentSelfView = events.find((e) => e.type === 'SELF_VIEW' && isSelfViewCorrelated(now, Date.parse(e.timestamp)));
+    selfViewTs = recentSelfView ? Date.parse(recentSelfView.timestamp) : null;
+  }
+  const verdict = decideTrackedOpen({
+    sentAt: email.sent_at,
+    now,
+    ua,
+    ipHash: ip_hash,
+    selfViewTs,
+    activeClaim: activeClaim
+      ? { senderIpHash: activeClaim.sender_ip_hash, senderUaFamily: activeClaim.sender_ua_family }
+      : null,
+    recentConsumedMatches: recentMatches,
+    proxySuppression: proxySelection?.mode ?? 'none',
+  });
+  if (verdict.consumeClaim && activeClaim) {
+    await store.consumeClaim(activeClaim.id, eventId, ts, ua, ip_hash);
+  }
+  if (verdict.consumeProxySuppression && proxySelection) {
+    await store.consumeProxySuppression(proxySelection.claim.id, eventId, ts);
+  }
+
+  await store.insertEvent({
+    id: eventId,
+    tracking_id: trackingId,
+    type: 'OPEN',
+    timestamp: ts,
+    user_agent: ua,
+    ip_hash,
+    suspected_self_open: verdict.suspected,
+    confidence: verdict.confidence,
+    classification: verdict.classification,
+  });
+
+  await recomputeEmailStats(trackingId, store);
 }
 
 async function handleClick(
@@ -672,49 +782,40 @@ async function handleClick(
   request: Request,
   salt: string,
   store: TrackerStore,
+  defer?: (task: Promise<unknown>) => void,
 ): Promise<Response> {
-  if (!clickId || clickId.length > 80 || !/^[\w-]+$/.test(clickId)) {
-    return json({ error: 'bad_id' }, 400);
-  }
+  if (!ID_PATTERN.test(clickId)) return linkUnavailable(400);
 
-  const link = await store.getLink(clickId);
-  if (!link) return json({ error: 'not_found' }, 404);
-
-  const destination = safeRedirectUrl(link.destination);
-  if (!destination) return json({ error: 'bad_destination' }, 400);
-
+  // Only a stored link redirects, and only to an http(s) destination: never an open redirect.
+  let link: Awaited<ReturnType<TrackerStore['getLink']>>;
   try {
-    const ua = request.headers.get('User-Agent');
-    const ip =
-      request.headers.get('CF-Connecting-IP') ||
-      request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
-      '';
+    link = await store.getLink(clickId);
+  } catch (err) {
+    console.error('[tracker] click lookup failed', errorName(err));
+    return linkUnavailable(503);
+  }
+  if (!link) return linkUnavailable(404);
+  const destination = safeRedirectUrl(link.destination);
+  if (!destination) return linkUnavailable(400);
+
+  const ua = request.headers.get('User-Agent');
+  const ip = clientIp(request);
+  const now = Date.now();
+  await record(async () => {
     const ip_hash = ip ? await hashIp(ip, salt) : null;
-    const now = Date.now();
-    const ts = new Date(now).toISOString();
-
-    const email = await store.getEmail(link.tracking_id);
-    const events = await store.listEvents(link.tracking_id);
-    const recentSelfView = events.find((e) => {
-      if (e.type !== 'SELF_VIEW') return false;
-      const svMs = Date.parse(e.timestamp);
-      return isSelfViewCorrelated(now, svMs);
-    });
-    const selfViewTs = recentSelfView ? Date.parse(recentSelfView.timestamp) : null;
-    const sentAt = email?.sent_at ?? null;
-
+    const [email, events] = await Promise.all([store.getEmail(link.tracking_id), store.listEvents(link.tracking_id)]);
+    const recentSelfView = events.find((e) => e.type === 'SELF_VIEW' && isSelfViewCorrelated(now, Date.parse(e.timestamp)));
     const verdict = classifyClick({
-      sentAt,
+      sentAt: email?.sent_at ?? null,
       now,
       ua,
-      selfViewTs,
+      selfViewTs: recentSelfView ? Date.parse(recentSelfView.timestamp) : null,
     });
-
     await store.insertEvent({
       id: newId('evt'),
       tracking_id: link.tracking_id,
       type: 'CLICK',
-      timestamp: ts,
+      timestamp: new Date(now).toISOString(),
       user_agent: ua,
       ip_hash,
       click_id: clickId,
@@ -723,11 +824,8 @@ async function handleClick(
       confidence: verdict.confidence,
       classification: verdict.classification,
     });
-
     await recomputeEmailStats(link.tracking_id, store);
-  } catch (e) {
-    console.error('click record failed', e);
-  }
+  }, 'click', defer);
 
-  return Response.redirect(destination, 302);
+  return redirect(destination);
 }

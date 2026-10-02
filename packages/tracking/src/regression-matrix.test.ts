@@ -62,7 +62,7 @@ describe('Regression Matrix (Cases A through N)', () => {
     const status = describeTrackingStatus(matched!, { trackerBaseUrl: 'https://track.example' });
     expect(status.opened).toBe(false);
     expect(status.markLabel).toBe('Sent');
-    expect(status.countLabel).toBe('Not opened yet');
+    expect(status.countLabel).toBe('No open detected yet');
   });
 
   // Case B: Same thread, second email sent -> second email opened -> row must show OPENED.

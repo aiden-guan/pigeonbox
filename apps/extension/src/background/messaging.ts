@@ -34,6 +34,8 @@ const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   'SET_NO_REPLY_NOTIFY',
   'TRACKING_POLL',
   'TRACKING_SELF_VIEW',
+  // Counted opens and clicks for the tracking card on a sent message. Read-only, no credentials.
+  'GET_TRACKING_TIMELINE',
   'SET_CATEGORY',
   'REMIND_THREAD',
   'FOCUS_SIDEPANEL',

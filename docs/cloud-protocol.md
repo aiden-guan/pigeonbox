@@ -64,7 +64,7 @@ In the extension, extension pages reach these routes through the worker's `CLOUD
 
 AI responses share one envelope: `{ result, usage: { inputTokens?, outputTokens?, totalTokens? }, model?, requestId? }`. Size limits are in `AI_LIMITS`.
 
-The hosted tracker speaks the self-host tracker protocol (see [tracking.md](tracking.md)) at its own origin. Its management routes (`/api/emails…`, `/api/events/recent`) take the Cloud access token as the Bearer credential; `/open/:id` and `/c/:id` stay public.
+The hosted tracker speaks the self-host tracker protocol (see [tracking.md](tracking.md)) at its own origin. Its management routes (`/api/emails…`, `/api/events/recent`) take the Cloud access token as the Bearer credential, require the `cloud_tracking` capability (otherwise `402 entitlement_required`) and only ever see the caller's own records; `/open/:id` and `/c/:id` stay public and keep working for mail that was already sent after a plan ends. Only the service worker calls the management routes, through the Cloud session's token provider. The tracker origin is a build setting (`VITE_PIGEONBOX_CLOUD_TRACKER_URL`) and is requested as an optional host permission at sign-in; if it changes, Settings → Email tracking offers to grant the new origin.
 
 ## Sign-in
 

@@ -42,7 +42,7 @@ const sessionId = attachSdkComposeTracking(compose.view(), {
     sent.textContent = 'Tracked send linked';
   },
   cancelTracked: () => undefined,
-  syncLinks: () => undefined,
+  registerLinks: async () => true,
   reportDiagnostics: (session) => {
     document.body.dataset.tracking = session.state;
     document.body.dataset.allocations = String(allocations);

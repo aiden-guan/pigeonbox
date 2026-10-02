@@ -5,6 +5,7 @@ import {
   type TrackedEmailSummary,
   type TrackingRowQuery,
   type TrackingStatusCopy,
+  type TrackingTimelineEntry,
 } from '@pigeonbox/tracking';
 import { findThreadRows, threadIdFromLocation } from '@pigeonbox/gmail';
 import { ensureSurface } from '../shell/surface';
@@ -79,6 +80,8 @@ export function installSentStatus(opts: {
   onNotify: (trackingId: string, enabled: boolean) => void;
   onStatus?: () => void;
   onLink?: (trackingId: string, gmailThreadId: string) => void;
+  /** Counted opens and clicks for the detail card, from the tracker. Null when unavailable. */
+  loadActivity?: (trackingId: string) => Promise<TrackingTimelineEntry[] | null>;
   onSelfView?: (
     trackingId: string,
     gmailThreadId?: string | null,
@@ -93,6 +96,7 @@ export function installSentStatus(opts: {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let statusSignature = '';
   const recentSelfViews = new Map<string, { observedAt: number; source: SelfViewSource }>();
+  activityLoader = opts.loadActivity ?? null;
   ensureStyles();
   setTrackerBaseAttribute(trackerBaseUrl);
 
@@ -439,7 +443,9 @@ function renderButton(
   button.setAttribute('aria-label', copy.headline);
   button.title = copy.headline;
   button.style.cssText = controlStyle(color);
-  button.innerHTML = CHECK_ICON;
+  // ○ sent, ✓ opened, ↗ link clicked without a detected open.
+  button.dataset.kind = email.openCount > 0 ? 'open' : email.clickCount > 0 ? 'click' : 'sent';
+  button.innerHTML = email.openCount > 0 ? CHECK_ICON : email.clickCount > 0 ? LINK_ICON : SENT_ICON;
   if (labeled) {
     const label = document.createElement('span');
     label.className = 'gi-track-label';
@@ -490,6 +496,68 @@ function controlStyle(color: string): string {
   ].join(';');
 }
 
+let activityLoader: ((trackingId: string) => Promise<TrackingTimelineEntry[] | null>) | null = null;
+
+/** Rows shown in the card before older detections are summarized. */
+const ACTIVITY_ROWS = 6;
+
+async function loadCardActivity(list: HTMLElement, email: TrackedEmailSummary): Promise<void> {
+  if (!activityLoader || (email.openCount === 0 && email.clickCount === 0)) return;
+  const signature = `${email.openCount}:${email.clickCount}`;
+  list.dataset.loaded = signature;
+  const entries = await activityLoader(email.trackingId).catch(() => null);
+  if (!list.isConnected || list.dataset.loaded !== signature) return;
+  renderActivity(list, email, entries);
+}
+
+/** Sent, then the most recent counted detections, oldest first. Self and machine fetches never appear. */
+export function renderActivity(list: HTMLElement, email: TrackedEmailSummary, entries: TrackingTimelineEntry[] | null, now = Date.now()): void {
+  const rows: Array<{ at: string | null; label: string; more?: boolean }> = [];
+  if (email.sentAt) rows.push({ at: email.sentAt, label: 'Sent' });
+  const detections = entries ?? [];
+  const shown = detections.slice(-ACTIVITY_ROWS);
+  if (detections.length > shown.length) {
+    const earlier = detections.length - shown.length;
+    rows.push({ at: null, label: `${earlier} earlier detection${earlier === 1 ? '' : 's'}`, more: true });
+  }
+  for (const entry of shown) {
+    rows.push({ at: entry.timestamp, label: entry.type === 'CLICK' ? clickLabel(entry.destination) : 'Open detected' });
+  }
+  list.replaceChildren(
+    ...rows.map((row) => {
+      const item = document.createElement('li');
+      if (row.more) item.className = 'is-more';
+      const time = document.createElement('time');
+      if (row.at) {
+        time.dateTime = row.at;
+        time.textContent = activityTime(row.at, now);
+      }
+      const label = document.createElement('span');
+      label.textContent = row.label;
+      label.title = row.label;
+      item.append(time, label);
+      return item;
+    }),
+  );
+}
+
+function clickLabel(destination?: string): string {
+  if (!destination) return 'Link clicked';
+  try {
+    return `Link clicked · ${new URL(destination).hostname.replace(/^www\./, '')}`;
+  } catch {
+    return 'Link clicked';
+  }
+}
+
+function activityTime(iso: string, now: number): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toDateString() === new Date(now).toDateString()
+    ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
 let openCard: HTMLElement | null = null;
 let openBackdrop: HTMLElement | null = null;
 let openTrackingId: string | null = null;
@@ -538,7 +606,7 @@ function renderCard(
   card.className = 'gi-track-card';
   card.setAttribute('data-gi-ui', 'track-card');
   card.setAttribute('role', 'dialog');
-  card.setAttribute('aria-label', 'Email open status');
+  card.setAttribute('aria-label', 'Email tracking status');
   card.tabIndex = -1;
 
   const headline = document.createElement('p');
@@ -591,6 +659,18 @@ function renderCard(
   arrow.setAttribute('aria-hidden', 'true');
 
   card.append(headline, detail, count);
+  if (copy.attributionNote) {
+    const note = document.createElement('p');
+    note.className = 'gi-track-note';
+    note.textContent = copy.attributionNote;
+    card.append(note);
+  }
+  const activity = document.createElement('ol');
+  activity.className = 'gi-track-activity';
+  activity.setAttribute('aria-label', 'Activity');
+  renderActivity(activity, email, null);
+  card.append(activity);
+  void loadCardActivity(activity, email);
   if (copy.loopbackWarning) {
     const warning = document.createElement('p');
     warning.className = 'gi-track-warning';
@@ -666,6 +746,8 @@ function refreshOpenCard(emails: TrackedEmailSummary[], trackerBaseUrl: string):
     count.textContent = copy.countLabel;
     count.className = copy.opened ? 'gi-track-count is-open' : 'gi-track-count';
   }
+  const activity = openCard.querySelector<HTMLElement>('.gi-track-activity');
+  if (activity && activity.dataset.loaded !== `${email.openCount}:${email.clickCount}`) void loadCardActivity(activity, email);
 }
 
 function closeCard(): void {
@@ -681,4 +763,6 @@ function ensureStyles(): void {
 }
 
 const CHECK_ICON = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true"><path d="M3.1 8.3 6.3 11.5 12.9 4.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const SENT_ICON = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="4.6" stroke="currentColor" stroke-width="1.6"/></svg>`;
+const LINK_ICON = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true"><path d="M5 11 11 5M6.2 5H11v4.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const EYE_ICON = `<svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M1.8 10S4.8 4.8 10 4.8 18.2 10 18.2 10 15.2 15.2 10 15.2 1.8 10 1.8 10Z" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="10" r="2.2" stroke="currentColor" stroke-width="1.4"/></svg>`;

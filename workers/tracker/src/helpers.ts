@@ -192,6 +192,61 @@ export function selectSenderProxyClaim<T extends ProxyClaimCandidate>(
   return { claim, mode };
 }
 
+type StoredClaim = {
+  gmail_message_id: string | null;
+  last_observed_at: string;
+  expires_at: string;
+  consumed_by_event_id: string | null;
+  consumed_at?: string | null;
+  consumed_ua?: string | null;
+  consumed_ip_hash?: string | null;
+};
+
+/**
+ * The unconsumed, unexpired claim a pixel request should be checked against:
+ * an exact Gmail message match first, then the most recently observed claim.
+ * Same rule as `TrackerStore.getActiveClaim`, applied to rows already loaded.
+ */
+export function pickActiveClaim<T extends StoredClaim>(claims: T[], gmailMessageId: string | null | undefined, nowMs: number): T | null {
+  const wanted = normalizeGmailId(gmailMessageId);
+  const active = claims
+    .filter((claim) => {
+      if (claim.consumed_by_event_id) return false;
+      const expires = Date.parse(claim.expires_at);
+      return !(Number.isFinite(expires) && expires <= nowMs);
+    })
+    .sort((a, b) => (Date.parse(b.last_observed_at) || 0) - (Date.parse(a.last_observed_at) || 0));
+  if (active.length === 0) return null;
+  if (wanted) {
+    const exact = active.find((claim) => normalizeGmailId(claim.gmail_message_id) === wanted);
+    if (exact) return exact;
+  }
+  return active[0]!;
+}
+
+/**
+ * A claim consumed within `graceMs` of now by a request from the same client, if any.
+ * Same rule as `TrackerStore.getRecentConsumedClaim`, applied to rows already loaded.
+ */
+export function pickRecentConsumedClaim<T extends StoredClaim>(
+  claims: T[],
+  nowMs: number,
+  graceMs: number,
+  ua: string | null,
+  ipHash: string | null,
+): T | null {
+  const consumed = claims.filter((claim) => {
+    if (!claim.consumed_by_event_id || !claim.consumed_at) return false;
+    const consumedMs = Date.parse(claim.consumed_at);
+    if (!Number.isFinite(consumedMs) || Math.abs(nowMs - consumedMs) > graceMs) return false;
+    if (ua && claim.consumed_ua && claim.consumed_ua !== ua) return false;
+    if (ipHash && claim.consumed_ip_hash && claim.consumed_ip_hash !== ipHash) return false;
+    return true;
+  });
+  consumed.sort((a, b) => (Date.parse(b.consumed_at || '') || 0) - (Date.parse(a.consumed_at || '') || 0));
+  return consumed[0] ?? null;
+}
+
 /** GoogleImageProxy renders in this window after a document reload can be the sender's own refresh. */
 export const PAGE_RELOAD_PROXY_WINDOW_MS = 8_000;
 

@@ -3,7 +3,7 @@
  */
 import type { TrackedEmailSummary } from '@pigeonbox/tracking';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { installSentStatus, paintConversation, paintRows } from './sent-status';
+import { installSentStatus, paintConversation, paintRows, renderActivity } from './sent-status';
 
 const opened: TrackedEmailSummary = {
   trackingId: 'trk_open',
@@ -56,9 +56,9 @@ describe('sent mail open status', () => {
     paintRows(document, [opened, waiting], 'https://track.example', () => undefined);
     const buttons = [...document.querySelectorAll<HTMLButtonElement>('.gi-track-btn')];
     expect(buttons.map((button) => button.dataset.state)).toEqual(['opened', 'pending']);
-    expect(buttons[0].getAttribute('aria-label')).toMatch(/opened your email/);
+    expect(buttons[0].getAttribute('aria-label')).toMatch(/^Open detected/);
     expect(buttons[0].textContent).not.toMatch(/Opened/);
-    expect(buttons[1].getAttribute('aria-label')).toBe('Not opened yet.');
+    expect(buttons[1].getAttribute('aria-label')).toBe('No open detected yet.');
     expect(buttons[0].style.color).toBe('rgb(147, 80, 35)');
     expect(buttons[1].style.color).toBe('rgb(128, 134, 139)');
     expect(document.querySelector('[data-legacy-thread-id="thread-1"]')?.getAttribute('data-gi-tracked')).toBe('opened');
@@ -74,9 +74,9 @@ describe('sent mail open status', () => {
     const button = document.querySelector<HTMLButtonElement>('.gi-track-btn');
     button?.click();
     const card = document.querySelector('[data-gi-ui="track-card"]');
-    expect(card?.textContent).toContain('aiden@example.com');
-    expect(card?.textContent).toContain('opened your email');
-    expect(card?.textContent).toContain('First opened');
+    expect(card?.textContent).not.toContain('aiden@example.com');
+    expect(card?.textContent).toContain('Open detected');
+    expect(card?.textContent).toContain('First open detected');
     expect(card?.textContent).toContain('Opened 2 times');
     expect(card?.textContent).toContain('Notify me if there is no reply');
     card?.querySelector<HTMLButtonElement>('[role="switch"]')?.click();
@@ -103,7 +103,7 @@ describe('sent mail open status', () => {
     const buttons = [...document.querySelectorAll('.gi-track-btn')];
     expect(buttons.length).toBeGreaterThanOrEqual(1);
     const labeled = buttons.find((button) => button.textContent?.includes('Opened'));
-    expect(labeled?.getAttribute('aria-label')).toMatch(/opened your email/);
+    expect(labeled?.getAttribute('aria-label')).toMatch(/^Open detected/);
   });
 
   it('paints a checkbox row that has no legacy thread class', () => {
@@ -119,7 +119,7 @@ describe('sent mail open status', () => {
     paintRows(document, [opened], 'https://track.example', () => undefined);
     const button = document.querySelector('.gi-track-btn');
     expect(button?.getAttribute('data-state')).toBe('opened');
-    expect(button?.getAttribute('aria-label')).toMatch(/opened your email/);
+    expect(button?.getAttribute('aria-label')).toMatch(/^Open detected/);
     const name = document.querySelector('[email="aiden@example.com"]');
     expect(name?.parentElement?.firstElementChild?.classList.contains('gi-track-slot')).toBe(true);
   });
@@ -311,5 +311,51 @@ describe('sent mail open status', () => {
     paintConversation(document, [opened], 'https://track.example', onNotify, onLink);
     // paintConversation should render the slot without triggering any self view
     expect(document.querySelector('.gi-track-slot')).not.toBeNull();
+  });
+});
+
+describe('tracking detail card', () => {
+  it('uses a distinct mark for sent, opened and link-clicked mail', () => {
+    row('thread-1', 'aiden@example.com', 'Hello');
+    row('thread-2', 'sam@example.com', 'Follow up');
+    row('thread-3', 'kim@example.com', 'Docs');
+    const clicked: TrackedEmailSummary = { ...waiting, trackingId: 'trk_click', gmailThreadId: 'thread-3', subject: 'Docs', recipients: ['kim@example.com'], clickCount: 1, lastClickedAt: '2026-09-22T15:10:00.000Z' };
+    paintRows(document, [opened, waiting, clicked], 'https://track.example', () => undefined);
+    const kinds = [...document.querySelectorAll<HTMLElement>('.gi-track-btn')].map((button) => button.dataset.kind);
+    expect(kinds).toEqual(['open', 'sent', 'click']);
+  });
+
+  it('lists sent time and counted detections, and loads them from the tracker', async () => {
+    const loadActivity = vi.fn(async () => [
+      { type: 'OPEN' as const, timestamp: '2026-09-22T15:00:20.000Z', viaProxy: true },
+      { type: 'CLICK' as const, timestamp: '2026-09-22T15:02:00.000Z', destination: 'https://www.example.com/doc' },
+    ]);
+    const controller = installSentStatus({ emails: [opened], trackerBaseUrl: 'https://track.example', onNotify: () => undefined, loadActivity });
+    row('thread-1', 'aiden@example.com', 'Hello');
+    controller.paint();
+    document.querySelector<HTMLElement>('.gi-track-btn')?.click();
+    await vi.waitFor(() => expect(document.querySelectorAll('.gi-track-activity li')).toHaveLength(3));
+    const labels = [...document.querySelectorAll('.gi-track-activity li span')].map((node) => node.textContent);
+    expect(labels).toEqual(['Sent', 'Open detected', 'Link clicked · example.com']);
+    expect(loadActivity).toHaveBeenCalledWith('trk_open');
+    controller.destroy();
+  });
+
+  it('summarizes older detections and never names a reader of a group email', () => {
+    const list = document.createElement('ol');
+    const entries = Array.from({ length: 9 }, (_, i) => ({ type: 'OPEN' as const, timestamp: new Date(Date.parse('2026-09-22T16:00:00.000Z') + i * 60_000).toISOString() }));
+    renderActivity(list, { ...opened, recipients: ['a@example.com', 'b@example.com'] }, entries);
+    const labels = [...list.querySelectorAll('li span')].map((node) => node.textContent);
+    expect(labels[0]).toBe('Sent');
+    expect(labels[1]).toBe('3 earlier detections');
+    expect(labels).toHaveLength(8);
+    expect(list.textContent).not.toMatch(/a@example\.com|b@example\.com/);
+  });
+
+  it('explains when one pixel was shared by several recipients', () => {
+    row('thread-1', 'aiden@example.com', 'Hello');
+    paintRows(document, [{ ...opened, recipients: ['aiden@example.com', 'pat@example.com'] }], 'https://track.example', () => undefined);
+    document.querySelector<HTMLElement>('.gi-track-btn')?.click();
+    expect(document.querySelector('.gi-track-note')?.textContent).toBe('Sent to 2 people in one email, so PigeonBox cannot tell which of them opened it.');
   });
 });

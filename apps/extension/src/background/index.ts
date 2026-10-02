@@ -50,8 +50,10 @@ import {
   probeTracker,
   summaryFromRemote,
   trackerHealthLabel,
+  trackerOriginOf,
   trackerPermissionOrigin,
   type TrackedEmailSummary,
+  type TrackerCredential,
   type TrackingDiagnosticsReport,
   type TrackingPixelEventDiagnostic,
   type TrackingSelfViewDiagnostic,
@@ -73,7 +75,7 @@ import {
 } from './ai/chatgpt-login';
 import { completeOnDevice, downloadOnDevice, warmOnDevice } from './ai/on-device';
 import { effectiveSettings, resolveAIProvider } from './ai/provider-router';
-import { clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud/client';
+import { cachedCloudState, clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud/client';
 import { cloudThreadStateAvailable, forgetThreadIntel } from './cloud/thread-state';
 import { handleCloudRequest } from './cloud/handlers';
 import { cloudSection, panelSection } from '../ui/cloud-features';
@@ -81,7 +83,7 @@ import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, isGmailContentScript, senderMaySend } from './messaging';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
 import { EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl } from '../config';
-import { TrackingNotificationHistory } from './tracking/notifications';
+import { gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './tracking/notifications';
 
 const db = getMailboxDb();
 const queue = new AIJobQueue();
@@ -91,6 +93,8 @@ let settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
 let agent: AgentLoop | null = null;
 let indexRunner: IndexJobRunner | null = null;
 const notificationHistory = new TrackingNotificationHistory(chrome.storage.local);
+/** Newest tracked emails fetched from the tracker per poll; older ones stay in the local cache. */
+const TRACKED_LIST_LIMIT = 200;
 let trackingPollInFlight: Promise<void> | null = null;
 
 const workerTabs = new WorkerTabController({
@@ -122,7 +126,11 @@ async function contentSettings(): Promise<PublicExtensionSettings> {
   if (settings.runMode !== 'cloud') return view;
   const tracker = cloudTrackerUrl(settings);
   const user = cloudApiUrl(settings) ? await cloudSession.currentUser(cloudApiUrl(settings)!) : null;
-  return { ...view, trackerBaseUrl: tracker ?? '', hasPersonalApiToken: Boolean(tracker && user) };
+  // Compose asks for tracking only when the account may use hosted tracking, so
+  // an account without it sends at once instead of waiting on a refused allocation.
+  const capabilities = (await cachedCloudState(settings).catch(() => null))?.capabilities;
+  const entitled = capabilities ? capabilities.includes('cloud_tracking') : true;
+  return { ...view, trackerBaseUrl: tracker ?? '', hasPersonalApiToken: Boolean(tracker && user && entitled) };
 }
 
 async function publishContentSettings(): Promise<void> {
@@ -400,10 +408,10 @@ async function runDiagnostics() {
   let trackingProbe: Awaited<ReturnType<typeof probeTracker>> | null = null;
   const probeTarget = settings.runMode === 'cloud'
     ? await trackerTarget()
-    : { baseUrl: settings.trackerBaseUrl, token: settings.personalApiToken };
+    : { baseUrl: settings.trackerBaseUrl, credential: settings.personalApiToken };
   if (!settings.trackingEnabled) tracking = 'disabled';
-  else if (probeTarget && (probeTarget.baseUrl || probeTarget.token)) {
-    trackingProbe = await probeTrackerWithPermission(probeTarget.baseUrl, probeTarget.token);
+  else if (probeTarget && (probeTarget.baseUrl || probeTarget.credential)) {
+    trackingProbe = await probeTrackerWithPermission(probeTarget.baseUrl, await credentialToken(probeTarget.credential));
     tracking = trackingProbe.status === 'healthy'
       ? 'healthy'
       : trackingProbe.status === 'unauthorized'
@@ -728,10 +736,30 @@ async function probeTrackerWithPermission(baseUrl: string, token: string) {
   return probeTracker(baseUrl, token);
 }
 
-async function trackerTarget(): Promise<{ baseUrl: string; token: string } | null> {
+type TrackerTarget = { baseUrl: string; credential: TrackerCredential };
+
+async function trackerTarget(): Promise<TrackerTarget | null> {
   if (settings.runMode === 'cloud') return cloudTrackerTarget(settings);
   if (!settings.trackerBaseUrl || !settings.personalApiToken) return null;
-  return { baseUrl: settings.trackerBaseUrl, token: settings.personalApiToken };
+  return { baseUrl: settings.trackerBaseUrl, credential: settings.personalApiToken };
+}
+
+/**
+ * The tracker for calls about one tracked email: the current tracker, but only
+ * when it is the one that issued the ID. After a switch between Local and Cloud,
+ * an email keeps its last known state instead of being sent to the wrong tracker.
+ */
+async function trackerTargetFor(trackingId: string): Promise<TrackerTarget | null> {
+  const target = await trackerTarget();
+  if (!target) return null;
+  const issuer = (await readTrackedEmails()).find((email) => email.trackingId === trackingId)?.trackerOrigin;
+  if (issuer && issuer !== trackerOriginOf(target.baseUrl)) return null;
+  return target;
+}
+
+async function credentialToken(credential: TrackerCredential): Promise<string> {
+  if (typeof credential === 'string') return credential;
+  return (await credential.get().catch(() => null)) ?? '';
 }
 
 async function notificationScope(baseUrl: string): Promise<string> {
@@ -757,23 +785,34 @@ async function pollTrackingNow(): Promise<void> {
   if (!settings.trackingEnabled) return;
   const target = await trackerTarget();
   if (!target) return;
-  const client = new TrackingClient(target.baseUrl, target.token);
+  const origin = trackerOriginOf(target.baseUrl);
+  const client = new TrackingClient(target.baseUrl, target.credential);
   const local = await readTrackedEmails();
   const byId = new Map(local.map((email) => [email.trackingId, email]));
+  // Emails issued by another tracker keep their cached state; only this tracker's rows are refreshed.
+  const fromHere = (email: TrackedEmailSummary) => !email.trackerOrigin || email.trackerOrigin === origin;
   let sawRemote = false;
   try {
-    const remote = await client.listEmails(200);
+    const remote = await client.listEmails(TRACKED_LIST_LIMIT);
     for (const row of remote) {
-      byId.set(row.tracking_id, summaryFromRemote(row, byId.get(row.tracking_id) || null));
+      byId.set(row.tracking_id, summaryFromRemote(row, byId.get(row.tracking_id) || null, origin));
+    }
+    // The tracker is the record. When it returned its whole list, a cached row it
+    // no longer has (deleted with the account, or from an earlier sign-in) is dropped.
+    if (remote.length < TRACKED_LIST_LIMIT) {
+      const present = new Set(remote.map((row) => row.tracking_id));
+      for (const email of local) {
+        if (email.trackerOrigin === origin && !present.has(email.trackingId)) byId.delete(email.trackingId);
+      }
     }
     sawRemote = true;
   } catch (e) {
-    console.warn('[gi] tracking list failed', e);
+    console.warn('[gi] tracking list failed', e instanceof Error ? e.message : 'error');
     await Promise.all(
-      local.slice(0, 40).map(async (email) => {
+      local.filter(fromHere).slice(0, 40).map(async (email) => {
         try {
           const row = await client.getEmail(email.trackingId);
-          byId.set(row.tracking_id, summaryFromRemote(row, email));
+          byId.set(row.tracking_id, summaryFromRemote(row, email, origin));
           sawRemote = true;
         } catch {
           /* keep the last status we already have */
@@ -809,7 +848,7 @@ async function pollTrackingNow(): Promise<void> {
       await chrome.storage.session.set({ lastPixelEvent: diagnostic });
     }
   } catch (e) {
-    console.warn('[gi] tracking poll failed', e);
+    console.warn('[gi] tracking poll failed', e instanceof Error ? e.message : 'error');
   }
   // The list endpoint only returns the 200 newest sent emails. An older email
   // can still have a new open, so look up its details before composing the alert.
@@ -818,21 +857,19 @@ async function pollTrackingNow(): Promise<void> {
   await Promise.all(missingIds.map(async (id) => {
     try {
       const row = await client.getEmail(id);
-      byId.set(id, summaryFromRemote(row));
+      byId.set(id, summaryFromRemote(row, null, origin));
     } catch {
       /* The event can still be shown with a generic subject. */
     }
   }));
   if (sawRemote || local.length || missingIds.length) await writeTrackedEmails([...byId.values()]);
+  if (!settings.desktopNotifications) return;
   try {
     const fresh = [...byId.values()];
-    for (const ev of newEvents) {
-      if (!isNotifiableTrackingEvent(ev)) continue;
-      if (settings.hideSuspectedSelfOpens && ev.suspected_self_open) continue;
-      if (!settings.desktopNotifications) continue;
-      const email = fresh.find((item) => item.trackingId === ev.tracking_id);
-      const { title, message } = describeTrackingNotification(ev, email);
-      void Promise.resolve(chrome.notifications.create(ev.id, {
+    for (const alert of groupTrackingAlerts(newEvents)) {
+      const email = fresh.find((item) => item.trackingId === alert.event.tracking_id);
+      const { title, message } = describeTrackingNotification(alert.event, email, alert.count);
+      void Promise.resolve(chrome.notifications.create(trackingNotificationId(alert.event), {
         type: 'basic',
         iconUrl: chrome.runtime.getURL('icons/icon128.png'),
         title,
@@ -840,7 +877,7 @@ async function pollTrackingNow(): Promise<void> {
       })).catch(() => undefined);
     }
   } catch (e) {
-    console.warn('[gi] tracking poll failed', e);
+    console.warn('[gi] tracking poll failed', e instanceof Error ? e.message : 'error');
   }
 }
 
@@ -884,6 +921,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 chrome.runtime.onStartup.addListener(async () => {
   await loadSettings();
+  void pollTracking().catch(() => undefined);
   const checkReleases = await releaseChecksWanted();
   configureReleaseCheckAlarm(checkReleases);
   if (checkReleases) {
@@ -1165,7 +1203,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
         try {
-          const client = new TrackingClient(target.baseUrl, target.token);
+          const client = new TrackingClient(target.baseUrl, target.credential);
           const created = await client.createEmail(message.input);
           const input = message.input as {
             subject?: string;
@@ -1190,11 +1228,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 click_count: 0,
               },
               null,
+              trackerOriginOf(created.pixel_url) ?? trackerOriginOf(target.baseUrl),
             ),
           );
           sendResponse({ ok: true, ...created });
         } catch (e) {
-          sendResponse({ error: String(e) });
+          // Sending continues without tracking; the compose control shows it as unavailable.
+          sendResponse({ error: e instanceof Error ? e.message : 'tracking_create_failed' });
         }
         return;
       }
@@ -1212,10 +1252,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         const updated = await patchTrackedEmail(trackingId, patch);
         if (updated?.notifyIfNoReply && updated.status === 'SENT') await ensureNoReplyReminder(updated);
-        const target = await trackerTarget();
+        const target = await trackerTargetFor(trackingId);
+        let trackerSynced = false;
         if (target) {
           try {
-            const client = new TrackingClient(target.baseUrl, target.token);
+            const client = new TrackingClient(target.baseUrl, target.credential);
             await client.linkEmail(trackingId, {
               ...(patch.gmailThreadId !== undefined ? { gmail_thread_id: patch.gmailThreadId } : {}),
               ...(patch.gmailMessageId !== undefined ? { gmail_message_id: patch.gmailMessageId } : {}),
@@ -1226,11 +1267,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               ...(patch.recipients ? { recipients: patch.recipients } : {}),
               ...(Array.isArray(message.links) ? { links: message.links } : {}),
             });
+            trackerSynced = true;
           } catch (e) {
-            console.warn('[gi] tracking update failed', e);
+            console.warn('[gi] tracking update failed', e instanceof Error ? e.message : 'error');
           }
         }
-        sendResponse({ ok: true, emails: await readTrackedEmails() });
+        // `trackerSynced` tells compose whether click IDs exist on the tracker before it rewrites links to them.
+        sendResponse({ ok: true, trackerSynced, emails: await readTrackedEmails() });
         return;
       }
       if (message?.type === 'REPORT_TRACKING') {
@@ -1246,7 +1289,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         if (settings.runMode === 'cloud') {
           const target = await trackerTarget();
-          sendResponse(target ? await probeTrackerWithPermission(target.baseUrl, target.token) : { status: 'missing', label: trackerHealthLabel('missing') });
+          sendResponse(target ? await probeTrackerWithPermission(target.baseUrl, await credentialToken(target.credential)) : { status: 'missing', label: trackerHealthLabel('missing') });
           return;
         }
         let base = typeof message.trackerBaseUrl === 'string' ? message.trackerBaseUrl : settings.trackerBaseUrl;
@@ -1274,10 +1317,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (gmailMessageId) patch.gmailMessageId = gmailMessageId;
         const updated = Object.keys(patch).length ? await patchTrackedEmail(trackingId, patch) : null;
         if (updated?.notifyIfNoReply) await ensureNoReplyReminder(updated);
-        const target = gmailThreadId || gmailMessageId ? await trackerTarget() : null;
+        const target = gmailThreadId || gmailMessageId ? await trackerTargetFor(trackingId) : null;
         if (target) {
           try {
-            const client = new TrackingClient(target.baseUrl, target.token);
+            const client = new TrackingClient(target.baseUrl, target.credential);
             await client.linkEmail(trackingId, {
               ...(gmailThreadId ? { gmail_thread_id: gmailThreadId } : {}),
               ...(gmailMessageId ? { gmail_message_id: gmailMessageId } : {}),
@@ -1296,16 +1339,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message?.type === 'GET_TRACKING_TIMELINE') {
         // Every counted open and click for one email, for the side panel's Waiting view.
         const trackingId = String(message.trackingId || '');
-        const target = trackingId && settings.trackingEnabled ? await trackerTarget() : null;
+        const target = /^[\w-]{1,80}$/.test(trackingId) && settings.trackingEnabled ? await trackerTargetFor(trackingId) : null;
         if (!target) {
-          sendResponse({ error: trackingId ? 'Tracking is not set up.' : 'missing_tracking_id' });
+          sendResponse({ error: trackingId ? 'Activity is not available for this email.' : 'missing_tracking_id' });
           return;
         }
         try {
-          const events = await new TrackingClient(target.baseUrl, target.token).getEvents(trackingId);
+          const events = await new TrackingClient(target.baseUrl, target.credential).getEvents(trackingId);
           sendResponse({ timeline: deriveTrackingTimeline(events) });
         } catch (error) {
-          sendResponse({ error: error instanceof Error ? error.message : String(error) });
+          sendResponse({ error: error instanceof Error ? error.message : 'Activity could not be loaded.' });
         }
         return;
       }
@@ -1571,7 +1614,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true });
         break;
       case 'TRACKING_SELF_VIEW': {
-        const target = msg.trackingId ? await trackerTarget() : null;
+        const target = msg.trackingId ? await trackerTargetFor(String(msg.trackingId)) : null;
         if (!target) {
           sendResponse({
             ok: false,
@@ -1581,7 +1624,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
 
-        const client = new TrackingClient(target.baseUrl, target.token);
+        const client = new TrackingClient(target.baseUrl, target.credential);
         const normMessageId = normalizeGmailId(msg.gmailMessageId);
         const normThreadId = normalizeGmailId(msg.gmailThreadId);
         const source = msg.source || 'MESSAGE_EXPANDED';
@@ -1614,7 +1657,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           } catch (err) {
             lastErr = err;
             const errStr = err instanceof Error ? err.message : String(err ?? '');
-            if (errStr.includes('401') || errStr.includes('404')) {
+            // Retrying cannot fix a rejected token (already refreshed once), a lapsed plan or an unknown email.
+            if (errStr.includes('401') || errStr.includes('402') || errStr.includes('404')) {
               break;
             }
           }
@@ -1808,6 +1852,15 @@ async function pollCloudNotifications(): Promise<void> {
 }
 
 chrome.notifications.onClicked.addListener((id) => {
+  const trackingId = trackingIdFromNotification(id);
+  if (trackingId) {
+    void readTrackedEmails().then((emails) => {
+      const email = emails.find((item) => item.trackingId === trackingId);
+      void chrome.tabs.create({ url: gmailThreadUrl({ gmailThreadId: email?.gmailThreadId ?? null, sender: email?.sender ?? null }) });
+      chrome.notifications.clear(id);
+    });
+    return;
+  }
   const match = id.match(/^cloud_([a-z_]+)_/);
   if (!match) return;
   const section = match[1] === 'approval' ? 'approvals' : match[1] === 'mention' || match[1] === 'assignment' ? 'team' : match[1] === 'sync_problem' ? 'connections' : 'overview';
@@ -1840,6 +1893,8 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       await chrome.storage.local.set({ settings });
       await publishContentSettings();
       rebuildAgent();
+      // Each mode has its own tracker; load its history now rather than on the next alarm.
+      void pollTracking().catch(() => undefined);
       return { ok: true, state: await productState() };
     }
     case 'CLOUD_SIGN_IN': {
@@ -1852,6 +1907,8 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
         void syncVoiceToCloud();
         await publishContentSettings();
         rebuildAgent();
+        // Cloud is the record for hosted tracking: load its history right after sign-in.
+        void pollTracking().catch(() => undefined);
         return { ok: true, user, state: await productState() };
       } catch (error) {
         return { ok: false, reason: cloudErrorMessage(error).message, detail: error instanceof Error ? error.message : undefined };

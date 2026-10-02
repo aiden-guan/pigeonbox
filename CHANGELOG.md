@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- **Tracking wording.** Sent marks, the detail card and alerts report detections ("Open detected", "Link clicked") and never name a reader, since one pixel is shared by every recipient. Alerts are grouped per email and open the Gmail conversation when clicked.
+- **Tracking detail card** lists Sent and each counted open and click, and says when an email went to several people.
+
+### Fixed
+- Click tracking: a link is rewritten only after the tracker confirms its click ID, so a failed update can no longer send recipients to an error page. Destinations with `&amp;` in the HTML now redirect to the decoded URL.
+- Tracked-email updates, self-view claims and activity go only to the tracker that issued the ID, after a switch between Local and Cloud.
+- PigeonBox Cloud tracking refreshes an expired access token and retries once.
+- Tracker: counters are recomputed from the full event history instead of the newest 200 events; one claims query per pixel; bounded request bodies; schema errors return 400; store errors no longer echo database messages; a sent email cannot be marked cancelled; a send time ahead of the tracker clock is clamped; unknown links show a plain page instead of JSON. Links whose path only resembles a tracker route (such as `youtube.com/c/…`) are tracked.
+
 ---
 
 ## [0.4.0] — 2026-10-02

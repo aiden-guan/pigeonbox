@@ -54,6 +54,12 @@ export type EventRow = {
   destination?: string | null;
 };
 
+/** The columns counter derivation reads. */
+export type StatsEventRow = Pick<EventRow, 'type' | 'timestamp' | 'user_agent' | 'suspected_self_open' | 'classification'>;
+
+/** Upper bound on events read to recompute one email's counters. */
+export const STATS_EVENT_LIMIT = 5000;
+
 export type ClaimRow = {
   id: string;
   tracking_id: string;
@@ -80,7 +86,14 @@ export interface TrackerStore {
   insertLink(row: LinkRow): Promise<void>;
   getEmail(id: string): Promise<EmailRow | null>;
   listEmails(limit: number): Promise<EmailRow[]>;
+  /** The 200 newest events for one email, newest first. */
   listEvents(trackingId: string): Promise<EventRow[]>;
+  /**
+   * Every event that feeds the email's counters, oldest first, up to
+   * `STATS_EVENT_LIMIT`. Counters are derived from these, never from the
+   * truncated `listEvents` page, so a busy email keeps accurate totals.
+   */
+  listEventsForStats(trackingId: string): Promise<StatsEventRow[]>;
   recentEvents(): Promise<EventRow[]>;
   insertEvent(row: EventRow): Promise<void>;
   updateEvent(id: string, patch: Partial<EventRow>): Promise<void>;
@@ -185,6 +198,13 @@ export function createMemoryStore(state: MemoryState): TrackerStore {
         .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))
         .slice(0, 200)
         .map((event) => ({ ...event }));
+    },
+    async listEventsForStats(trackingId) {
+      return state.events
+        .filter((event) => event.tracking_id === trackingId)
+        .sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0))
+        .slice(0, STATS_EVENT_LIMIT)
+        .map(({ type, timestamp, user_agent, suspected_self_open, classification }) => ({ type, timestamp, user_agent, suspected_self_open, classification }));
     },
     async recentEvents() {
       return [...state.events]
@@ -333,6 +353,16 @@ function supabaseStore(url: string, serviceRoleKey: string): TrackerStore {
         .limit(200);
       if (error) throw new StoreError(error.message);
       return (data as EventRow[] | null) ?? [];
+    },
+    async listEventsForStats(trackingId) {
+      const { data, error } = await supabase
+        .from('tracking_events')
+        .select('type,timestamp,user_agent,suspected_self_open,classification')
+        .eq('tracking_id', trackingId)
+        .order('timestamp', { ascending: true })
+        .limit(STATS_EVENT_LIMIT);
+      if (error) throw new StoreError(error.message);
+      return (data as StatsEventRow[] | null) ?? [];
     },
     async recentEvents() {
       const { data, error } = await supabase

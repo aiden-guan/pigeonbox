@@ -1,5 +1,5 @@
 /** Remembers which open-tracking events already produced a desktop notification. */
-import type { TrackingEvent } from '@pigeonbox/tracking';
+import { isNotifiableTrackingEvent, type TrackingEvent } from '@pigeonbox/tracking';
 
 const STORAGE_KEY = 'trackingNotificationHistory';
 const MAX_EVENTS_PER_TRACKER = 500;
@@ -46,4 +46,59 @@ export class TrackingNotificationHistory {
     await this.storage.set({ [STORAGE_KEY]: updated });
     return fresh;
   }
+}
+
+/** Opens closer together than this are one render (Gmail's proxy often fetches twice). */
+const SAME_RENDER_MS = 800;
+
+/**
+ * One desktop alert per email and kind (open or click) per poll, counting
+ * distinct detections. Self, machine and unknown fetches never alert; see
+ * `isNotifiableTrackingEvent`.
+ */
+export function groupTrackingAlerts(events: TrackingEvent[]): Array<{ event: TrackingEvent; count: number }> {
+  const groups = new Map<string, { event: TrackingEvent; count: number; lastMs: number }>();
+  const ordered = [...events].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  for (const event of ordered) {
+    if (!isNotifiableTrackingEvent(event)) continue;
+    const key = `${event.tracking_id}:${event.type}`;
+    const ms = Date.parse(event.timestamp);
+    const current = groups.get(key);
+    if (!current) {
+      groups.set(key, { event, count: 1, lastMs: ms });
+      continue;
+    }
+    current.event = event;
+    if (event.type === 'OPEN' && Number.isFinite(ms) && ms - current.lastMs < SAME_RENDER_MS) continue;
+    current.count += 1;
+    current.lastMs = ms;
+  }
+  return [...groups.values()].map(({ event, count }) => ({ event, count }));
+}
+
+const NOTIFICATION_PREFIX = 'trkn:';
+
+export function trackingNotificationId(event: Pick<TrackingEvent, 'tracking_id' | 'id'>): string {
+  return `${NOTIFICATION_PREFIX}${event.tracking_id}:${event.id}`;
+}
+
+export function trackingIdFromNotification(id: string): string | null {
+  if (!id.startsWith(NOTIFICATION_PREFIX)) return null;
+  const trackingId = id.slice(NOTIFICATION_PREFIX.length).split(':')[0];
+  return trackingId && /^[\w-]{1,80}$/.test(trackingId) ? trackingId : null;
+}
+
+/**
+ * Gmail URL for a tracked email's conversation. Gmail addresses threads by
+ * their hex ID; InboxSDK can report the decimal form. Without a usable ID the
+ * Sent folder is the honest fallback.
+ */
+export function gmailThreadUrl(email: { gmailThreadId: string | null; sender?: string | null }): string {
+  const account = email.sender && email.sender.includes('@') ? `?authuser=${encodeURIComponent(email.sender)}` : '';
+  const base = `https://mail.google.com/mail/${account}`;
+  const raw = (email.gmailThreadId || '').trim().replace(/^#/, '').replace(/^thread-[af]:/i, '');
+  let hex: string | null = null;
+  if (/^[0-9a-f]{12,16}$/i.test(raw) && !/^\d{17,}$/.test(raw)) hex = raw.toLowerCase();
+  else if (/^\d{17,20}$/.test(raw)) hex = BigInt(raw).toString(16);
+  return hex ? `${base}#all/${hex}` : `${base}#sent`;
 }

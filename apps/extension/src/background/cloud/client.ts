@@ -7,6 +7,7 @@
 import { CloudApiError, type PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
 import { SIGNED_OUT_CLOUD, type CloudState } from '@pigeonbox/core';
 import type { ExtensionSettings } from '@pigeonbox/shared';
+import type { TrackerCredential } from '@pigeonbox/tracking';
 import { cloudApiUrl, cloudTrackerUrl } from '../../config';
 import { CloudSessionManager } from './session';
 
@@ -88,15 +89,27 @@ export async function clearCloudState(): Promise<void> {
 }
 
 /**
- * The hosted tracker and a Cloud access token, when Cloud mode may track.
- * The token goes to the tracker from the service worker only.
+ * The account state last fetched for this API, without a network request.
+ * Null when it has not been fetched in this browser session.
  */
-export async function cloudTrackerTarget(settings: ExtensionSettings): Promise<{ baseUrl: string; token: string } | null> {
+export async function cachedCloudState(settings: ExtensionSettings): Promise<CloudState | null> {
+  const base = cloudApiUrl(settings);
+  if (!base) return null;
+  const stored = (await chrome.storage.session.get(STATE_KEY))[STATE_KEY] as StoredCloudState | undefined;
+  return stored?.apiBaseUrl === base ? stored.state : null;
+}
+
+/**
+ * The hosted tracker and the Cloud session's token provider, when Cloud mode
+ * may track. Requests made with it refresh an expired access token through the
+ * same session as every other Cloud call. Tokens stay in the service worker.
+ */
+export async function cloudTrackerTarget(settings: ExtensionSettings): Promise<{ baseUrl: string; credential: TrackerCredential } | null> {
   const api = cloudApiUrl(settings);
   const tracker = cloudTrackerUrl(settings);
   if (!api || !tracker) return null;
   const state = await readCloudState(settings);
   if (!state.capabilities.includes('cloud_tracking')) return null;
-  const token = await cloudSession.tokenProvider(api).get().catch(() => null);
-  return token ? { baseUrl: tracker, token } : null;
+  if (!(await cloudSession.currentUser(api))) return null;
+  return { baseUrl: tracker, credential: cloudSession.tokenProvider(api) };
 }

@@ -32,6 +32,7 @@ import {
   type CreateTrackedEmailResult,
   type TrackedEmailPatch,
   type TrackedEmailSummary,
+  type TrackingTimelineEntry,
 } from '@pigeonbox/tracking';
 import { applyCategoryChip, rowsForThread } from './thread/chips';
 import { attachDocumentAction, insertDocumentLink } from './compose/documents';
@@ -236,6 +237,10 @@ async function boot(): Promise<void> {
     onLink: (trackingId, gmailThreadId) => {
       linkTracked({ trackingId, gmailThreadId, gmailMessageId: null });
     },
+    loadActivity: async (trackingId) => {
+      const res = await send<{ timeline?: TrackingTimelineEntry[] }>({ type: 'GET_TRACKING_TIMELINE', trackingId });
+      return Array.isArray(res?.timeline) ? res.timeline : null;
+    },
     onSelfView: (trackingId, gmailThreadId, gmailMessageId, observedAt, source) => {
       reportTrackingSelfView(trackingId, gmailThreadId, gmailMessageId, observedAt, source || 'ROW_INTERACTION');
     },
@@ -323,7 +328,7 @@ function trackingDeps() {
     createTracked,
     markSent,
     cancelTracked,
-    syncLinks,
+    registerLinks,
     reportDiagnostics: reportTracking,
     onSent: ({ subject, recipients, bodyText }: { subject: string; recipients: string[]; bodyText: string }) => {
       void send({ type: 'OUTGOING_COMPOSE', subject, recipients, bodyText, threadId: currentThreadId || 'sent' });
@@ -745,8 +750,12 @@ function cancelTracked(trackingId: string): void {
   void send({ type: 'CANCEL_TRACKED_EMAIL', trackingId });
 }
 
-function syncLinks(update: { trackingId: string; links: Array<{ click_id: string; url: string }> }): void {
-  void send({ type: 'SYNC_TRACKED_LINKS', ...update });
+/** How long a send may wait for the tracker to store its links before they go out untracked. */
+const LINK_REGISTRATION_TIMEOUT_MS = 4_000;
+
+async function registerLinks(update: { trackingId: string; links: Array<{ click_id: string; url: string }> }): Promise<boolean> {
+  const res = await send<{ trackerSynced?: boolean }>({ type: 'SYNC_TRACKED_LINKS', ...update }, LINK_REGISTRATION_TIMEOUT_MS);
+  return res?.trackerSynced === true;
 }
 
 function linkTracked(link: { trackingId: string; gmailThreadId: string | null; gmailMessageId: string | null }): void {

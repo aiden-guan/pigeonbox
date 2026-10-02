@@ -74,70 +74,94 @@ export type TrackedEmailPatch = {
   links?: Array<{ click_id: string; url: string }>;
 };
 
+/**
+ * How the client authenticates to a tracker's management API. A self-hosted
+ * tracker uses a fixed personal token. PigeonBox Cloud passes its session's
+ * token provider, so an expired access token is refreshed and the request
+ * retried once, through the same session that the rest of Cloud uses.
+ */
+export type TrackerCredential =
+  | string
+  | {
+      get(): Promise<string | null>;
+      refresh?(): Promise<string | null>;
+    };
+
+/** A tracker answered with a non-2xx status. The message keeps the historic `tracking <op> failed: <status>` shape. */
+export class TrackingHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly operation: string,
+  ) {
+    super(`tracking ${operation} failed: ${status}`);
+    this.name = 'TrackingHttpError';
+  }
+}
+
+/** Default bound on one management request. Sending mail never waits longer than this for tracking. */
+export const TRACKER_REQUEST_TIMEOUT_MS = 10_000;
+
 export class TrackingClient {
   constructor(
     private readonly baseUrl: string,
-    private readonly token: string,
+    private readonly credential: TrackerCredential,
+    private readonly options: { timeoutMs?: number; fetcher?: typeof fetch } = {},
   ) {}
 
-  private headers(): HeadersInit {
-    return {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.token}`,
-    };
+  private async currentToken(): Promise<string | null> {
+    return typeof this.credential === 'string' ? this.credential : this.credential.get();
+  }
+
+  /**
+   * One management request. A 401 is retried once with a refreshed token: the
+   * tracker rejects it before doing any work, so the retry cannot duplicate a
+   * tracked email or link. Network failures are not retried for that reason.
+   */
+  private async request<T>(operation: string, path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+    const fetcher = this.options.fetcher ?? fetch;
+    const send = (token: string) =>
+      fetcher(`${trim(this.baseUrl)}${path}`, {
+        method: init.method ?? 'GET',
+        headers: {
+          ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          Authorization: `Bearer ${token}`,
+        },
+        ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+        signal: AbortSignal.timeout(this.options.timeoutMs ?? TRACKER_REQUEST_TIMEOUT_MS),
+      });
+    const token = await this.currentToken();
+    if (!token) throw new TrackingHttpError(401, operation);
+    let res = await send(token);
+    if (res.status === 401 && typeof this.credential !== 'string' && this.credential.refresh) {
+      const next = await this.credential.refresh();
+      if (next) res = await send(next);
+    }
+    if (!res.ok) throw new TrackingHttpError(res.status, operation);
+    return res.json() as Promise<T>;
   }
 
   async createEmail(input: CreateTrackedEmailInput): Promise<CreateTrackedEmailResult> {
-    const res = await fetch(`${trim(this.baseUrl)}/api/emails`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(input),
-    });
-    if (!res.ok) throw new Error(`tracking create failed: ${res.status}`);
-    return res.json() as Promise<CreateTrackedEmailResult>;
+    return this.request('create', '/api/emails', { method: 'POST', body: input });
   }
 
   async getEmail(id: string): Promise<TrackedEmail> {
-    const res = await fetch(`${trim(this.baseUrl)}/api/emails/${encodeURIComponent(id)}`, {
-      headers: this.headers(),
-    });
-    if (!res.ok) throw new Error(`tracking get failed: ${res.status}`);
-    return res.json() as Promise<TrackedEmail>;
+    return this.request('get', `/api/emails/${encodeURIComponent(id)}`);
   }
 
   async getEvents(id: string): Promise<TrackingEvent[]> {
-    const res = await fetch(
-      `${trim(this.baseUrl)}/api/emails/${encodeURIComponent(id)}/events`,
-      { headers: this.headers() },
-    );
-    if (!res.ok) throw new Error(`tracking events failed: ${res.status}`);
-    return res.json() as Promise<TrackingEvent[]>;
+    return this.request('events', `/api/emails/${encodeURIComponent(id)}/events`);
   }
 
   async getRecentEvents(): Promise<TrackingEvent[]> {
-    const res = await fetch(`${trim(this.baseUrl)}/api/events/recent`, {
-      headers: this.headers(),
-    });
-    if (!res.ok) throw new Error(`tracking recent failed: ${res.status}`);
-    return res.json() as Promise<TrackingEvent[]>;
+    return this.request('recent', '/api/events/recent');
   }
 
   async listEmails(limit = 100): Promise<TrackedEmail[]> {
-    const res = await fetch(`${trim(this.baseUrl)}/api/emails?limit=${encodeURIComponent(String(limit))}`, {
-      headers: this.headers(),
-    });
-    if (!res.ok) throw new Error(`tracking list failed: ${res.status}`);
-    return res.json() as Promise<TrackedEmail[]>;
+    return this.request('list', `/api/emails?limit=${encodeURIComponent(String(limit))}`);
   }
 
   async linkEmail(id: string, patch: TrackedEmailPatch): Promise<TrackedEmail> {
-    const res = await fetch(`${trim(this.baseUrl)}/api/emails/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      headers: this.headers(),
-      body: JSON.stringify(patch),
-    });
-    if (!res.ok) throw new Error(`tracking link failed: ${res.status}`);
-    return res.json() as Promise<TrackedEmail>;
+    return this.request('link', `/api/emails/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch });
   }
 
   async recordSelfView(
@@ -160,20 +184,18 @@ export class TrackingClient {
     openCount?: number;
     reclassifiedEventIds?: string[];
   }> {
-    const res = await fetch(`${trim(this.baseUrl)}/api/emails/${encodeURIComponent(id)}/self-view`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(data || {}),
-    });
-    if (!res.ok) throw new Error(`tracking self-view failed: ${res.status}`);
-    return res.json() as Promise<{
-      ok: boolean;
-      claimId?: string;
-      claimExpiresAt?: string;
-      open_count?: number;
-      openCount?: number;
-      reclassifiedEventIds?: string[];
-    }>;
+    return this.request('self-view', `/api/emails/${encodeURIComponent(id)}/self-view`, { method: 'POST', body: data || {} });
+  }
+}
+
+/** `scheme://host[:port]` of a tracker URL, or null when it is not http(s). */
+export function trackerOriginOf(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : null;
+  } catch {
+    return null;
   }
 }
 
@@ -275,12 +297,14 @@ export function transformOutgoingHtml(
   },
 ): OutgoingTransform {
   const linkMap = opts.linkMap || new Map<string, string>();
+  const ownOrigin = trackerOriginOf(opts.pixelUrl);
   let linksRewritten = 0;
   let next = stripForeignTrackingPixels(html, opts.pixelUrl).html;
   if (opts.trackLinks) {
     next = next.replace(/href=(["'])(.*?)\1/gi, (full, quote: string, raw: string) => {
       const decoded = decodeHtmlAttr(raw);
       if (!shouldRewriteLink(decoded)) return full;
+      if (ownOrigin && trackerOriginOf(decoded) === ownOrigin) return full;
       const tracked = linkMap.get(raw) || linkMap.get(decoded) || opts.allocateTrackedUrl?.(decoded) || null;
       if (!tracked || tracked === decoded || tracked === raw) return full;
       linkMap.set(raw, tracked);
@@ -337,7 +361,15 @@ export type TrackedEmailSummary = {
   lastOpenedAt: string | null;
   openCount: number;
   clickCount: number;
+  firstClickedAt?: string | null;
+  lastClickedAt?: string | null;
   notifyIfNoReply: boolean;
+  /**
+   * Origin of the tracker that issued this tracking ID. Management calls for
+   * the email go only to this origin, so a Cloud ID never reaches a Local
+   * tracker (or the reverse) after the run mode or account changes.
+   */
+  trackerOrigin?: string | null;
 };
 
 export function summaryFromRemote(
@@ -355,8 +387,11 @@ export function summaryFromRemote(
     last_opened_at?: string | null;
     open_count?: number;
     click_count?: number;
+    first_clicked_at?: string | null;
+    last_clicked_at?: string | null;
   },
   local?: TrackedEmailSummary | null,
+  trackerOrigin?: string | null,
 ): TrackedEmailSummary {
   const remoteStatus = asStatus(row.status, row.sent_at);
   const localAhead = local?.status === 'SENT' && remoteStatus === 'PENDING';
@@ -383,7 +418,10 @@ export function summaryFromRemote(
     lastOpenedAt: openCount === 0 ? null : (row.last_opened_at || local?.lastOpenedAt || null),
     openCount,
     clickCount,
+    firstClickedAt: clickCount === 0 ? null : (row.first_clicked_at || local?.firstClickedAt || null),
+    lastClickedAt: clickCount === 0 ? null : (row.last_clicked_at || local?.lastClickedAt || null),
     notifyIfNoReply: local?.notifyIfNoReply ?? false,
+    trackerOrigin: trackerOrigin ?? local?.trackerOrigin ?? null,
   };
 }
 
@@ -529,32 +567,23 @@ export function describeOpenClient(userAgent?: string | null): string | null {
   return null;
 }
 
-function formatNotificationRecipients(recipients: string[]): string {
-  const names = [...new Set(recipients.map((value) => value.trim()).filter(Boolean))];
-  if (names.length === 0) return 'Someone';
-  if (names.length === 1) return names[0]!;
-  if (names.length === 2) return `One of ${names[0]} or ${names[1]}`;
-  const others = names.length - 2;
-  return `One of ${names[0]}, ${names[1]} or ${others} other${others === 1 ? '' : 's'}`;
-}
-
 /**
- * Desktop alert text for a tracked open or click. A message sent to several
- * people carries one pixel shared by all of them, so a group open cannot be
- * attributed to a single recipient; the alert names the group instead.
+ * Desktop alert text for a tracked open or click. A pixel fetch shows that the
+ * message was rendered somewhere, not that a person read it, and a message
+ * sent to several people shares one pixel. The alert therefore names the
+ * email, never a reader.
  */
 export function describeTrackingNotification(
   event: { type: string; user_agent?: string | null },
-  email: { subject?: string | null; recipients?: string[] | null } | null | undefined,
+  email: { subject?: string | null } | null | undefined,
+  count = 1,
 ): { title: string; message: string } {
-  const who = formatNotificationRecipients(email?.recipients || []);
   const subject = email?.subject?.trim() || 'your email';
-  const client = describeOpenClient(event.user_agent);
-  const via = client ? ` in ${client}` : '';
+  const times = count > 1 ? ` (${count} times)` : '';
   if (event.type === 'CLICK') {
-    return { title: 'Link click detected', message: `${who} clicked a link in “${subject}”${via}` };
+    return { title: 'PigeonBox', message: `A link was clicked in “${subject}”${times}` };
   }
-  return { title: 'Open detected', message: `${who} opened “${subject}”${via}` };
+  return { title: 'PigeonBox', message: `Open detected for “${subject}”${times}` };
 }
 
 function threadIdsMatch(stored: string | null, ids: Set<string>): boolean {
@@ -648,9 +677,16 @@ export type TrackingStatusCopy = {
   countLabel: string;
   /** Short label beside the subject. The inbox row stays icon-only. */
   markLabel: string;
+  /** Set when one pixel was shared by several recipients, so activity cannot name a reader. */
+  attributionNote: string | null;
   loopbackWarning: string | null;
 };
 
+/**
+ * Status copy for a tracked email. Wording reports detections ("Open
+ * detected"), never that a named person read the message: image fetches do
+ * not prove a human read it, and one pixel is shared by every recipient.
+ */
 export function describeTrackingStatus(
   email: TrackedEmailSummary,
   opts?: { now?: number; trackerBaseUrl?: string },
@@ -659,28 +695,32 @@ export function describeTrackingStatus(
   const opened = email.openCount > 0;
   const clicked = email.clickCount > 0;
   const engaged = opened || clicked;
-  const who = email.recipients.length === 1 ? email.recipients[0] : null;
-  const when = email.lastOpenedAt || email.firstOpenedAt;
-  const ago = when ? formatAgo(when, now) : 'recently';
+  const openedWhen = email.lastOpenedAt || email.firstOpenedAt;
+  const clickedWhen = email.lastClickedAt || email.firstClickedAt;
+  const openAgo = openedWhen ? formatAgo(openedWhen, now) : 'recently';
+  const clickAgo = clickedWhen ? formatAgo(clickedWhen, now) : 'recently';
+  const delivered = isDeliveredTrackedEmail(email);
 
-  const emphasis = opened || clicked ? who : null;
-  const rest = opened
-    ? ` opened your email ${ago}.`
+  const headline = opened
+    ? `Open detected ${openAgo}.`
     : clicked
-      ? ` clicked a link ${ago}.`
-      : 'Not opened yet.';
-  const headline = emphasis ? `${emphasis}${rest}` : opened ? `Opened ${ago}.` : rest;
+      ? `Link clicked ${clickAgo}.`
+      : delivered
+        ? 'No open detected yet.'
+        : 'Not sent yet.';
 
   const detail =
     opened && email.firstOpenedAt && email.sentAt
-      ? `First opened ${formatAfterSend(email.sentAt, email.firstOpenedAt)}.`
+      ? `First open detected ${formatAfterSend(email.sentAt, email.firstOpenedAt)}.`
       : opened
-        ? `Last opened ${ago}.`
+        ? `Last open detected ${openAgo}.`
         : clicked
           ? 'A link click was detected.'
-          : 'Tracking is on for this email.';
+          : delivered
+            ? 'Tracking is on for this email.'
+            : 'Tracking starts when Gmail sends this email.';
 
-  let countLabel = 'Not opened yet';
+  let countLabel = delivered ? 'No open detected yet' : 'Not sent yet';
   if (opened && clicked) {
     countLabel = `${openCountLabel(email.openCount)} · ${clickCountLabel(email.clickCount)}`;
   } else if (opened) {
@@ -690,24 +730,27 @@ export function describeTrackingStatus(
   }
 
   const loopback = Boolean(opts?.trackerBaseUrl && isLoopbackTracker(opts.trackerBaseUrl));
-  const delivered = isDeliveredTrackedEmail(email);
   const markLabel = opened
     ? email.openCount > 1
       ? `Opened ${email.openCount}×`
       : 'Opened'
     : clicked
-      ? 'Clicked'
+      ? 'Link clicked'
       : delivered
         ? 'Sent'
-        : 'Not opened';
+        : 'Pending';
   return {
     opened: engaged,
-    emphasis,
-    rest,
+    emphasis: null,
+    rest: headline,
     headline,
     detail,
     countLabel,
     markLabel,
+    attributionNote:
+      engaged && email.recipients.length > 1
+        ? `Sent to ${email.recipients.length} people in one email, so PigeonBox cannot tell which of them opened it.`
+        : null,
     loopbackWarning: loopback
       ? 'Gmail loads tracking images from Google’s servers, which cannot reach this computer. Use a public tracker URL in Settings to record recipient opens.'
       : null,
@@ -738,11 +781,22 @@ export function formatAfterSend(sentIso: string, openedIso: string): string {
 export function shouldRewriteLink(href: string): boolean {
   const h = href.trim();
   if (!/^https?:\/\//i.test(h)) return false;
-  if (/^mailto:/i.test(h) || /^tel:/i.test(h) || /^javascript:/i.test(h)) return false;
-  if (h.startsWith('#')) return false;
-  if (/mail\.google\.com/i.test(h)) return false;
-  if (/\/open\//i.test(h) || /\/c\//i.test(h)) return false;
+  let url: URL;
+  try {
+    url = new URL(h);
+  } catch {
+    return false;
+  }
+  if (!url.hostname || url.username || url.password) return false;
+  if (/(^|\.)mail\.google\.com$/i.test(url.hostname)) return false;
+  // Pixel and click URLs of any PigeonBox-compatible tracker (Worker, Convex, Cloud).
+  if (isTrackerPath(url.pathname)) return false;
   return true;
+}
+
+/** `/open/trk_…` and `/c/clk_…`, the only paths trackers issue for recipients. */
+export function isTrackerPath(pathname: string): boolean {
+  return /\/open\/trk_[\w-]+\/?$/i.test(pathname) || /\/c\/clk_[\w-]+\/?$/i.test(pathname);
 }
 
 export function rewriteHtmlLinks(
@@ -791,6 +845,10 @@ function trim(s: string): string {
 }
 function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+/** The URL an `href` attribute value stands for (`&amp;` and friends decoded). */
+export function decodeHtmlAttribute(s: string): string {
+  return decodeHtmlAttr(s);
 }
 function decodeHtmlAttr(s: string): string {
   return s

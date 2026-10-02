@@ -204,8 +204,9 @@ describe('sent mail status', () => {
       { now: opened + 15_000 },
     );
     expect(copy.opened).toBe(true);
-    expect(copy.headline).toBe('a@b.com opened your email less than a minute ago.');
-    expect(copy.detail).toBe('First opened less than a minute after you sent.');
+    expect(copy.headline).toBe('Open detected less than a minute ago.');
+    expect(copy.detail).toBe('First open detected less than a minute after you sent.');
+    expect(copy.attributionNote).toBeNull();
     expect(copy.countLabel).toBe('Opened 2 times');
     expect(copy.markLabel).toBe('Opened 2×');
   });
@@ -213,10 +214,27 @@ describe('sent mail status', () => {
   it('describes mail that has not been opened', () => {
     const copy = describeTrackingStatus(base, { now: Date.parse(base.sentAt) + 60_000 });
     expect(copy.opened).toBe(false);
-    expect(copy.headline).toBe('Not opened yet.');
+    expect(copy.headline).toBe('No open detected yet.');
     expect(copy.detail).toBe('Tracking is on for this email.');
-    expect(copy.countLabel).toBe('Not opened yet');
+    expect(copy.countLabel).toBe('No open detected yet');
     expect(copy.markLabel).toBe('Sent');
+  });
+
+  it('labels a click-only email and never names a reader of a shared pixel', () => {
+    const copy = describeTrackingStatus(
+      { ...base, recipients: ['a@b.com', 'c@d.com'], clickCount: 1, lastClickedAt: '2026-09-22T15:10:00.000Z' },
+      { now: Date.parse('2026-09-22T15:22:00.000Z') },
+    );
+    expect(copy.markLabel).toBe('Link clicked');
+    expect(copy.headline).toBe('Link clicked 12 minutes ago.');
+    expect(copy.attributionNote).toBe('Sent to 2 people in one email, so PigeonBox cannot tell which of them opened it.');
+    expect(`${copy.headline}${copy.detail}${copy.countLabel}`).not.toMatch(/a@b\.com|c@d\.com/);
+  });
+
+  it('reports a pending email as not sent rather than unopened', () => {
+    const copy = describeTrackingStatus({ ...base, status: 'PENDING', sentAt: null });
+    expect(copy.markLabel).toBe('Pending');
+    expect(copy.headline).toBe('Not sent yet.');
   });
 
   it('shows the newest tracked send even when an older message in the same thread was opened', () => {
@@ -227,7 +245,7 @@ describe('sent mail status', () => {
     expect(match?.openCount).toBe(0);
     const copy = describeTrackingStatus(match!);
     expect(copy.markLabel).toBe('Sent');
-    expect(copy.countLabel).toBe('Not opened yet');
+    expect(copy.countLabel).toBe('No open detected yet');
   });
 
   it('shows the newest opened send when the older send is unopened', () => {
@@ -505,32 +523,20 @@ describe('tracking notification text', () => {
   const proxyUa = 'Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 (via ggpht.com GoogleImageProxy)';
   const chromeUa = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-  it('names the only recipient of a one-to-one email', () => {
-    expect(
-      describeTrackingNotification(
-        { type: 'OPEN', user_agent: chromeUa },
-        { subject: 'Invoice', recipients: ['sam@example.com'] },
-      ),
-    ).toEqual({ title: 'Open detected', message: 'sam@example.com opened “Invoice”' });
+  it('reports a detection for the email and never claims who read it', () => {
+    expect(describeTrackingNotification({ type: 'OPEN', user_agent: chromeUa }, { subject: 'Invoice' })).toEqual({
+      title: 'PigeonBox',
+      message: 'Open detected for “Invoice”',
+    });
+    expect(describeTrackingNotification({ type: 'OPEN', user_agent: proxyUa }, { subject: 'Plan' }, 3).message).toBe('Open detected for “Plan” (3 times)');
+    expect(describeTrackingNotification({ type: 'CLICK', user_agent: chromeUa }, { subject: 'Plan' })).toEqual({
+      title: 'PigeonBox',
+      message: 'A link was clicked in “Plan”',
+    });
   });
 
-  it('names the group instead of guessing which recipient opened a shared pixel', () => {
-    const three = ['a@example.com', 'b@example.com', 'c@example.com'];
-    expect(describeTrackingNotification({ type: 'OPEN', user_agent: proxyUa }, { subject: 'Plan', recipients: three }).message)
-      .toBe('One of a@example.com, b@example.com or 1 other opened “Plan” in Gmail');
-    expect(
-      describeTrackingNotification(
-        { type: 'OPEN' },
-        { subject: 'Plan', recipients: [...three, 'd@example.com', 'a@example.com'] },
-      ).message,
-    ).toBe('One of a@example.com, b@example.com or 2 others opened “Plan”');
-    expect(
-      describeTrackingNotification({ type: 'CLICK', user_agent: chromeUa }, { subject: 'Plan', recipients: three.slice(0, 2) }),
-    ).toEqual({ title: 'Link click detected', message: 'One of a@example.com or b@example.com clicked a link in “Plan”' });
-  });
-
-  it('falls back to a generic subject and sender when the email is unknown', () => {
-    expect(describeTrackingNotification({ type: 'OPEN' }, null).message).toBe('Someone opened “your email”');
+  it('falls back to a generic subject when the email is unknown', () => {
+    expect(describeTrackingNotification({ type: 'OPEN' }, null).message).toBe('Open detected for “your email”');
   });
 
   it('recognises common mail apps and stays quiet for plain browsers', () => {

@@ -47,7 +47,7 @@ function deps(overrides: Partial<ComposeTrackingDeps> = {}): ComposeTrackingDeps
     cancelTracked: (trackingId) => {
       api.cancelled.push(trackingId);
     },
-    syncLinks: () => undefined,
+    registerLinks: async () => true,
     ...overrides,
   };
   return api;
@@ -317,5 +317,58 @@ describe('gmail send interception', () => {
     gmail.emit('recipientsChanged');
     await vi.waitFor(() => expect(getComposeSession(id)?.trackingId).toBe('trk_1'));
     expect(tracking.created).toBe(1);
+  });
+});
+
+describe('click tracking at send time', () => {
+  async function ready(tracking: ReturnType<typeof deps>) {
+    resetComposeSessionsForTests();
+    const gmail = new GmailComposeSendHarness();
+    gmail.recipients = [{ emailAddress: 'a@b.com' }];
+    gmail.setDraftId('draft-links');
+    const id = attachSdkComposeTracking(gmail.view(), tracking);
+    await vi.waitFor(() => expect(getComposeSession(id)?.modifierRegistered).toBe(true));
+    await vi.waitFor(() => expect(getComposeSession(id)?.trackingId).toBe('trk_1'));
+    return { gmail, id };
+  }
+
+  it('registers decoded destinations once and keeps a second pass identical', async () => {
+    const registered: Array<Array<{ click_id: string; url: string }>> = [];
+    const tracking = deps({ registerLinks: async (update) => (registered.push(update.links), true) });
+    const { gmail, id } = await ready(tracking);
+    const html = '<p>Hi</p><a href="https://example.com/r?a=1&amp;b=2">r</a><a href="mailto:x@y.com">m</a>';
+    const first = await gmail.deliverSend(html);
+    const second = await gmail.deliverSend(html);
+    expect(second.body).toBe(first.body);
+    expect(registered).toHaveLength(1);
+    expect(registered[0]).toEqual([{ click_id: expect.stringMatching(/^clk_[0-9a-f]{16}$/), url: 'https://example.com/r?a=1&b=2' }]);
+    expect(first.body.match(/\/open\/trk_1/g)).toHaveLength(1);
+    expect(first.body).toContain(`https://track.example/c/${registered[0]![0]!.click_id}`);
+    expect(first.body).toContain('mailto:x@y.com');
+    gmail.emit('sent', { getMessageID: async () => 'm1', getThreadID: async () => 't1' });
+    await vi.waitFor(() => expect(tracking.sent).toHaveLength(1));
+    expect(tracking.sent[0]).toMatchObject({ trackingId: 'trk_1', links: registered[0] });
+    expect(getComposeSession(id)?.state).toBe('SENT');
+  });
+
+  it('sends links untracked, with the pixel, when the tracker does not confirm them', async () => {
+    const tracking = deps({ registerLinks: async () => false });
+    const { gmail, id } = await ready(tracking);
+    const out = await gmail.deliverSend('<p>Hi</p><a href="https://example.com/doc">doc</a>');
+    expect(out.body).toContain('href="https://example.com/doc"');
+    expect(out.body).not.toContain('/c/clk_');
+    expect(out.body.match(/\/open\/trk_1/g)).toHaveLength(1);
+    expect(getComposeSession(id)?.lastError).toMatch(/without click tracking/);
+    gmail.emit('sent', { getMessageID: async () => 'm1', getThreadID: async () => 't1' });
+    await vi.waitFor(() => expect(tracking.sent).toHaveLength(1));
+    expect(tracking.sent[0]).toMatchObject({ links: [] });
+  });
+
+  it('does not wait on the tracker when a message has no links or link tracking is off', async () => {
+    const registerLinks = vi.fn(async () => true);
+    const { gmail } = await ready(deps({ registerLinks }));
+    const out = await gmail.deliverSend('<p>No links here</p>');
+    expect(out.body).toContain('/open/trk_1');
+    expect(registerLinks).not.toHaveBeenCalled();
   });
 });

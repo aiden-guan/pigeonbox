@@ -351,6 +351,16 @@ export function SettingsApp() {
         <p className="gi-muted text-xs">
           Connection: {trackerHealth ? trackerHealthLabel(trackerHealth) : <span className="gi-orb-line"><Orb size={12} />Checking…</span>}
         </p>
+        {cloudMode && trackerHealth === 'no_permission' && product.state.cloudOrigins.length ? (
+          // The hosted tracker's address can change (for example to a custom domain); Chrome needs a grant for the new one.
+          <button
+            type="button"
+            className="gi-text-btn"
+            onClick={() => chrome.permissions.request({ origins: product.state.cloudOrigins }, () => checkTracker(settings))}
+          >
+            Allow access to the PigeonBox Cloud tracker
+          </button>
+        ) : null}
         <p className="gi-muted text-xs">
           Tracking ready means a tracker record exists and Gmail’s send request can be rewritten. The compose window itself does not load the tracking image.
         </p>

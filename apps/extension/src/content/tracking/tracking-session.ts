@@ -25,6 +25,8 @@ export type ComposeTrackingSession = {
   trackingId: string | null;
   pixelUrl: string | null;
   linkMap: Map<string, string>;
+  /** Click IDs the tracker has confirmed it stored. Only these are ever sent as tracked links. */
+  confirmedClickIds: Set<string>;
   trackOpens: boolean;
   trackLinks: boolean;
   trackerCreatedAt: string | null;
@@ -58,6 +60,7 @@ export function createTrackingSession(input: {
     trackingId: null,
     pixelUrl: null,
     linkMap: new Map(),
+    confirmedClickIds: new Set(),
     trackOpens: input.trackOpens,
     trackLinks: input.trackLinks,
     trackerCreatedAt: null,
