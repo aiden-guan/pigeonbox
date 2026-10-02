@@ -6,7 +6,7 @@ Keep this in step with the product. The store rejects listings that describe fea
 
 ## Package
 
-Upload `PigeonBox-vX.Y.Z.zip` from the matching [GitHub release](https://github.com/aiden-guan/pigeonbox/releases). The store takes the name, summary and icons from `manifest.json`.
+For the manual 0.5.0 release, upload `release/PigeonBox-v0.5.0.zip` and verify it against the adjacent `.sha256` file. Do not push a release tag: the tag workflow may submit to the store automatically. The store takes the name, summary and icons from `manifest.json`.
 
 ## Store listing tab
 
@@ -21,7 +21,7 @@ AI inbox intelligence and email open tracking for Gmail. Runs on your computer b
 PigeonBox is a quieter, smarter Gmail. It sorts your inbox, summarizes threads, drafts replies in your voice, and answers questions about your mail. By default all of it runs on your computer.
 
 ON YOUR COMPUTER BY DEFAULT
-PigeonBox reads the Gmail page you already have open. It does not use the Gmail API, does not ask for access to your Google account, and keeps its mail index in your browser. There is no PigeonBox account, no analytics and no telemetry.
+PigeonBox reads the Gmail page you already have open. It does not use the Gmail API, does not ask for access to your Google account, and keeps its mail index in your browser. No PigeonBox account is required. Optional feature-use counters stay on your computer; there is no telemetry.
 
 WHAT IT DOES
 • Sorts threads into Respond, Waiting, FYI and Notifications. The rules work even with AI turned off.
@@ -38,6 +38,9 @@ CHOOSE YOUR AI
 • Your own API key for an OpenAI-compatible provider
 • Or no AI at all. Sorting and search still work.
 Email content only leaves your computer when you pick a provider that needs it, and only goes to that provider.
+
+CLOUD IS ON ITS WAY
+Cloud entry points open usepigeonbox.com/waitlist. Joining is optional and saves your email address for launch access; it does not connect Gmail or activate Cloud.
 
 OPEN SOURCE
 PigeonBox is MIT-licensed. The code, the privacy model and reproducible release builds are at github.com/aiden-guan/pigeonbox.
@@ -57,7 +60,7 @@ PigeonBox is MIT-licensed. The code, the privacy model and reproducible release 
 | Marquee promo tile (1400×560) | `promo-marquee.png` |
 
 **Official URL:** none (it requires a Search Console-verified domain; add the PigeonBox site once it is live).
-**Homepage URL:** https://github.com/aiden-guan/pigeonbox
+**Homepage URL:** https://usepigeonbox.com
 **Support URL:** https://github.com/aiden-guan/pigeonbox/issues
 **Mature content:** No
 
@@ -89,7 +92,7 @@ PigeonBox helps people manage their Gmail inbox: it sorts and summarizes mail, d
 - **Personal communications**: email content, processed to sort, summarize, search and draft.
 - **Website content**: the Gmail page PigeonBox reads.
 
-Leave the others unchecked. PigeonBox has no analytics, reads no location, browsing history or payment data, and handles no health data.
+Leave the others unchecked. Optional feature-use counters remain local. PigeonBox reads no location, browsing history or payment data. The separate website waitlist collects an email address, signup source and signup time; it does not collect mail or connect a Google account.
 
 **Certify all three:**
 
@@ -123,5 +126,5 @@ Open tracking needs a tracker the user hosts, so it is off by default and not re
 ## When Cloud launches
 
 1. Deploy PigeonBox Cloud (see `pigeonbox-cloud/docs/deployment.md`), with this item's ID in `ALLOWED_EXTENSION_IDS` and `https://<item-id>.chromiumapp.org/**` in Supabase's redirect URLs.
-2. Set the repository variables `PIGEONBOX_CLOUD_API_URL` and `PIGEONBOX_CLOUD_TRACKER_URL`, then tag a release. The release workflow builds them in, and store users get Cloud through a normal update.
+2. Validate a separate beta package with configured endpoint variables and `npm run package -- --cloud --out release/beta`. The default `npm run package` explicitly clears Cloud endpoints. Enabling Cloud in a public store update requires a reviewed change to the release workflow and a separate publication decision.
 3. Update this listing before submitting that release: add Cloud to the description, add **Authentication information** (the Cloud sign-in token) to the data usage section, and confirm the privacy policy's Cloud section still matches.

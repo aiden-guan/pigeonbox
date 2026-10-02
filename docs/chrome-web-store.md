@@ -15,7 +15,7 @@ Build with `npm run package`. The ZIP (`release/PigeonBox-vX.Y.Z.zip`) is what g
 - files referenced by `manifest.json` that are missing,
 - a manifest version that differs from `package.json`.
 
-Release builds turn off experimental features (ChatGPT web sign-in) and omit source maps.
+Default release builds turn off experimental features (ChatGPT web sign-in), omit source maps and explicitly clear Cloud endpoints. For 0.5.0, upload the ZIP manually; do not push a release tag.
 
 ## Manifest V3 audit
 
@@ -91,7 +91,9 @@ To publish a release by hand: `CWS_PUBLISHER_ID=… CWS_EXTENSION_ID=… CWS_SER
 
 ## Cloud in store builds
 
-A build has PigeonBox Cloud only if it was built with `VITE_PIGEONBOX_CLOUD_API_URL`. The release workflow reads it from the repository variables `PIGEONBOX_CLOUD_API_URL` and `PIGEONBOX_CLOUD_TRACKER_URL`. While they are unset, Settings and onboarding show Cloud as "Coming soon" and the store listing must not advertise it. When Cloud launches, follow "When Cloud launches" in [store/listing.md](store/listing.md).
+A build has PigeonBox Cloud only if it was built with `VITE_PIGEONBOX_CLOUD_API_URL`. Default store packaging clears the API URL, tracker URL and previous tracker URLs, including values present in local files or repository variables. Settings, onboarding and unavailable Cloud actions open `https://usepigeonbox.com/waitlist` without changing Local mode or requesting authentication. The store listing must describe Cloud as a waitlist.
+
+Configured development builds keep their existing behavior. Build a separate beta using `npm run package -- --cloud --out release/beta`; this does not activate subscriptions or publish to the store. A public Cloud store release requires a reviewed workflow change and a separate publication decision. Follow "When Cloud launches" in [store/listing.md](store/listing.md).
 
 ## Local builds with the store ID
 
