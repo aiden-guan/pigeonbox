@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.4.0] — 2026-10-02
+
+### Added
+- **Dispatch redesign.** Popup, side panel, settings, onboarding and the Gmail companion share one ink/paper system with small-radius geometry. Command rows replace the action tiles, the launcher expands in place into the command surface, and inbox categories show real counts. Selecting a mail row opens it as a brief that keeps its sender and subject. Motion follows real state: the index count rolls when it grows, and Pidgy acknowledges once. Reduced motion is respected. See [docs/dispatch-redesign.md](docs/dispatch-redesign.md).
+- **Memory settings** for PigeonBox Cloud: search, inspect, correct, forget and purge what Cloud has learned, with independent learning and Fast Recall switches.
+- Ask chat helpers and memory contracts shared with PigeonBox Cloud.
+
 ### Changed
 - **Architecture and naming cleanup, no behavior change.** The extension's service worker is organized by responsibility (`background/ai`, `background/cloud`, `background/search`, `background/tracking`) and the Gmail content script by concern (`content/thread`, `content/tracking`, `content/shell`). `background/intelligence.ts` is now `background/ai/provider-router.ts` (`resolveAIProvider`), Cloud thread state lives in `background/cloud/thread-state.ts`, and Ask Inbox is called Ask Pigeon throughout. See [docs/architecture.md](docs/architecture.md).
 - The local Supabase `project_id` is `pigeonbox` (was the old working name `EmailApp`). It only names local Docker containers and volumes; stop a stack started under the old ID with `supabase stop --project-id EmailApp`.
