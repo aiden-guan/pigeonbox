@@ -1,32 +1,36 @@
-import { trackProductEvent } from '../ui/analytics';
 /**
- * PigeonBox Cloud in the side panel: the approval queue, the Focus Queue
- * across connected accounts, and Ask Pigeon with sources. Shown only in Cloud
- * mode with Google connected. Every call goes through the service worker
- * (`CLOUD_CALL`), which holds the session and allows only listed routes.
+ * PigeonBox Cloud in the side panel: Home (what needs you, what is prepared,
+ * what happened while you were away), every prepared draft, approvals and
+ * activity. Shown only in Cloud mode. Every call goes through the service
+ * worker (`CLOUD_CALL`), which holds the session and allows only listed routes.
  */
-import type { Approval, RouteResponse } from '@pigeonbox/api-contract';
+import type { Approval, CloudOverview, DraftListItem, FocusItem, RouteResponse } from '@pigeonbox/api-contract';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { trackProductEvent } from '../ui/analytics';
 import { Orb } from '../ui/Orb';
 import { relative } from './WaitingView';
-import { CloudOverview } from './CloudOverview';
+import { CloudHome, type HomeTarget } from './CloudHome';
 import { CloudPreview } from './CloudPreview';
 import { useProductState } from '../ui/product-state';
 import { openCloud, availableCloudFeatures } from '../ui/cloud-features';
+import { mailStatus, type DraftFilter } from './cloud-presenters';
+import type { ReviewTarget } from './DraftReview';
 const BriefingsView = lazy(() => import('./BriefingsView').then((m) => ({ default: m.BriefingsView })));
 const RulesView = lazy(() => import('./RulesView').then((m) => ({ default: m.RulesView })));
 const ActivityView = lazy(() => import('./ActivityView').then((m) => ({ default: m.ActivityView })));
 const DocumentsView = lazy(() => import('./DocumentsView').then((m) => ({ default: m.DocumentsView })));
 const ContactsView = lazy(() => import('./ContactsView').then((m) => ({ default: m.ContactsView })));
+const DraftsView = lazy(() => import('./DraftsView').then((m) => ({ default: m.DraftsView })));
+const DraftReview = lazy(() => import('./DraftReview').then((m) => ({ default: m.DraftReview })));
 
 export { cloudCall } from './cloud-api';
-import { cloudCall } from './cloud-api';
+import { callCloud, cloudCall } from './cloud-api';
 
 const PLACEHOLDER = /\[(?:[A-Z][A-Z ]+ NEEDED|CONFIRM [A-Z ]+)\]/g;
 const newKey = () => crypto.randomUUID();
 type FocusQueueResponse = RouteResponse<'focusQueue'>;
 
-function ApprovalCard(props: { approval: Approval; onDone: (message: string) => void }) {
+function ApprovalCard(props: { approval: Approval; focused?: boolean; onDone: (message: string) => void }) {
   const { approval } = props;
   const decisionKeys = useRef({ approve: newKey(), reject: newKey() });
   const [completed, setCompleted] = useState('');
@@ -35,6 +39,8 @@ function ApprovalCard(props: { approval: Approval; onDone: (message: string) => 
   const [error, setError] = useState('');
   const open = [...new Set(body.match(PLACEHOLDER) ?? [])];
   const editable = approval.kind === 'send_email';
+  const card = useRef<HTMLLIElement>(null);
+  useEffect(() => { if (props.focused) { card.current?.scrollIntoView({ block: 'nearest' }); card.current?.focus(); } }, [props.focused]);
 
   async function decide(decision: 'approve' | 'reject') {
     setError('');
@@ -56,7 +62,7 @@ function ApprovalCard(props: { approval: Approval; onDone: (message: string) => 
   }
 
   return (
-    <li className="gi-approval" data-complete={Boolean(completed)}>
+    <li ref={card} className="gi-approval" data-complete={Boolean(completed)} data-focused={props.focused || undefined} tabIndex={props.focused ? -1 : undefined}>
       {completed ? <p role="status" className="gi-note">{completed}</p> : null}
       <div className="gi-approval-head">
         <strong>{approval.title}</strong>
@@ -111,7 +117,7 @@ function ApprovalCard(props: { approval: Approval; onDone: (message: string) => 
   );
 }
 
-function Approvals(props: { onCount: (count: number) => void }) {
+function Approvals(props: { focusId?: string; onCount: (count: number) => void }) {
   const [items, setItems] = useState<Approval[] | null>(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -128,7 +134,7 @@ function Approvals(props: { onCount: (count: number) => void }) {
     void load();
   }, [load]);
 
-  if (error) return <div className="px-4"><p className="gi-warn" role="alert">{error}</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => window.location.reload()}>Try again</button></div>;
+  if (error) return <div className="px-4"><p className="gi-warn" role="alert">Approvals could not load. {error}</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => { setError(''); void load(); }}>Try again</button></div>;
   if (!items) return <p className="gi-muted gi-orb-line px-4" role="status"><Orb size={16} />Loading approvals…</p>;
   return (
     <section className="px-4">
@@ -136,7 +142,7 @@ function Approvals(props: { onCount: (count: number) => void }) {
       {items.length ? (
         <ul className="gi-approvals">
           {items.map((approval) => (
-            <ApprovalCard key={approval.id} approval={approval} onDone={(message) => { setNotice(message); void load(); }} />
+            <ApprovalCard key={approval.id} approval={approval} focused={approval.id === props.focusId} onDone={(message) => { setNotice(message); void load(); }} />
           ))}
         </ul>
       ) : (
@@ -152,8 +158,8 @@ function Focus(props: { initialSection?: string; onOpenThread: (threadId: string
   useEffect(() => {
     void cloudCall<FocusQueueResponse>('focusQueue', { limit: 40 }).then((result) => (result.ok ? setQueue(result.data) : setError(result.reason)));
   }, []);
-  if (error) return <div className="px-4"><p className="gi-warn" role="alert">{error}</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => window.location.reload()}>Try again</button></div>;
-  if (!queue) return <p className="gi-muted gi-orb-line px-4" role="status"><Orb size={16} />Loading…</p>;
+  if (error) return <div className="px-4"><p className="gi-warn" role="alert">Your queue could not load. {error}</p></div>;
+  if (!queue) return <p className="gi-muted gi-orb-line px-4" role="status"><Orb size={16} />Loading your queue…</p>;
   const sections = queue.sections.filter((section) => section.items.length);
   return (
     <section>
@@ -178,7 +184,7 @@ function Focus(props: { initialSection?: string; onOpenThread: (threadId: string
           </div>
         ))
       ) : (
-        <p className="gi-muted px-4 text-[12px]">Nothing needs you right now.</p>
+        <p className="gi-muted px-4 text-[12px]">You’re caught up. Nothing needs you right now.</p>
       )}
       <p className="gi-muted px-4 pb-4 pt-2 text-[11px] leading-relaxed">{queue.coverage.note}</p>
     </section>
@@ -186,22 +192,117 @@ function Focus(props: { initialSection?: string; onOpenThread: (threadId: string
 }
 
 
+type OverviewState = { data: CloudOverview | null; loading: boolean; error: string; checkedAt: string | null; visitSince: string | null };
+
+/**
+ * One overview request for Home and the status line. Loading shows only while
+ * a request is pending; a failed refresh keeps the last data and says so.
+ */
+function useCloudOverview(enabled: boolean, account: string | null, onCount: (count: number) => void) {
+  const [state, setState] = useState<OverviewState>({ data: null, loading: enabled, error: '', checkedAt: null, visitSince: null });
+  const since = useRef<string | undefined>(undefined);
+  const request = useRef(0);
+  const load = useCallback(async () => {
+    const id = ++request.current;
+    setState((current) => ({ ...current, loading: true, error: '' }));
+    const result = await callCloud('cloudOverview', since.current ? { since: since.current } : {});
+    if (id !== request.current) return;
+    if (!result.ok) {
+      console.warn('[PigeonBox] Cloud overview refresh failed', result.code);
+      return setState((current) => ({ ...current, loading: false, error: result.reason }));
+    }
+    trackProductEvent('first_cloud_overview_viewed', { surface: 'sidepanel', mode: 'cloud' });
+    if (result.data.accounts?.some((item) => item.status === 'active' && item.sync.state === 'healthy' && item.sync.lastSyncAt)) trackProductEvent('first_cloud_sync_completed', { surface: 'sidepanel', mode: 'cloud' });
+    setState((current) => ({ ...current, data: result.data, loading: false, error: '', checkedAt: result.data.generatedAt }));
+    onCount(result.data.prepared?.approvalsWaiting ?? result.data.work?.approvalsWaiting ?? 0);
+    if (!result.data.unavailable.length) void chrome.storage.local.set({ cloudOverviewVisit: { account, at: result.data.generatedAt } });
+  }, [account, onCount]);
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    void chrome.storage.local.get('cloudOverviewVisit').then((stored) => {
+      if (!active) return;
+      const visit = stored.cloudOverviewVisit as { account?: string; at?: string } | undefined;
+      since.current = visit?.account === account && visit?.at && Number.isFinite(Date.parse(visit.at)) ? visit.at : undefined;
+      setState((current) => ({ ...current, visitSince: since.current ?? null }));
+      void load();
+    });
+    return () => { active = false; };
+  }, [enabled, account, load]);
+  return { ...state, refresh: load };
+}
+
+function CloudStatusLine(props: { overview: OverviewState; onRefresh: () => void }) {
+  const { data, loading, error, checkedAt } = props.overview;
+  const status = mailStatus({ accounts: data ? data.accounts : undefined, loading, refreshFailed: Boolean(error && data), checkedAt });
+  return (
+    <div className="pb-status" data-tone={status.tone}>
+      <div className="pb-status-copy" role="status" aria-live="polite">
+        <span className="pb-status-title"><i className="pb-cloud-dot" aria-hidden="true" />{status.title}</span>
+        {status.detail ? <span className="pb-status-detail">{status.detail}</span> : null}
+      </div>
+      <div className="pb-status-actions">
+        {status.action ? <button type="button" className="gi-text-btn" onClick={() => openCloud(status.action!.section)}>{status.action.label}</button> : null}
+        <button type="button" className="pb-icon-btn" disabled={loading} onClick={props.onRefresh} aria-label={loading ? 'Refreshing' : 'Refresh'} title="Refresh">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" data-spinning={loading}><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const PRIMARY = ['overview', 'drafts', 'approvals', 'activity'];
+
 export function CloudView(props: { initialSection?: string; onOpenThread: (threadId: string, accountId?: string) => void; onApprovalCount: (count: number) => void }) {
   const product = useProductState();
   const [view, setView] = useState(props.initialSection ?? 'overview');
-  useEffect(() => { setView(props.initialSection ?? 'overview'); }, [props.initialSection]);
+  const [review, setReview] = useState<ReviewTarget | null>(null);
+  const [draftFilter, setDraftFilter] = useState<DraftFilter | undefined>();
+  const [approvalFocus, setApprovalFocus] = useState<string | undefined>();
+  const [draftsRevision, setDraftsRevision] = useState(0);
+  useEffect(() => { setView(props.initialSection ?? 'overview'); setReview(null); }, [props.initialSection]);
   const connected = product.state.runMode === 'cloud' && product.state.capabilities.some((capability) => capability.startsWith('cloud_'));
   const mailSync = product.has('cloud_mail_sync');
-  const allowed = view === 'overview' || view === 'approvals' || (mailSync && (view === 'focus' || view === 'activity')) || availableCloudFeatures(product.state.capabilities).some((feature) => feature.id === view);
+  const canDraft = product.has('cloud_auto_drafts');
+  const overview = useCloudOverview(connected && mailSync, product.state.cloud.email, props.onApprovalCount);
+  const allowed = view === 'overview' || view === 'approvals' || (mailSync && (view === 'focus' || view === 'activity')) || (canDraft && view === 'drafts') || availableCloudFeatures(product.state.capabilities).some((feature) => feature.id === view);
+  const tabs = ([['overview', 'Home'], ['drafts', 'Drafts'], ['approvals', 'Approvals'], ['activity', 'Activity']] as const).filter(([id]) => id !== 'drafts' || canDraft);
+  const counts = overview.data?.prepared;
+  const badge = (id: string) => (id === 'drafts' ? counts?.drafts?.ready : id === 'approvals' ? counts?.approvalsWaiting : 0) || 0;
+
+  function go(next: string) { setReview(null); setView(next); }
+  function goTarget(target: HomeTarget) {
+    if (target.view === 'drafts') setDraftFilter(target.filter);
+    if (target.view === 'approvals') setApprovalFocus(target.approvalId);
+    go(target.view);
+  }
+  function reviewFromHome(item: FocusItem) { setReview({ threadId: item.threadId, accountId: item.accountId, subject: item.subject, who: item.who || undefined, from: 'home' }); }
+  function reviewFromDrafts(item: DraftListItem) { setReview({ threadId: item.draft.threadId, accountId: item.draft.accountId, draft: item.draft, subject: item.subject, person: item.person, from: 'drafts' }); }
+  function changed() { setDraftsRevision((value) => value + 1); void overview.refresh(); }
+
   return <div className="flex min-h-0 flex-1 flex-col">
-    <nav className="gi-rail" aria-label="Cloud">
-      {([['overview', 'Overview'], ['approvals', 'Approvals'], ['activity', 'Activity']] as const).map(([id, label]) => <button key={id} type="button" className="gi-chip-btn" disabled={connected && id === 'activity' && !mailSync} aria-pressed={view === id} data-active={view === id} onClick={() => setView(id)}>{label}</button>)}
+    {connected && mailSync ? <CloudStatusLine overview={overview} onRefresh={() => { void overview.refresh(); if (view === 'drafts') setDraftsRevision((value) => value + 1); }} /> : null}
+    <nav className="gi-rail pb-cloud-tabs" aria-label="Cloud">
+      {tabs.map(([id, label]) => <button key={id} type="button" className="gi-chip-btn" disabled={connected && id === 'activity' && !mailSync} aria-pressed={view === id} data-active={view === id} onClick={() => { if (id === 'drafts') setDraftFilter(undefined); if (id === 'approvals') setApprovalFocus(undefined); go(id); }}>{label}{badge(id) ? <span className="pb-tab-count" aria-label={`, ${badge(id)} waiting`}>{badge(id)}</span> : null}</button>)}
     </nav>
-    <main className="min-h-0 flex-1 overflow-auto pt-2">
-      {!connected ? <CloudPreview product={product} /> : !allowed ? <p className="gi-muted px-4">This tool is not available for your Cloud connection.</p> : <>
-        {!['overview', 'approvals', 'activity'].includes(view) ? <div className="px-4"><button type="button" className="gi-text-btn" onClick={() => setView('overview')}>← Overview</button></div> : null}
-        <Suspense fallback={<p className="gi-orb-line gi-muted px-4" role="status"><Orb size={18} />Opening Cloud tools…</p>}>
-          {view === 'overview' && !mailSync ? <div className="px-4"><CloudPreview product={product} /><div className="gi-feature-grid">{availableCloudFeatures(product.state.capabilities).map((feature) => <button type="button" key={feature.id} onClick={() => setView(feature.id)}>{feature.title}</button>)}</div></div> : view === 'overview' ? <CloudOverview capabilities={product.state.capabilities} account={product.state.cloud.email} onOpenThread={props.onOpenThread} onCount={props.onApprovalCount} onNavigate={setView} /> : view === 'approvals' ? <Approvals onCount={props.onApprovalCount} /> : view === 'focus' ? <Focus onOpenThread={props.onOpenThread} /> : view === 'activity' ? <ActivityView capabilities={product.state.capabilities} onOpenThread={props.onOpenThread} /> : view === 'briefings' ? <BriefingsView onOpenThread={props.onOpenThread} /> : view === 'views' || view === 'automations' ? <RulesView key={view} kind={view} onOpenThread={props.onOpenThread} /> : view === 'documents' ? <DocumentsView /> : view === 'contacts' ? <ContactsView onOpenThread={props.onOpenThread} /> : <button type="button" className="gi-btn" onClick={() => openCloud(view)}>Open in Cloud ↗</button>}
+    <main className="pb-cloud-main min-h-0 flex-1 overflow-auto">
+      {!connected ? <CloudPreview product={product} /> : !allowed ? <p className="gi-muted px-4 pt-3">This tool is not available for your Cloud connection.</p> : <>
+        {overview.error && overview.data && !review && view === 'overview' ? <p className="gi-warn pb-inline-alert" role="alert">Cloud could not refresh. Showing the last loaded data.</p> : null}
+        {overview.error && !overview.data && view === 'overview' ? <div className="pb-inline-alert"><p className="gi-warn" role="alert">Cloud could not load. {overview.error}</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => void overview.refresh()}>Try again</button></div> : null}
+        {!PRIMARY.includes(view) && !review ? <div className="px-4 pt-3"><button type="button" className="pb-back" onClick={() => go('overview')}>← Home</button></div> : null}
+        <Suspense fallback={<p className="gi-orb-line gi-muted px-4 pt-3" role="status"><Orb size={18} />Opening…</p>}>
+          {review ? <DraftReview key={`${review.accountId}:${review.threadId}`} target={review} onBack={() => setReview(null)} onOpenThread={props.onOpenThread} onChanged={changed} />
+          : view === 'overview' && !mailSync ? <div className="px-4"><CloudPreview product={product} /><div className="gi-feature-grid">{availableCloudFeatures(product.state.capabilities).map((feature) => <button type="button" key={feature.id} onClick={() => setView(feature.id)}>{feature.title}</button>)}</div></div>
+          : view === 'overview' ? <CloudHome data={overview.data} loading={overview.loading} capabilities={product.state.capabilities} visitSince={overview.visitSince} onOpenThread={props.onOpenThread} onReviewDraft={reviewFromHome} onGo={goTarget} onNavigate={go} />
+          : view === 'drafts' ? <DraftsView initialFilter={draftFilter} revision={draftsRevision} onReview={reviewFromDrafts} onOpenThread={props.onOpenThread} />
+          : view === 'approvals' ? <Approvals focusId={approvalFocus} onCount={props.onApprovalCount} />
+          : view === 'focus' ? <Focus onOpenThread={props.onOpenThread} />
+          : view === 'activity' ? <ActivityView capabilities={product.state.capabilities} onOpenThread={props.onOpenThread} />
+          : view === 'briefings' ? <BriefingsView onOpenThread={props.onOpenThread} />
+          : view === 'views' || view === 'automations' ? <RulesView key={view} kind={view} onOpenThread={props.onOpenThread} />
+          : view === 'documents' ? <DocumentsView />
+          : view === 'contacts' ? <ContactsView onOpenThread={props.onOpenThread} />
+          : <button type="button" className="gi-btn" onClick={() => openCloud(view)}>Open in Cloud ↗</button>}
         </Suspense>
       </>}
     </main>

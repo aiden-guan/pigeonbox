@@ -14,6 +14,9 @@ export const CLOUD_FEATURES = [
 ] as const satisfies ReadonlyArray<{ id: string; title: string; detail: string; capability: PigeonBoxCapability }>;
 
 export const CLOUD_SECTIONS: ReadonlySet<string> = new Set(['overview', 'approvals', 'activity', 'preferences', 'privacy', 'connections', ...CLOUD_FEATURES.map((feature) => feature.id)]);
+/** Side panel sections: the web sections plus panel-only screens such as prepared drafts. */
+const PANEL_SECTIONS: ReadonlySet<string> = new Set([...CLOUD_SECTIONS, 'drafts']);
+export function panelSection(value: unknown): string { return typeof value === 'string' && PANEL_SECTIONS.has(value) ? value : 'overview'; }
 export function cloudSection(value: unknown): string { return typeof value === 'string' && CLOUD_SECTIONS.has(value) ? value : 'overview'; }
 export function availableCloudFeatures(capabilities: readonly string[]) { return CLOUD_FEATURES.filter((feature) => capabilities.includes(feature.capability)); }
 export function openCloud(section: string) { chrome.runtime.sendMessage({ type: 'CLOUD_OPEN', section: cloudSection(section) }); }

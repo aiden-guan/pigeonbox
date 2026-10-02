@@ -25,6 +25,7 @@ export const PAGE_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>([
   'threadsIntel',
   'threadStateUpdate',
   'focusQueue',
+  'draftList',
   'draftGet',
   'draftPrepare',
   'draftPlace',
@@ -63,7 +64,7 @@ export async function pageCall(client: PigeonBoxCloudClient, route: unknown, bod
   try {
     const data = await client.call(route as RouteName, body as RouteRequest<RouteName>);
     // Anything that changes a thread makes cached intelligence stale.
-    if (/^(threadStateUpdate|draft|followUpUpdate|approvalDecide|actionUndo|eventCreate)/.test(route)) forgetThreadIntel();
+    if (/^(threadStateUpdate|draft(?!List)|followUpUpdate|approvalDecide|actionUndo|eventCreate)/.test(route)) forgetThreadIntel();
     return { ok: true, data };
   } catch (error) {
     const code = error instanceof CloudApiError ? error.code : 'network';

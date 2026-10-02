@@ -104,6 +104,8 @@ import { CloudOverviewRequestSchema, CloudOverviewResponseSchema } from './overv
 import {
   DraftFeedbackRequestSchema,
   DraftGetRequestSchema,
+  DraftListRequestSchema,
+  DraftListResponseSchema,
   DraftPlaceRequestSchema,
   DraftPrepareRequestSchema,
   CloudDraftResponseSchema,
@@ -209,6 +211,7 @@ export const ROUTES = {
   threadsIntel: { method: 'POST', path: '/v1/threads/intel', auth: 'user', request: ThreadsIntelRequestSchema, response: ThreadsIntelResponseSchema, capability: 'cloud_mail_sync' },
   threadStateUpdate: { method: 'POST', path: '/v1/threads/state', auth: 'user', request: ThreadStateUpdateRequestSchema, response: ThreadStateUpdateResponseSchema, capability: 'cloud_mail_sync' },
   focusQueue: { method: 'POST', path: '/v1/focus/queue', auth: 'user', request: FocusQueueRequestSchema, response: FocusQueueResponseSchema, capability: 'cloud_mail_sync' },
+  draftList: { method: 'POST', path: '/v1/drafts/list', auth: 'user', request: DraftListRequestSchema, response: DraftListResponseSchema, capability: 'cloud_auto_drafts' },
   draftGet: { method: 'POST', path: '/v1/drafts/get', auth: 'user', request: DraftGetRequestSchema, response: CloudDraftResponseSchema, capability: 'cloud_auto_drafts' },
   draftPrepare: { method: 'POST', path: '/v1/drafts/prepare', auth: 'user', request: DraftPrepareRequestSchema, response: CloudDraftResponseSchema, capability: 'cloud_auto_drafts' },
   draftPlace: { method: 'POST', path: '/v1/drafts/place', auth: 'user', request: DraftPlaceRequestSchema, response: CloudDraftResponseSchema, capability: 'cloud_auto_drafts' },

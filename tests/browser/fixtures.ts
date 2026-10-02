@@ -4,7 +4,7 @@ import { cp, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { DEFAULT_SETTINGS } from '../../packages/shared/src/index';
-import { ROUTES, type RouteName, type ThreadIntel } from '../../packages/api-contract/src/index';
+import { ROUTES, type CloudDraft, type DraftListItem, type RouteName, type ThreadIntel } from '../../packages/api-contract/src/index';
 
 const accountId = '00000000-0000-4000-8000-000000000001';
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -88,14 +88,34 @@ const account = {
     lastPushAt: at,
     watchExpiresAt: at,
     backlog: 0,
+    syncBacklog: 0,
+    processingBacklog: 0,
     lastErrorCode: null,
     coverageSince: at,
     threadsTracked: 1,
   },
 };
+/** Sync semantics the fixture can switch between. `analyzing`: Gmail current, AI review queued. */
+function accountFor(api: FixtureApi) {
+  if (api.syncMode === 'analyzing') return { ...account, sync: { ...account.sync, backlog: 12, syncBacklog: 0, processingBacklog: 12, phase: 'analyzing' } };
+  if (api.syncMode === 'reauth') return { ...account, status: 'needs_reauth', sync: { ...account.sync, phase: 'needs_reauth' } };
+  return { ...account, sync: { ...account.sync, phase: 'up_to_date' } };
+}
+const draftId = uuid(2);
+const fixtureDrafts = (): DraftListItem[] => [
+  { draft: fixtureIntel.draft!, subject: 'Pricing', person: { email: 'maya@fixture.test', name: 'Maya' }, lastMessageAt: at },
+  {
+    draft: { ...fixtureIntel.draft!, id: uuid(20), threadId: 'def456', status: 'placed', gmailDraftId: 'r-fixture', placedVariantId: uuid(21), variants: [{ id: uuid(21), label: 'recommended', strategy: 'Confirm', body: 'Thanks Jordan, Thursday works.', placeholders: [] }] },
+    subject: 'Kickoff time', person: { email: 'jordan@fixture.test', name: 'Jordan' }, lastMessageAt: at,
+  },
+  {
+    draft: { ...fixtureIntel.draft!, id: uuid(22), threadId: 'ghi789', status: 'stale', freshness: { ...fixtureIntel.draft!.freshness, staleReason: 'A new message arrived in this thread' }, variants: [{ id: uuid(23), label: 'recommended', strategy: 'Answer', body: 'Hi Sam, here are the notes.', placeholders: [] }] },
+    subject: 'Workshop notes', person: { email: 'sam@fixture.test', name: 'Sam' }, lastMessageAt: at,
+  },
+];
 const focus = {
   generatedAt: at,
-  sections: [{ id: 'respond', label: 'Needs reply', items: [{ threadId: 'abc123', accountId, subject: 'Pricing', who: 'Maya', lastMessageAt: at, section: 'respond', state: 'NEEDS_REPLY', score: 90, reasons: ['Reply requested'], deadlineAt: null, draftReady: true, followUpDueAt: null }] }],
+  sections: [{ id: 'respond', label: 'Needs reply', items: [{ threadId: 'abc123', accountId, subject: 'Pricing', who: 'Maya', lastMessageAt: at, section: 'respond', state: 'NEEDS_REPLY', score: 90, reasons: ['They are waiting on your reply'], deadlineAt: '2026-09-30T12:00:00.000Z', draftReady: true, followUpDueAt: null, draftId: uuid(2), draftStatus: 'ready', approvalId: null, lastMessageFromOwner: false }] }],
   coverage: { syncedAccounts: 1, since: at, note: 'Fixture coverage: one synced conversation.' },
 };
 const briefing = {
@@ -121,6 +141,9 @@ export type FixtureApi = {
   disconnected: boolean;
   delay: number;
   fail: boolean;
+  /** Zero "while away" activity, as right after reopening the panel. */
+  quiet: boolean;
+  syncMode: 'idle' | 'analyzing' | 'reauth';
   calls: { route: string; body: Record<string, unknown> }[];
   baseUrl: string;
 };
@@ -134,7 +157,8 @@ type App = {
 };
 export const test = base.extend<{ app: App }>({
   app: async ({}, use) => {
-    const api: FixtureApi = { partial: false, disconnected: false, delay: 0, fail: false, calls: [], baseUrl: '' };
+    const api: FixtureApi = { partial: false, disconnected: false, delay: 0, fail: false, quiet: false, syncMode: 'idle', calls: [], baseUrl: '' };
+    const placed = new Map<string, CloudDraft>();
     const server = createServer(async (request, response) => {
       const route = new URL(request.url!, 'http://fixture.test').pathname;
       response.setHeader('Access-Control-Allow-Origin', '*');
@@ -158,7 +182,7 @@ export const test = base.extend<{ app: App }>({
       let data: unknown;
       if (route === '/v1/capabilities') data = { plan: 'cloud', capabilities };
       else if (def === 'connections')
-        data = { accounts: api.disconnected ? [] : [account], googleConfigured: true, maxAccounts: 5 };
+        data = { accounts: api.disconnected ? [] : [accountFor(api)], googleConfigured: true, maxAccounts: 5 };
       else if (def === 'cloudOverview') {
         if (api.delay) await new Promise((resolve) => setTimeout(resolve, api.delay));
         if (api.fail) {
@@ -169,17 +193,31 @@ export const test = base.extend<{ app: App }>({
         data = {
           generatedAt: at,
           since: at,
-          accounts: api.disconnected ? [] : [account],
-          work: { threadsAnalyzed: 7, draftsPrepared: 2, followUpsDetected: 1, approvalsWaiting: 1 },
+          accounts: api.disconnected ? [] : [accountFor(api)],
+          work: api.quiet ? { threadsAnalyzed: 0, draftsPrepared: 0, followUpsDetected: 0, approvalsWaiting: 1 } : { threadsAnalyzed: 7, draftsPrepared: 2, followUpsDetected: 1, approvalsWaiting: 1 },
+          prepared: { drafts: { ready: 1, inGmail: 1, needsUpdate: 1, preparing: 0 }, followUpsOpen: 2, approvalsWaiting: 1 },
           focus,
           latestBriefing: api.partial ? null : briefing,
           automatic: { views: [], automations: [], runs: [] },
           unavailable: api.partial ? ['briefing'] : [],
         };
+      } else if (def === 'draftList') {
+        const statuses = (body.statuses as string[] | undefined) ?? null;
+        const drafts = fixtureDrafts().map((item) => ({ ...item, draft: placed.get(item.draft.id) ?? item.draft }));
+        const counts = { preparing: 0, ready: 0, stale: 0, user_edited: 0, placed: 0, failed: 0 };
+        for (const item of drafts) counts[item.draft.status as keyof typeof counts] += 1;
+        data = { drafts: drafts.filter((item) => !statuses || statuses.includes(item.draft.status)), counts, nextCursor: null };
+      } else if (def === 'draftPlace') {
+        const source = fixtureDrafts().find((item) => item.draft.id === body.draftId)!.draft;
+        const next: CloudDraft = { ...source, status: 'placed', gmailDraftId: 'r-placed', placedVariantId: String(body.variantId) };
+        placed.set(next.id, next);
+        data = { draft: next };
+      } else if (def === 'draftPrepare') {
+        data = { draft: { ...fixtureDrafts()[2]!.draft, status: 'ready', freshness: { ...fixtureIntel.draft!.freshness, staleReason: null }, variants: [{ id: uuid(24), label: 'recommended', strategy: 'Updated', body: 'Hi Sam, updated notes attached.', placeholders: [] }] } };
       } else if (def === 'threadsIntel')
         data = {
           threads: Object.fromEntries(
-            (body.threadIds as string[]).filter((id) => id === 'abc123').map((id) => [id, fixtureIntel]),
+            (body.threadIds as string[]).filter((id) => id === 'abc123').map((id) => [id, { ...fixtureIntel, draft: placed.get(draftId) ?? fixtureIntel.draft }]),
           ),
           synced: true,
           accountId,

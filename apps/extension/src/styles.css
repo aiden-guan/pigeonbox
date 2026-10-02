@@ -2,6 +2,7 @@
 @import './ui/orb.css';
 @import './ui/product-tokens.css';
 @import './sidepanel/cloud.css';
+@import './sidepanel/cloud-home.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -196,6 +197,8 @@ a:focus-visible {
 }
 
 .gi-toggle[aria-checked='true'] { background: var(--gi-accent); }
+.gi-toggle:disabled { cursor: not-allowed; opacity: .45; }
+[data-disabled] > span { opacity: .6; }
 
 .gi-toggle span {
   position: absolute;

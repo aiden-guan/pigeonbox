@@ -15,9 +15,9 @@ test('Cloud overview loads through the real worker/client and retains sections o
   app.api.partial = true;
   app.api.delay = 500;
   const page = await app.page('sidepanel', true);
-  await expect(page.getByText('Checking prepared work…')).toBeVisible();
+  await expect(page.getByText('Loading prepared work…')).toBeVisible();
   await expect(page.getByText('Up to date', { exact: true })).toBeVisible();
-  await expect(page.getByText('Threads analyzed', { exact: true })).toBeVisible();
+  await expect(page.getByText('Reviewed 7 conversations', { exact: true })).toBeVisible();
   await expect(page.getByText('Briefing could not load.', { exact: false })).toBeVisible();
   await expect(page.getByText('Ready for you', { exact: true })).toBeVisible();
   app.api.partial = false;
@@ -34,8 +34,9 @@ test('Cloud disconnection offers Google setup; failure preserves the last loaded
   await expect(page.getByRole('button', { name: 'Connect Google', exact: true })).toBeVisible();
   app.api.fail = true;
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(page.getByText('Showing the last loaded overview.', { exact: false })).toBeVisible();
-  await expect(page.getByText('Threads analyzed')).toBeVisible();
+  await expect(page.getByText('Cloud could not refresh. Showing the last loaded data.')).toBeVisible();
+  await expect(page.getByText('Could not refresh', { exact: true })).toBeVisible();
+  await expect(page.getByText('Reviewed 7 conversations')).toBeVisible();
 });
 test('Cloud Ask shows loading, grounded claims and account-bound sources', async ({ app }) => {
   const page = await app.page('sidepanel', true);
@@ -176,7 +177,7 @@ test('Chrome permission boundary grants declared Gmail access and denies undecla
 test('profiles synthetic Cloud overview, Ask, thread mount and SPA navigation without polling', async ({ app }) => {
   const timings: Record<string, number> = {};
   let start = Date.now(); const page = await app.page('sidepanel', true);
-  await expect(page.getByText('Threads analyzed', { exact: true })).toBeVisible(); timings.overviewSetupToReadyMs = Date.now() - start;
+  await expect(page.getByText('Ready for you', { exact: true })).toBeVisible(); timings.overviewSetupToReadyMs = Date.now() - start;
   await page.getByRole('button', { name: 'Ask', exact: true }).click();
   await page.getByRole('textbox', { name: 'Ask Pigeon' }).fill('What needs a reply?');
   start = Date.now(); await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();

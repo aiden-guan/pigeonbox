@@ -17,6 +17,20 @@ export const CloudOverviewResponseSchema = z.object({
     followUpsDetected: z.number().int().nonnegative(),
     approvalsWaiting: z.number().int().nonnegative(),
   }).nullable(),
+  /**
+   * What is prepared right now, independent of `since`. Optional for older
+   * servers; `drafts` is null without the drafts capability.
+   */
+  prepared: z.object({
+    drafts: z.object({
+      ready: z.number().int().nonnegative(),
+      inGmail: z.number().int().nonnegative(),
+      needsUpdate: z.number().int().nonnegative(),
+      preparing: z.number().int().nonnegative(),
+    }).nullable(),
+    followUpsOpen: z.number().int().nonnegative(),
+    approvalsWaiting: z.number().int().nonnegative(),
+  }).nullable().optional(),
   focus: FocusQueueResponseSchema.nullable(),
   latestBriefing: BriefingSchema.nullable(),
   automatic: z.object({

@@ -2,6 +2,7 @@ import { FocusSectionSchema, ThreadStateDetailSchema, ThreadStateSchema } from '
 import { z } from 'zod';
 import { VoiceProfileSchema } from './ai.js';
 import {
+  CursorSchema,
   GmailIdSchema,
   IdSchema,
   IdempotencyKeySchema,
@@ -164,6 +165,13 @@ export const FocusItemSchema = z.object({
   deadlineAt: IsoSchema.nullable(),
   draftReady: z.boolean(),
   followUpDueAt: IsoSchema.nullable(),
+  /** The current draft to review, when `draftReady`. Optional for older servers. */
+  draftId: IdSchema.nullable().optional(),
+  draftStatus: DraftStatusSchema.nullable().optional(),
+  /** A pending approval for this thread; reviewing it comes before anything else. */
+  approvalId: IdSchema.nullable().optional(),
+  /** The user sent the last message, so they are waiting on someone. */
+  lastMessageFromOwner: z.boolean().optional(),
 });
 export type FocusItem = z.infer<typeof FocusItemSchema>;
 
@@ -180,6 +188,42 @@ export const FocusQueueResponseSchema = z.object({
 
 export const DraftGetRequestSchema = MailboxSelectorSchema.extend({ threadId: GmailIdSchema });
 export const CloudDraftResponseSchema = z.object({ draft: DraftSchema.nullable() });
+/**
+ * Every prepared draft in one place. Statuses are effective: a ready or placed
+ * draft built on an older thread version, or past its freshness window, is
+ * listed and counted as `stale`. Sent and discarded drafts are never listed.
+ */
+export const DRAFT_LIST_STATUSES = ['preparing', 'ready', 'stale', 'user_edited', 'placed', 'failed'] as const;
+export const DraftListStatusSchema = z.enum(DRAFT_LIST_STATUSES);
+export type DraftListStatus = z.infer<typeof DraftListStatusSchema>;
+export const DraftListRequestSchema = MailboxSelectorSchema.extend({
+  statuses: z.array(DraftListStatusSchema).min(1).max(DRAFT_LIST_STATUSES.length).optional(),
+  limit: LimitSchema(50, 20),
+  cursor: CursorSchema.optional(),
+});
+export const DraftListItemSchema = z.object({
+  draft: DraftSchema,
+  subject: z.string().max(998),
+  /** Who the draft answers: the last sender, or for a follow-up the person it goes back to. */
+  person: PersonSchema.nullable(),
+  lastMessageAt: IsoSchema,
+});
+export type DraftListItem = z.infer<typeof DraftListItemSchema>;
+export const DraftListResponseSchema = z.object({
+  drafts: z.array(DraftListItemSchema).max(50),
+  /** Totals by effective status across all of the user's listed drafts, not just this page. */
+  counts: z.object({
+    preparing: z.number().int().nonnegative(),
+    ready: z.number().int().nonnegative(),
+    stale: z.number().int().nonnegative(),
+    user_edited: z.number().int().nonnegative(),
+    placed: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+  }),
+  nextCursor: CursorSchema.nullable(),
+});
+export type DraftListResponse = z.infer<typeof DraftListResponseSchema>;
+
 export const DraftPrepareRequestSchema = MailboxSelectorSchema.extend({
   threadId: GmailIdSchema,
   kind: DraftKindSchema.optional(),

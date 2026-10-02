@@ -161,11 +161,21 @@ export function CloudPreferences({ capabilities }: { capabilities: readonly stri
             />
           </Field>
           {capabilities.includes('cloud_auto_drafts') ? (
-            <Toggle
-              label="Prepare drafts in the background"
-              checked={prefs.autoDrafts.enabled}
-              onChange={(enabled) => patch('autoDrafts', { ...prefs.autoDrafts, enabled })}
-            />
+            <>
+              <Toggle
+                label="Prepare replies automatically"
+                description="PigeonBox writes replies and keeps them in your Drafts queue in Cloud."
+                checked={prefs.autoDrafts.enabled}
+                onChange={(enabled) => patch('autoDrafts', { ...prefs.autoDrafts, enabled })}
+              />
+              <Toggle
+                label="Also add prepared replies to Gmail"
+                description="Ready drafts will also appear in your Gmail Drafts folder. Nothing is sent automatically."
+                checked={prefs.autoDrafts.enabled && prefs.autoDrafts.placeInGmail}
+                disabled={!prefs.autoDrafts.enabled}
+                onChange={(placeInGmail) => patch('autoDrafts', { ...prefs.autoDrafts, placeInGmail })}
+              />
+            </>
           ) : null}
           {capabilities.includes('cloud_automations') ? (
             <>

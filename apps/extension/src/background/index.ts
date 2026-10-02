@@ -76,7 +76,7 @@ import { effectiveSettings, resolveAIProvider } from './ai/provider-router';
 import { clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud/client';
 import { cloudThreadStateAvailable, forgetThreadIntel } from './cloud/thread-state';
 import { handleCloudRequest } from './cloud/handlers';
-import { cloudSection } from '../ui/cloud-features';
+import { cloudSection, panelSection } from '../ui/cloud-features';
 import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, isGmailContentScript, senderMaySend } from './messaging';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
@@ -671,7 +671,7 @@ async function openSidePanel(
     panelState.askRequestId = askRequestId;
   }
   await chrome.storage.session.set({
-    panelState: { ...panelState, cloudSection: cloudSection(section) },
+    panelState: { ...panelState, cloudSection: panelSection(section) },
   });
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.windowId != null) await chrome.sidePanel.open({ windowId: tab.windowId });

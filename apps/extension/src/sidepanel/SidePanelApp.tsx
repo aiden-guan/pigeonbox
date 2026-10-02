@@ -187,7 +187,10 @@ export function SidePanelApp() {
     { id: 'ask', label: 'Ask Pigeon', detail: cloudMode ? 'Available synced Cloud context' : 'Mail on this computer', icon: 'sparkles', run: () => navigate('ask') },
     { id: 'settings', label: 'Settings', detail: 'Execution mode, privacy and preferences', icon: 'settings', run: () => chrome.runtime.openOptionsPage() },
     ...(cloudMode ? [
-      { id: 'overview', label: 'Cloud overview', detail: 'Prepared work and sync coverage', icon: 'inbox' as const, run: () => navigate('cloud') },
+      { id: 'overview', label: 'Cloud home', detail: 'What needs you and what PigeonBox prepared', icon: 'inbox' as const, run: () => navigate('cloud') },
+      ...(product.has('cloud_auto_drafts') ? [
+        { id: 'drafts', label: 'Prepared drafts', detail: 'Replies ready to review or already in Gmail', icon: 'edit' as const, run: () => navigate('cloud', 'drafts') },
+      ] : []),
       ...(product.has('cloud_mail_sync') ? [
         { id: 'approvals', label: 'Open approvals', detail: 'Review actions before they happen', icon: 'edit' as const, run: () => navigate('cloud', 'approvals') },
         { id: 'activity', label: 'Open activity', detail: 'Waiting, signals and recorded actions', icon: 'tracking' as const, run: () => navigate('cloud', 'activity') },
@@ -230,7 +233,7 @@ export function SidePanelApp() {
           <Tab active={mode === 'ask'} onClick={() => navigate('ask')}>Ask</Tab>
           <Tab active={mode === 'cloud'} onClick={() => navigate('cloud')}>{approvalCount ? `Cloud · ${approvalCount}` : 'Cloud'}</Tab>
         </nav>
-        <div className="pb-panel-title"><div><div className="gi-kicker">{mode === 'ask' ? 'MAIL INTELLIGENCE' : mode === 'cloud' ? 'ALWAYS-ON DISPATCH' : 'LOCAL INDEX / INBOX'}</div><h1>{mode === 'ask' ? 'Ask Pigeon' : mode === 'cloud' ? 'PigeonBox Cloud' : label}</h1><p>{mode === 'cloud' ? approvalCount ? `${approvalCount} awaiting approval` : 'Prepared work, follow-ups and briefings' : mode === 'inbox' ? category === 'WAITING' && waitingCount ? waitingCount : `${threads.length} threads` : cloudMode ? 'Available synced Cloud context' : 'Mail indexed on this computer'}</p></div><Pigeon state={loading ? 'searching' : draftState === 'opening' ? 'drafting' : result?.error ? 'attention' : draftState === 'opened' ? 'success' : 'idle'} size={54} /></div>
+        <div className="pb-panel-title" data-mode={mode}><div><div className="gi-kicker">{mode === 'ask' ? 'MAIL INTELLIGENCE' : mode === 'cloud' ? 'ALWAYS-ON DISPATCH' : 'LOCAL INDEX / INBOX'}</div><h1>{mode === 'ask' ? 'Ask Pigeon' : mode === 'cloud' ? 'PigeonBox Cloud' : label}</h1><p>{mode === 'cloud' ? 'Prepared work, follow-ups and briefings' : mode === 'inbox' ? category === 'WAITING' && waitingCount ? waitingCount : `${threads.length} threads` : cloudMode ? 'Available synced Cloud context' : 'Mail indexed on this computer'}</p></div><Pigeon state={loading ? 'searching' : draftState === 'opening' ? 'drafting' : result?.error ? 'attention' : draftState === 'opened' ? 'success' : 'idle'} size={mode === 'cloud' ? 40 : 48} /></div>
       </header>
       <div className="pb-panel-content" inert={palette}>
       {mode === 'cloud' ? (
