@@ -12,7 +12,7 @@ import {
   type ComposeTrackingDeps,
 } from './compose-tracking';
 import { GmailComposeSendHarness } from './gmail-send-harness';
-import { decidePresending, createTrackingSession } from './tracking-session';
+import { composeTrackingLabel, decidePresending, createTrackingSession } from './tracking-session';
 
 const settings: ExtensionSettings = {
   ...DEFAULT_SETTINGS,
@@ -370,5 +370,34 @@ describe('click tracking at send time', () => {
     const out = await gmail.deliverSend('<p>No links here</p>');
     expect(out.body).toContain('/open/trk_1');
     expect(registerLinks).not.toHaveBeenCalled();
+  });
+});
+
+describe('compose tracking label', () => {
+  const on = { enabled: true, configured: true };
+  const session = (patch: Partial<ReturnType<typeof createTrackingSession>> = {}) => ({
+    ...createTrackingSession({ composeSessionId: 'c1', kind: 'new', trackOpens: true, trackLinks: true }),
+    ...patch,
+  });
+
+  it('only shows preparing while the tracker is being allocated', () => {
+    expect(composeTrackingLabel({ ...on, session: session({ state: 'ALLOCATING' }) }).tone).toBe('preparing');
+    expect(composeTrackingLabel({ ...on, session: session({ state: 'WAITING_FOR_RECIPIENTS' }) })).toEqual({ label: 'Tracking on', tone: 'ready' });
+    expect(composeTrackingLabel({
+      ...on,
+      session: session({ state: 'WAITING_FOR_DRAFT', trackingId: 'trk_1', pixelUrl: 'https://track.example/open/trk_1' }),
+    })).toEqual({ label: 'Tracking on', tone: 'ready' });
+  });
+
+  it('shows ready once the modifier is bound', () => {
+    expect(composeTrackingLabel({
+      ...on,
+      session: session({ state: 'MODIFIER_REGISTERED', modifierRegistered: true, trackingId: 'trk_1', pixelUrl: 'https://track.example/open/trk_1' }),
+    })).toEqual({ label: 'Tracking ready', tone: 'ready' });
+  });
+
+  it('does not stay preparing after a failed allocation or with tracking switched off', () => {
+    expect(composeTrackingLabel({ ...on, session: session({ state: 'FAILED', modifierRegistered: true }) }).tone).toBe('unavailable');
+    expect(composeTrackingLabel({ ...on, session: session({ trackOpens: false, trackLinks: false }) })).toEqual({ label: 'Tracking off', tone: 'disabled' });
   });
 });

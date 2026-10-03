@@ -128,11 +128,15 @@ export function composeTrackingLabel(opts: {
   if (!opts.enabled) return { label: 'Tracking disabled', tone: 'disabled' };
   if (!opts.configured) return { label: 'Tracking unavailable', tone: 'unavailable' };
   const session = opts.session;
-  if (session?.modifierRegistered && session.trackingId && session.pixelUrl && wantsTracking(session)) {
+  if (session && !wantsTracking(session)) return { label: 'Tracking off', tone: 'disabled' };
+  if (session?.state === 'FAILED') return { label: 'Tracking unavailable', tone: 'unavailable' };
+  if (session?.modifierRegistered && session.trackingId && session.pixelUrl) {
     return { label: 'Tracking ready', tone: 'ready' };
   }
-  if (session?.state === 'FAILED' && !session.modifierRegistered) {
-    return { label: 'Tracking unavailable', tone: 'unavailable' };
+  // Waiting on the user (no recipients) or on Gmail's first autosave (no draft id)
+  // is not work in progress: send recovery binds the draft at send time.
+  if (session?.state === 'WAITING_FOR_RECIPIENTS' || (session?.trackingId && session.pixelUrl)) {
+    return { label: 'Tracking on', tone: 'ready' };
   }
   return { label: 'Preparing tracking…', tone: 'preparing' };
 }
