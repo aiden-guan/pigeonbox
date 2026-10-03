@@ -141,6 +141,7 @@ export type FixtureApi = {
   partial: boolean;
   disconnected: boolean;
   delay: number;
+  askDelay?: number;
   fail: boolean;
   /** Zero "while away" activity, as right after reopening the panel. */
   quiet: boolean;
@@ -248,6 +249,7 @@ export const test = base.extend<{ app: App }>({
           accountId,
         };
       else if (def === 'askPigeon') {
+        if (api.askDelay) await new Promise((resolve) => setTimeout(resolve, api.askDelay));
         await new Promise((resolve) => setTimeout(resolve, 300));
         data = {
           answer: 'Maya needs pricing.',

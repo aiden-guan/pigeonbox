@@ -53,22 +53,28 @@ function render() {
   if (changed || geometryChanged || displayChanged) placeFloat(host, { right: 24, top: 80 }, state);
   if (changed && state.display === 'float' && !prefersReducedMotion() && typeof shell.animate === 'function') {
     const after = shell.getBoundingClientRect(), birdAfter = pidgy.getBoundingClientRect();
-    const sx = before.width / after.width, sy = before.height / after.height;
-    const radius = state.open ? 22 : 14;
-    const options = motionOptions(shell, 'expressive');
-    motion.push(shell.animate([
-      { transform:`translate(${before.right - after.right}px,${before.top - after.top}px) scale(${sx},${sy})`, borderRadius:`${radius / sx}px / ${radius / sy}px` },
-      { transform:'none', borderRadius:state.open ? getComputedStyle(shell).getPropertyValue('--pb-radius-shell') : '22px' },
-    ], options));
-    // This is the same Pidgy node on both surfaces; its pixels never stretch.
-    motion.push(pidgy.animate([{ transform:`translate(${birdBefore.left - birdAfter.left}px,${birdBefore.top - birdAfter.top}px)` }, { transform:'none' }], options));
-    if (state.open) {
-      const header = shell.querySelector('header')!;
-      const timing = motionOptions(shell, 'standard');
-      motion.push(header.animate([{ opacity:0 },{ opacity:1 }], { ...timing, delay:60, fill:'backwards' }));
-      motion.push(frame.animate([{ opacity:0 },{ opacity:1 }], { ...timing, delay:100, fill:'backwards' }));
-    } else {
-      motion.push(pill.animate([{ opacity:0 },{ opacity:1 }], { ...motionOptions(shell,'quick'), delay:100, fill:'backwards' }));
+    // Docked or hidden surfaces have no box to morph from. Apply their new
+    // presentation without dividing by zero or emitting invalid keyframes.
+    const measurable = [before, after].every((rect) => rect.width > 0 && rect.height > 0
+      && [rect.width, rect.height, rect.right, rect.top].every(Number.isFinite));
+    if (measurable) {
+      const sx = before.width / after.width, sy = before.height / after.height;
+      const radius = state.open ? 22 : 14;
+      const options = motionOptions(shell, 'expressive');
+      motion.push(shell.animate([
+        { transform:`translate(${before.right - after.right}px,${before.top - after.top}px) scale(${sx},${sy})`, borderRadius:`${radius / sx}px / ${radius / sy}px` },
+        { transform:'none', borderRadius:state.open ? getComputedStyle(shell).getPropertyValue('--pb-radius-shell') : '22px' },
+      ], options));
+      // This is the same Pidgy node on both surfaces; its pixels never stretch.
+      motion.push(pidgy.animate([{ transform:`translate(${birdBefore.left - birdAfter.left}px,${birdBefore.top - birdAfter.top}px)` }, { transform:'none' }], options));
+      if (state.open) {
+        const header = shell.querySelector('header')!;
+        const timing = motionOptions(shell, 'standard');
+        motion.push(header.animate([{ opacity:0 },{ opacity:1 }], { ...timing, delay:60, fill:'backwards' }));
+        motion.push(frame.animate([{ opacity:0 },{ opacity:1 }], { ...timing, delay:100, fill:'backwards' }));
+      } else {
+        motion.push(pill.animate([{ opacity:0 },{ opacity:1 }], { ...motionOptions(shell,'quick'), delay:100, fill:'backwards' }));
+      }
     }
   }
   if (changed && !state.open) {

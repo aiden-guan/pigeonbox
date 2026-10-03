@@ -301,7 +301,7 @@ function WorkspaceContent() {
             {result?.answer ? <section className="pb-answer"><h2 className="gi-kicker">Answer</h2><p className="pb-intelligence whitespace-pre-wrap">{result.answer}</p></section> : null}
             {result?.draft ? <DraftCard draft={result.draft} state={draftState} onOpen={openDraft} /> : null}
             {!result && !loading ? <div className="gi-ask-start"><h2>What’s on your mind?</h2><p>{context ? `This thread · ${context.subject || 'Current conversation'}` : 'Mail indexed on this computer'}</p><div className="gi-suggestions">{(context ? ['Summarize this', 'What do I need to do?', 'Did they open this?'] : ['What needs a reply?', 'What did I promise this week?', 'Find upcoming deadlines']).map((prompt) => <button type="button" key={prompt} onClick={() => setQuery(prompt)}>{prompt}<span aria-hidden="true">↗</span></button>)}</div></div> : null}
-            {loading ? <p className="gi-muted gi-orb-line" role="status"><Orb size={20} />Looking through your mail…</p> : null}
+            {loading ? <p className="gi-muted gi-orb-line" role="status"><Orb size={20} state="searching" />Looking through your mail…</p> : null}
             {result?.items?.length ? (
               <><h2 className="gi-kicker pb-source-heading">Sources</h2><ul className="gi-list -mx-4 mt-3">
                 {result.items.map((item, index) => (

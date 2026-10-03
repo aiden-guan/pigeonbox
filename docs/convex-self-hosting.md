@@ -53,3 +53,9 @@ Clear the tracker URL and token in Settings and save to disconnect. To delete da
 | `apps/extension/public/tracker-config.json` | Tracker URL and token | Ignored machine-local config copied into the local extension build; excluded from release builds |
 
 Convex configuration is separate from, and never merged into, PigeonBox Cloud configuration.
+
+## Chrome extension CORS
+
+The tracker answers token-free `OPTIONS /api/*` preflights from valid `chrome-extension://` origins. API responses, including authentication and validation errors, allow that same extension origin. Other browser origins are not allowed. Actual API requests still require the personal bearer token; cookies are not used. Unpacked extension IDs can change, so the tracker validates the Chrome extension origin format rather than hardcoding one installation.
+
+If Chrome reports a preflight response without `Access-Control-Allow-Origin`, update the existing tracker deployment with this repository's `convex/` code. A folder rename or extension rebuild alone does not update the hosted tracker.

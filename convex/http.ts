@@ -3,6 +3,27 @@ import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { publicTrackerOrigin, trackingIdFromUrl, classifyOpenEvent, classifyClickEvent, isSelfViewCorrelated } from "./openRequest";
 
+// Unpacked Chrome extension IDs vary. Web page origins are not allowed;
+// every management request still authenticates with the personal bearer token.
+function extensionOrigin(request: Request): string | null {
+  const origin = request.headers.get("Origin") || "";
+  return /^chrome-extension:\/\/[a-p]{32}$/.test(origin) ? origin : null;
+}
+
+function apiHttpAction(handler: Parameters<typeof httpAction>[0]) {
+  return httpAction(async (ctx, request) => {
+    const response = await handler(ctx, request);
+    const origin = extensionOrigin(request);
+    response.headers.set("Vary", "Origin");
+    if (origin) {
+      response.headers.set("Access-Control-Allow-Origin", origin);
+      response.headers.set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
+      response.headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    }
+    return response;
+  });
+}
+
 const TRANSPARENT_GIF = Uint8Array.from(
   atob("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
   (c) => c.charCodeAt(0),
@@ -258,10 +279,21 @@ http.route({
   }),
 });
 
+// Browsers do not send the bearer token on a preflight. Authenticate only the
+// actual API request, including GETs whose Authorization header triggers CORS.
+http.route({
+  pathPrefix: "/api/",
+  method: "OPTIONS",
+  handler: apiHttpAction(async (_ctx, request) => new Response(null, {
+    status: extensionOrigin(request) ? 204 : 403,
+    headers: { "Cache-Control": "no-store" },
+  })),
+});
+
 http.route({
   pathPrefix: "/api/",
   method: "GET",
-  handler: httpAction(async (ctx, request) => {
+  handler: apiHttpAction(async (ctx, request) => {
     if (!authorized(request)) return json({ error: "unauthorized" }, 401);
     const url = new URL(request.url);
     const path = url.pathname;
@@ -295,7 +327,7 @@ http.route({
 http.route({
   path: "/api/emails",
   method: "POST",
-  handler: httpAction(async (ctx, request) => {
+  handler: apiHttpAction(async (ctx, request) => {
     if (!authorized(request)) return json({ error: "unauthorized" }, 401);
     const body = (await request.json().catch(() => null)) as {
       subject?: unknown;
@@ -351,7 +383,7 @@ http.route({
 http.route({
   pathPrefix: "/api/emails/",
   method: "POST",
-  handler: httpAction(async (ctx, request) => {
+  handler: apiHttpAction(async (ctx, request) => {
     if (!authorized(request)) return json({ error: "unauthorized" }, 401);
     const path = new URL(request.url).pathname;
     if (!path.endsWith("/self-view")) return json({ error: "not_found" }, 404);
@@ -413,7 +445,7 @@ http.route({
 http.route({
   pathPrefix: "/api/emails/",
   method: "PATCH",
-  handler: httpAction(async (ctx, request) => {
+  handler: apiHttpAction(async (ctx, request) => {
     if (!authorized(request)) return json({ error: "unauthorized" }, 401);
     const id = decodeURIComponent(new URL(request.url).pathname.slice("/api/emails/".length));
     if (!validId(id) || id.includes("/")) return json({ error: "bad_id" }, 400);

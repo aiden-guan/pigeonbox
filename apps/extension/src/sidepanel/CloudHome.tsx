@@ -33,7 +33,7 @@ export function CloudHome(props: {
   if (!data) {
     return props.loading ? (
       <div className="pb-home" aria-busy="true">
-        <p className="gi-orb-line gi-muted" role="status"><Orb size={16} />Loading prepared work…</p>
+        <p className="gi-orb-line gi-muted" role="status"><Orb size={16} state="connecting" />Loading prepared work…</p>
         <div className="pb-skeleton" aria-hidden="true"><i /><i /><i /></div>
       </div>
     ) : null;
@@ -88,7 +88,7 @@ export function CloudHome(props: {
           ) : (
             <p className="pb-quiet">{preparing ? '' : 'No drafts or approvals waiting for you.'}</p>
           )}
-          {preparing ? <p className="pb-quiet gi-orb-line" role="status"><Orb size={12} />Preparing {preparing === 1 ? 'a reply' : `${preparing} replies`} from new mail…</p> : null}
+          {preparing ? <p className="pb-quiet gi-orb-line" role="status"><Orb size={12} state="drafting" />Preparing {preparing === 1 ? 'a reply' : `${preparing} replies`} from new mail…</p> : null}
         </section>
       ) : (
         <SectionFailure label="Prepared work" />

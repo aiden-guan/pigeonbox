@@ -142,7 +142,7 @@ export function CloudContext({
       ) : null}
       {busy ? (
         <p className="gi-orb-line" role="status">
-          <Orb size={14} />
+          <Orb size={14} state="searching" />
           Checking {busy === 'calendar' ? 'calendar' : 'contact context'}…
         </p>
       ) : null}

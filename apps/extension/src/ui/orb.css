@@ -1,5 +1,101 @@
-.gi-orb{display:inline-flex;flex:none;width:1em;height:1em;vertical-align:-.15em;color:var(--pb-accent)}
-.gi-orb svg{display:block;width:100%;height:100%}
-.gi-orb.is-on-accent{color:var(--pb-on-accent)}
-.gi-orb-line{display:inline-flex;align-items:center;gap:var(--pb-space-2)}
-.gi-toast>.gi-orb{margin-right:var(--pb-space-1)}
+/* Contours become distinct instruments: sphere, radar, waveform, paired
+ * hemispheres, flowing ribbons, aperture and check. CSS owns every frame. */
+.gi-orb { display:inline-flex; flex:none; width:1em; height:1em; vertical-align:-.15em; color:var(--pb-accent); }
+.gi-orb-form, .gi-orb-shape { display:block; position:relative; width:100%; height:100%; }
+.gi-orb svg, .gi-orb-shape { position:absolute; inset:0; width:100%; height:100%; }
+.gi-orb svg { display:block; overflow:visible; }
+.gi-orb-shape { opacity:0; transform:scale(.9); pointer-events:none; }
+.gi-orb:where([data-state='idle'],[data-state='analyzing']) .gi-orb-sphere,
+.gi-orb[data-state='searching'] .gi-orb-search,
+.gi-orb[data-state='listening'] .gi-orb-listen,
+.gi-orb[data-state='connecting'] .gi-orb-connect,
+.gi-orb[data-state='drafting'] .gi-orb-draft,
+.gi-orb[data-state='resolving'] .gi-orb-focus,
+.gi-orb[data-state='success'] .gi-orb-confirm { opacity:1; transform:scale(1); }
+.gi-orb-core { transform:rotate(-22deg); }
+.gi-orb-rim { stroke:currentColor; stroke-width:1; opacity:.12; }
+.gi-orb-latitude { stroke:currentColor; stroke-width:1.8; opacity:calc(.28 + var(--orb-band) * .07); }
+.gi-orb-orbit { transform-origin:50% 50%; }
+.gi-orb-orbit-1 { transform:rotate(-35deg) rotateX(64deg); }
+.gi-orb-orbit-2 { transform:rotate(55deg) rotateX(64deg); }
+.gi-orb-track { stroke:currentColor; stroke-width:1; opacity:.18; }
+.gi-orb-arc { stroke:currentColor; stroke-width:2; stroke-linecap:round; opacity:.8; }
+.gi-orb-satellite { fill:currentColor; }
+.gi-orb-radar-rings { stroke:currentColor; stroke-width:1.5; opacity:.32; }
+.gi-orb-radar-center, .gi-orb-found { fill:currentColor; }
+.gi-orb-sweep { transform-origin:32px 32px; }
+.gi-orb-sweep-area { fill:currentColor; opacity:.1; }
+.gi-orb-sweep-edge { stroke:currentColor; stroke-width:1.6; stroke-linecap:round; }
+.gi-orb-found { opacity:.4; }
+.gi-orb-voice-rim, .gi-orb-focus-rim { stroke:currentColor; stroke-width:1.2; opacity:.18; }
+.gi-orb-voice-bar { stroke:currentColor; stroke-width:2.7; stroke-linecap:round; transform-box:fill-box; transform-origin:center; }
+.gi-orb-peer { stroke:currentColor; stroke-width:1.7; }
+.gi-orb-peer-rim { opacity:.22; }
+.gi-orb-bridge { stroke:currentColor; stroke-width:1.2; stroke-dasharray:2 3; opacity:.35; }
+.gi-orb-link { fill:currentColor; }
+.gi-orb-ribbon { stroke:currentColor; stroke-width:2; stroke-linecap:round; opacity:calc(.4 + var(--orb-band) * .14); }
+.gi-orb-nib { fill:currentColor; }
+.gi-orb-petal { stroke:currentColor; stroke-width:1.4; opacity:calc(.25 + var(--orb-band) * .1); transform-origin:32px 32px; }
+.gi-orb-focus-center { fill:currentColor; }
+.gi-orb-confirm circle { stroke:currentColor; stroke-width:1.5; opacity:.25; }
+.gi-orb-confirm path { stroke:currentColor; stroke-width:3.5; stroke-linecap:round; stroke-linejoin:round; }
+.gi-orb[data-compact='true'] .gi-orb-latitude { stroke-width:2.8; }
+.gi-orb[data-compact='true'] .gi-orb-latitude:nth-of-type(even), .gi-orb[data-compact='true'] .gi-orb-orbit-2 .gi-orb-satellite { display:none; }
+.gi-orb[data-compact='true'] .gi-orb-arc, .gi-orb[data-compact='true'] .gi-orb-ribbon { stroke-width:3; }
+.gi-orb[data-compact='true'] .gi-orb-radar-rings { stroke-width:2.4; }
+.gi-orb[data-compact='true'] .gi-orb-radar-rings circle:nth-child(2) { display:none; }
+.gi-orb[data-compact='true'] .gi-orb-voice-bar { stroke-width:3.7; }
+.gi-orb[data-compact='true'] .gi-orb-peer, .gi-orb[data-compact='true'] .gi-orb-petal { stroke-width:2.4; }
+.gi-orb[data-state='idle'] { color:var(--pb-tracking); }
+.gi-orb[data-state='idle'] .gi-orb-arc, .gi-orb[data-state='idle'] .gi-orb-satellite { opacity:0; }
+.gi-orb[data-state='success'] { color:var(--pb-success); }
+.gi-orb.is-on-accent { color:var(--pb-on-accent); }
+.gi-orb-line { display:inline-flex; align-items:center; gap:var(--pb-space-2); }
+.gi-toast>.gi-orb { margin-right:var(--pb-space-1); }
+@media(prefers-reduced-motion:no-preference) {
+  .gi-orb { transition:color var(--pb-motion-standard,180ms) var(--pb-ease); }
+  .gi-orb-shape { transition:opacity var(--pb-motion-standard,180ms) var(--pb-ease),transform var(--pb-motion-expressive,260ms) var(--pb-ease); }
+  .gi-orb:where([data-state='analyzing']) .gi-orb-latitude { animation:pb-orb-wave 2.8s cubic-bezier(.45,0,.55,1) infinite; animation-delay:calc(var(--orb-band) * -.4s); }
+  .gi-orb:where([data-state='analyzing']) .gi-orb-orbit-1 { animation:pb-orb-orbit-one 3.6s linear infinite; }
+  .gi-orb:where([data-state='analyzing']) .gi-orb-orbit-2 { animation:pb-orb-orbit-two 4.68s linear infinite; }
+  .gi-orb:where([data-state='searching']) .gi-orb-sweep { animation:pb-orb-sweep 2.4s linear infinite; }
+  .gi-orb:where([data-state='searching']) .gi-orb-found { animation:pb-orb-found 2.4s linear infinite; }
+  .gi-orb:where([data-state='listening']) .gi-orb-voice-bar { animation:pb-orb-voice 1.8s cubic-bezier(.45,0,.55,1) infinite; animation-delay:calc(var(--orb-band) * -.16s); }
+  .gi-orb:where([data-state='listening']) .gi-orb-voice-rim { animation:pb-orb-listen-rim 1.8s cubic-bezier(.45,0,.55,1) infinite; transform-origin:32px 32px; }
+  .gi-orb:where([data-state='connecting']) .gi-orb-peer-left { animation:pb-orb-peer-left 2.4s cubic-bezier(.45,0,.55,1) infinite; }
+  .gi-orb:where([data-state='connecting']) .gi-orb-peer-right { animation:pb-orb-peer-right 2.4s cubic-bezier(.45,0,.55,1) infinite; }
+  .gi-orb:where([data-state='connecting']) .gi-orb-link { animation:pb-orb-link 2.4s cubic-bezier(.45,0,.55,1) infinite; }
+  .gi-orb:where([data-state='drafting']) .gi-orb-ribbon { animation:pb-orb-ribbon 2.2s cubic-bezier(.45,0,.55,1) infinite; animation-delay:calc(var(--orb-band) * -.22s); }
+  .gi-orb:where([data-state='drafting']) .gi-orb-nib { animation:pb-orb-write 3.6s linear infinite; }
+  .gi-orb:where([data-state='resolving']) .gi-orb-petal { animation:pb-orb-focus var(--pb-motion-resolution,680ms) var(--pb-ease) both; animation-delay:calc(var(--orb-band) * 16ms); }
+  .gi-orb:where([data-state='success']) .gi-orb-confirm path { animation:pb-orb-confirm var(--pb-motion-expressive,260ms) var(--pb-ease) both; transform-origin:32px 32px; }
+  .gi-orb[data-visible='false'] * { animation-play-state:paused; }
+}
+@keyframes pb-orb-wave { 0%,100% { opacity:.2; } 40% { opacity:1; } 70% { opacity:.45; } }
+@keyframes pb-orb-orbit-one { from { transform:rotate(-35deg) rotateX(64deg) rotate(0deg); } to { transform:rotate(325deg) rotateX(64deg) rotate(360deg); } }
+@keyframes pb-orb-orbit-two { from { transform:rotate(55deg) rotateX(64deg) rotate(0deg); } to { transform:rotate(-305deg) rotateX(64deg) rotate(-360deg); } }
+@keyframes pb-orb-sweep { to { transform:rotate(360deg); } }
+@keyframes pb-orb-found { 0%,12% { opacity:1; } 45%,100% { opacity:.12; } }
+@keyframes pb-orb-voice { 0%,100% { transform:scaleY(.45); opacity:.55; } 50% { transform:scaleY(1); opacity:1; } }
+@keyframes pb-orb-listen-rim { 0%,100% { transform:scale(.96); opacity:.12; } 50% { transform:scale(1); opacity:.3; } }
+@keyframes pb-orb-peer-left { 0%,100% { transform:translateX(-2px); opacity:.55; } 50% { transform:translateX(5px); opacity:1; } }
+@keyframes pb-orb-peer-right { 0%,100% { transform:translateX(2px); opacity:.55; } 50% { transform:translateX(-5px); opacity:1; } }
+@keyframes pb-orb-link { 0%,100% { transform:translateX(-8px); opacity:.25; } 50% { transform:translateX(8px); opacity:1; } }
+@keyframes pb-orb-ribbon { 0%,100% { transform:translateX(-2px); opacity:.35; } 50% { transform:translateX(2px); opacity:1; } }
+@keyframes pb-orb-write {
+  0% { transform:translate(9px,18px); opacity:1; }
+  23% { transform:translate(55px,18px); opacity:1; }
+  26% { transform:translate(55px,18px); opacity:0; }
+  32% { transform:translate(9px,27px); opacity:0; }
+  35% { transform:translate(9px,27px); opacity:1; }
+  58% { transform:translate(55px,27px); opacity:1; }
+  61% { transform:translate(55px,27px); opacity:0; }
+  67% { transform:translate(9px,36px); opacity:0; }
+  70% { transform:translate(9px,36px); opacity:1; }
+  93% { transform:translate(55px,36px); opacity:1; }
+  96% { transform:translate(55px,36px); opacity:0; }
+  100% { transform:translate(9px,18px); opacity:0; }
+}
+@keyframes pb-orb-focus { from { transform:translateY(-3px) scaleY(1); opacity:.5; } to { transform:translateY(3px) scaleY(.72); opacity:.8; } }
+@keyframes pb-orb-confirm { from { transform:scale(.9); opacity:0; } to { transform:scale(1); opacity:1; } }
+@media(prefers-reduced-motion:reduce) { .gi-orb * { animation:none!important; transition:none!important; } }

@@ -134,7 +134,7 @@ export function ThreadPanel(props: {
               disabled={props.drafting}
               onClick={props.onDraft}
             >
-              {props.drafting ? <span className="gi-orb-line"><Orb size={13} tone={needsReply ? 'on-accent' : 'bare'} />Drafting…</span> : 'Draft reply'}
+              {props.drafting ? <span className="gi-orb-line"><Orb size={13} state="drafting" tone={needsReply ? 'on-accent' : 'bare'} />Drafting…</span> : 'Draft reply'}
             </button>
           ) : null}
           <details className="pb-thread-more"><summary aria-label="More thread actions">···</summary><div className="pb-thread-menu"><button type="button" className="gi-text-btn" onClick={props.onRemind}>Remind me</button>{props.onRetrySummary ? <button type="button" className="gi-text-btn" onClick={props.onRetrySummary}>Refresh summary</button> : null}</div></details>

@@ -1,5 +1,8 @@
+import { observeVisual } from '../../ui/motion';
 import { createOrb } from '../../ui/orb-markup';
 import { ensureSurface, SURFACE_CSS } from './surface';
+
+let disposeToast: (() => void) | undefined;
 
 /** A toast for work in progress; the next toast replaces it. */
 export function showBusyToast(message: string): void {
@@ -7,6 +10,7 @@ export function showBusyToast(message: string): void {
 }
 
 export function showToast(message: string, retry?: () => void, busy = false): void {
+  disposeToast?.();
   document.querySelector('[data-gi-ui="toast"]')?.remove();
   ensureSurface();
   const host = document.createElement('div');
@@ -21,7 +25,9 @@ export function showToast(message: string, retry?: () => void, busy = false): vo
   toast.className = 'gi-toast';
   const text = document.createElement('span');
   text.textContent = message;
-  if (busy) toast.append(createOrb(16, 'bare'));
+  const orb = busy ? createOrb(16, 'bare') : null;
+  if (orb) toast.append(orb);
+  toast.setAttribute('role', 'status');
   toast.append(text);
   if (retry) {
     const button = document.createElement('button');
@@ -29,7 +35,7 @@ export function showToast(message: string, retry?: () => void, busy = false): vo
     button.className = 'gi-toast-retry';
     button.textContent = 'Retry';
     button.onclick = () => {
-      host.remove();
+      disposeToast?.();
       retry();
     };
     toast.append(button);
@@ -37,5 +43,8 @@ export function showToast(message: string, retry?: () => void, busy = false): vo
   wrap.append(toast);
   shadow.append(style, wrap);
   document.documentElement.append(host);
-  window.setTimeout(() => host.remove(), 6000);
+  const unobserve = orb ? observeVisual(orb, (visible) => { orb.dataset.visible = String(visible); }) : undefined;
+  const dispose = () => { unobserve?.(); window.clearTimeout(timer); host.remove(); if (disposeToast === dispose) disposeToast = undefined; };
+  const timer = window.setTimeout(dispose, 6000);
+  disposeToast = dispose;
 }

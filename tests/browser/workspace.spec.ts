@@ -26,6 +26,29 @@ test('floating workspace preserves bounds, geometry, navigation and keyboard con
   await gmail.screenshot({ path: 'test-results/workspace-gmail-narrow.png' });
 });
 
+test('reopening a collapsed docked workspace emits no invalid animation keyframes', async ({ app }) => {
+  const setup = await app.page('workspace');
+  const gmail = await app.gmail();
+  const host = gmail.locator('[data-gi-ui="workspace"]');
+  const shell = host.locator('.gi-shell');
+  const warnings: string[] = [];
+  gmail.on('console', (message) => { if (/Invalid keyframe|Infinitypx|NaNpx/.test(message.text())) warnings.push(message.text()); });
+  await expect(shell).toBeVisible();
+  await setup.evaluate(() => chrome.runtime.sendMessage({ type: 'WORKSPACE_DISPLAY', display: 'dock', open: false }));
+  await expect(host).toHaveAttribute('data-display', 'dock');
+  await expect(host).toHaveAttribute('data-open', 'false');
+  await expect(host).toBeHidden();
+  await setup.evaluate(() => chrome.runtime.sendMessage({ type: 'WORKSPACE_DISPLAY', display: 'float', open: true }));
+  await expect(shell).toBeVisible();
+  await expect(host).toHaveAttribute('data-open', 'true');
+  await expect(gmail.frameLocator('iframe[title="PigeonBox"]').getByRole('navigation', { name: 'Workspace' })).toBeVisible();
+  await host.getByRole('button', { name: 'Collapse PigeonBox' }).click();
+  await host.getByRole('button', { name: 'Reopen PigeonBox' }).click();
+  await expect(host).toHaveAttribute('data-open', 'true');
+  expect(await shell.evaluate((element) => JSON.stringify(element.getAnimations().map((animation) => (animation.effect as KeyframeEffect).getKeyframes())))).not.toMatch(/Infinity|NaN/);
+  expect(warnings).toEqual([]);
+});
+
 test('float and dock render one workspace and preserve unfinished input in trusted session storage', async ({ app }) => {
   await app.page('workspace'); const gmail = await app.gmail(); const frame = gmail.frameLocator('iframe[title="PigeonBox"]');
   await frame.getByRole('button', { name: 'Ask', exact: true }).click();
