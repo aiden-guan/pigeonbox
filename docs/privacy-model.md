@@ -58,7 +58,7 @@ A Convex deployment you connect stores only the tracking data above, in your own
 
 ## Deleting data
 
-- Settings → Advanced → **Clear local mail index** removes the IndexedDB index.
+- Settings → Privacy & data → **Clear local mail index** removes the IndexedDB index.
 - Removing the extension deletes all of its local storage and downloaded models.
 - Self-hosted tracking data lives in your tracker; delete it there.
 - PigeonBox Cloud account data is removed by deleting the account (web account page).

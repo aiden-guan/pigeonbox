@@ -38,7 +38,7 @@ If you use several Chrome profiles, create a gitignored `.local/chrome.json` so 
 
 ## Choose AI (Local)
 
-Settings → **AI on this computer → Change AI**:
+Click the **Settings** gear in the PigeonBox workspace, then **AI → Change AI**:
 
 - **Downloaded model**: LFM2 700M/1.2B, Gemma 3 1B, Qwen3 0.6B, Qwen2.5 0.5B, SmolLM2 360M. Runs on WebGPU in an offscreen document. Weights (≈270–920 MB) download from Hugging Face only when you click Download and are stored in the browser's origin-private file system. **Remove** deletes them.
 - **Chrome Gemini Nano**: Chrome 138+ desktop with enough memory and disk; Chrome manages the download.
@@ -82,7 +82,7 @@ This starts a server at `http://127.0.0.1:8787` (memory storage by default). A r
 
 ## Optional: developing against PigeonBox Cloud
 
-Cloud is not needed for anything above. If you have access to the private `pigeonbox-cloud` repository and run it locally with the mock AI provider, set **Settings → Advanced → PigeonBox Cloud API URL** to `http://127.0.0.1:8788`, save, then choose **PigeonBox Cloud** under "How should PigeonBox run?".
+Cloud is not needed for anything above. If you have access to the private `pigeonbox-cloud` repository and run it locally with the mock AI provider, set **Settings → Advanced → PigeonBox Cloud API URL** to `http://127.0.0.1:8788`, save, then choose **PigeonBox Cloud** under **Settings → PigeonBox**.
 
 ## Troubleshooting
 

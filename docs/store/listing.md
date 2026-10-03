@@ -118,7 +118,7 @@ No PigeonBox account or API key is needed.
 3. Click the PigeonBox toolbar icon, then "Inbox insights". The side panel sorts the visible threads into Respond, Waiting, FYI and Notifications. This uses rules and needs no AI.
 4. Open any email thread. The thread companion appears beside it with its category and the message details.
 5. In the side panel choose "Ask" and type "What needs a reply?" to see threads waiting on the user, answered from the local index.
-6. Optional AI: Settings → AI on this computer → Change AI, then "Use this model" or "Download" on Chrome's built-in Gemini Nano, or download one of the on-device models. Summaries and "Draft reply" then work. Drafts open in Gmail's reply box and are never sent automatically.
+6. Optional AI: Settings (the gear in the PigeonBox workspace) → AI → Change AI, then "Use this model" or "Download" on Chrome's built-in Gemini Nano, or download one of the on-device models. Summaries and "Draft reply" then work. Drafts open in Gmail's reply box and are never sent automatically.
 
 Open tracking needs a tracker the user hosts, so it is off by default and not required to review the extension.
 ```

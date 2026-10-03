@@ -20,7 +20,7 @@ ffmpeg -i out/pigeonbox-launch.mp4 -c:v copy -af "alimiter=limit=0.89:level=fals
 
 - **Timing:** `src/timeline.json` is the single source of truth for shots, story beats and the tempo map (90 BPM → 150 BPM for the chase → 90 BPM). Picture and sound both read it, so cuts and hits land on bar lines.
 - **Pixel art:** generated in Python (numpy + Pillow), written to `public/art` with anchors in `src/art-manifest.json`.
-  - `scripts/gen_pigeon.py`: snaps the shipped mascot sheet (`apps/extension/public/brand/pigeon-sprites.png`) to its pixel grid and draws the flight cycle.
+  - `scripts/gen_pigeon.py`: derives the film cells from the approved production mascot and flight sheets via `gen_pigeon.mjs`; it preserves the existing film frame layout.
   - `scripts/gen_world.py`: the city, interiors, traffic and people. The sender behind his window is layered (`s3_sender` poses, `s3_front`, `s3_mug`, whistled `notes`) so the desk cutaways can animate him.
   - `scripts/gen_hazards.py`: airliner, hawk, storm.
   - `scripts/gen_sunset.py`: the closing rooftop and the pigeon's friends.

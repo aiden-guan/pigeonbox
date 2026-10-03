@@ -46,3 +46,7 @@ Use case: identity-preserve. Create a production pixel art ANIMATION SPRITE SHEE
 - Screenshot: `docs/design/copper-perch-preview.png`.
 - Installed Gmail integration and actual AI/tracking requests were not exercised in this visual redesign pass. The preview contains fictional data and does not establish live backend readiness.
 - Existing jsdom warnings for modern CSS `@starting-style` syntax persist; the browser renders the styles. Build retains pre-existing large-bundle warnings.
+
+## Current compact Pidgy model
+
+The approved model follows the gift and lantern references. The current source is a regular 384 by 480 transparent atlas of 96px cells at apps/extension/brand-src/pigeon-states.png. pack-pigeon.mjs uniformly packs it into the existing 320 by 256 app cells; pack-pigeon.py remains a compatibility entry point. App icons derive from its idle cell. Film assets derive from the same production sheet and the approved flight cycle. The earlier irregular-source notes above describe the original generation.

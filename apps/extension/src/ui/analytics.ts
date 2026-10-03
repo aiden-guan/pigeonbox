@@ -21,6 +21,7 @@ export const PRODUCT_EVENTS = [
   'command_palette_opened',
   'ask_pigeon_used',
   'tracked_document_created',
+  'settings_opened',
 ] as const;
 export type ProductEvent = (typeof PRODUCT_EVENTS)[number];
 type SafeMetadata = {
@@ -29,6 +30,7 @@ type SafeMetadata = {
   outcome?: 'success' | 'failure' | 'denied';
   latency?: 'fast' | 'normal' | 'slow';
   capabilityPresent?: boolean;
+  source?: 'workspace_header' | 'command_palette';
 };
 type Payload = { event: ProductEvent; metadata: SafeMetadata; version: string };
 type Provider = (payload: Payload) => void | Promise<void>;
@@ -42,6 +44,7 @@ const VALUES = {
   mode: ['local', 'cloud'],
   outcome: ['success', 'failure', 'denied'],
   latency: ['fast', 'normal', 'slow'],
+  source: ['workspace_header', 'command_palette'],
 } as const;
 export function analyticsPayload(event: string, metadata: Record<string, unknown> = {}, version = ''): Payload | null {
   if (!(PRODUCT_EVENTS as readonly string[]).includes(event)) return null;

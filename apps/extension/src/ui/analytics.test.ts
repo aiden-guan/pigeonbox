@@ -57,3 +57,12 @@ it('records only opt-in bounded local counters, serializes updates and deduplica
   await recordProductEvent('private', {});
   expect(send).toHaveBeenCalledTimes(2);
 });
+
+it('records where Settings was opened from without accepting other sources', () => {
+  expect(analyticsPayload('settings_opened', { surface: 'workspace', mode: 'local', source: 'workspace_header' })).toEqual({
+    event: 'settings_opened',
+    metadata: { surface: 'workspace', mode: 'local', source: 'workspace_header' },
+    version: '',
+  });
+  expect(analyticsPayload('settings_opened', { source: 'owner@fixture.test', subject: 'Pricing' })?.metadata).toEqual({});
+});

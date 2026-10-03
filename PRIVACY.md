@@ -50,7 +50,7 @@ PigeonBox's use of the data it handles complies with the [Chrome Web Store User 
 
 ## Keeping and deleting data
 
-Data in your browser stays until you remove it. **Settings → Clear local mail index** deletes the mail index, and uninstalling PigeonBox removes everything it stored in Chrome. Tracking records on a tracker you host live in your own deployment, and you delete them there. A PigeonBox Cloud account can be deleted from its account page, which removes the account and the tracking records and usage history kept for it.
+Data in your browser stays until you remove it. **Settings → Privacy & data → Clear local mail index** deletes the mail index, and uninstalling PigeonBox removes everything it stored in Chrome. Tracking records on a tracker you host live in your own deployment, and you delete them there. A PigeonBox Cloud account can be deleted from its account page, which removes the account and the tracking records and usage history kept for it.
 
 ## Children
 

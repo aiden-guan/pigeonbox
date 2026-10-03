@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { ProductControls } from '../ui/product-state';
 import { Orb } from '../ui/Orb';
 import { CloudConnections } from './CloudConnections';
+import { openCloud } from '../ui/cloud-features';
 
 const CLOUD_STATUS_LABEL: Record<string, string> = {
   not_configured: 'Coming soon',
@@ -137,6 +138,12 @@ export function RunModePanel({
             </button>
           </div>
           {cloudStatus === 'ready' && state.cloud.capabilities.includes('cloud_mail_sync') && !compact ? <CloudConnections /> : null}
+          {state.cloudAvailable && signedIn && !compact ? (
+            // The account page's address is derived from the configured Cloud API by the worker.
+            <button type="button" className="gi-text-btn mt-3" onClick={() => openCloud('overview')}>
+              Manage Cloud account ↗
+            </button>
+          ) : null}
           {cloudStatus !== 'ready' ? (
             <p className="mt-2 text-xs gi-muted">
               Until PigeonBox Cloud is connected, categories use on-device rules and nothing is sent to another AI provider.

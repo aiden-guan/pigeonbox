@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Changed
+- **Settings is one click away.** The Gmail workspace has a Settings gear next to appearance and dock, in floating and docked layouts. Settings navigation now matches the page, never links to a hidden section, and explains what stays on this computer and what goes to an AI provider, Cloud or your tracker. Configured Cloud builds add one **Manage Cloud account ↗** action.
 - **Tracking wording.** Sent marks, the detail card and alerts report detections ("Open detected", "Link clicked") and never name a reader, since one pixel is shared by every recipient. Alerts are grouped per email and open the Gmail conversation when clicked.
 - **Tracking detail card** lists Sent and each counted open and click, and says when an email went to several people.
 

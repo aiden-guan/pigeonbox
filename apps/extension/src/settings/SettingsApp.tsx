@@ -12,6 +12,7 @@ import { AiConnect } from '../setup/AiConnect';
 import { ProfileFields } from '../setup/ProfileFields';
 import { RunModePanel } from '../setup/RunModePanel';
 import { Orb } from '../ui/Orb';
+import { reducedMotion } from '../ui/dispatch-motion';
 import { useProductState } from '../ui/product-state';
 import { DEV_REBUILD_URL } from '../config';
 import { RebuildFailedError, requestExtensionReload } from '../reload-extension';
@@ -22,6 +23,14 @@ import {
   RELEASE_CHECK_PERMISSION,
   type ReleaseUpdateStatus,
 } from '../background/release-updates';
+
+const AI_DESTINATION: Record<string, string> = {
+  none: 'AI is off. Nothing is sent to an AI provider.',
+  this_device: 'Runs on this computer. Mail is not sent to an AI provider.',
+  your_provider: 'The email content a request needs is sent to the provider you configured.',
+  chatgpt_web: 'The email content a request needs is sent to ChatGPT through your signed-in session.',
+  pigeonbox_cloud: 'Email content is processed by PigeonBox Cloud.',
+};
 
 const CATEGORIES: ThreadCategory[] = ['RESPOND', 'WAITING', 'FYI', 'NOTIFICATIONS', 'PROMOTIONS', 'NEWS'];
 
@@ -42,6 +51,25 @@ export function SettingsApp() {
   const [reloadError, setReloadError] = useState<string | null>(null);
   const product = useProductState();
   const cloudMode = product.state.runMode === 'cloud';
+  // Cloud account controls need a configured Cloud backend, not just a stored mode.
+  const cloudActive = cloudMode && product.state.cloudAvailable;
+  const cloudSync = cloudActive && product.has('cloud_mail_sync');
+  const sections: Array<[string, string]> = [
+    ['PigeonBox', 'pigeonbox'],
+    ...(cloudMode ? [] : [['AI', 'ai'] as [string, string]]),
+    ['Inbox', 'inbox'],
+    ['Tracking', 'tracking'],
+    ...(cloudSync ? [['Cloud / Sync', 'cloud'] as [string, string]] : []),
+    ...(cloudActive ? [['Memory', 'memory'] as [string, string]] : []),
+    ['Personalization', 'personalization'],
+    ['Privacy & data', 'privacy'],
+    ['Updates', 'updates'],
+    ['Advanced', 'advanced'],
+  ];
+  const openAdvanced = useCallback(() => {
+    setAdvanced(true);
+    requestAnimationFrame(() => document.getElementById('advanced')?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth' }));
+  }, []);
 
   const checkForUpdates = useCallback(async (permissionAlreadyGranted = false) => {
     setCheckingRelease(true);
@@ -236,69 +264,36 @@ export function SettingsApp() {
         <div className="gi-settings-title"><div><div className="gi-kicker">PigeonBox / Preferences</div><h1 className="gi-display">Settings.</h1><p className="gi-muted mt-3 text-sm">Choose how PigeonBox works for you.</p></div><Pigeon size={54} /></div>
       </header>
 
-      <nav aria-label="Settings sections" className="gi-settings-nav">{[["PigeonBox", "pigeonbox"], ["AI", "ai"], ["Inbox", "inbox"], ["Tracking", "tracking"], ["Cloud / Sync", "cloud"], ["Memory", "memory"], ["Personalization", "personalization"], ["Privacy & data", "privacy"]].filter(([, id]) => (id !== "ai" || !cloudMode) && ((id !== "cloud" && id !== "memory") || cloudMode)).map(([label, id]) => <a key={id} className="gi-text-btn" href={`#${id}`}>{label}</a>)}</nav>
+      <nav aria-label="Settings sections" className="gi-settings-nav">
+        {sections.map(([label, id]) => <a key={id} className="gi-text-btn" href={`#${id}`} onClick={id === 'advanced' ? (event) => { event.preventDefault(); openAdvanced(); } : undefined}>{label}</a>)}
+      </nav>
       <Section title="PigeonBox" id="pigeonbox">
         <RunModePanel
           product={product}
           onAdvanced={() => {
-            setAdvanced(true);
             setChangeAi(true);
-            requestAnimationFrame(() => document.getElementById('advanced')?.scrollIntoView({ behavior: 'smooth' }));
+            openAdvanced();
           }}
         />
-        <p className="gi-muted text-xs">The toolbar icon opens your Gmail workspace. ⌘/Ctrl K finds actions.</p>
+        <p className="gi-muted text-xs">PigeonBox lives in Gmail. The toolbar icon opens the workspace, its gear opens these Settings, and ⌘/Ctrl K finds actions.</p>
         <button type="button" className="gi-text-btn" onClick={() => void chrome.runtime.sendMessage({ type: 'RESET_WORKSPACE_LAYOUT' })}>Reset workspace position &amp; size</button>
       </Section>
+
+      {cloudMode ? null : (
+        <Section title="AI" id="ai">
+          <p className="text-sm">{provider}{settings.aiModel && settings.aiMode !== 'disabled' ? ` · ${settings.aiModel}` : ''}</p>
+          <p className="gi-muted text-xs">{AI_DESTINATION[product.state.aiDestination] ?? AI_DESTINATION.none}</p>
+          <button type="button" className="gi-text-btn mt-2" onClick={() => setChangeAi((open) => !open)}>
+            {changeAi ? 'Hide AI setup' : 'Change AI'}
+          </button>
+          {changeAi ? <div className="mt-3"><AiConnect settings={settings} onPatch={patchSettings} onSignedIn={patchSettings} experimental={product.state.experimental} /></div> : null}
+        </Section>
+      )}
 
       <Section title="Inbox" id="inbox">
         <Toggle label="Organize inbox automatically" checked={settings.autoClassify} onChange={(on) => update('autoClassify', on)} />
         <Toggle label="Email tracking" checked={settings.trackingEnabled} onChange={(on) => update('trackingEnabled', on)} />
         <Toggle label="Desktop alerts" checked={settings.desktopNotifications} onChange={(on) => update('desktopNotifications', on)} />
-      </Section>
-
-      <Section title="Updates">
-        {storeInstall ? (
-          <p className="gi-muted text-xs">
-            Chrome keeps PigeonBox up to date from the Chrome Web Store. You are on v{chrome.runtime.getManifest().version}.
-          </p>
-        ) : (
-          <>
-            <p className="gi-muted text-xs">
-              Update checks work in Local and Cloud. The request sends no email or settings data to GitHub; GitHub can see your IP address.
-            </p>
-            <Toggle
-              label="Check GitHub automatically (once a day)"
-              checked={settings.automaticUpdateChecks}
-              onChange={(on) => void setAutomaticUpdateChecks(on)}
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className="gi-btn gi-btn-ghost"
-                disabled={checkingRelease}
-                onClick={() => void checkForUpdates()}
-              >
-                {checkingRelease ? 'Checking…' : 'Check for updates'}
-              </button>
-              {releaseStatus?.state === 'available' && releaseStatus.downloadUrl ? (
-                <a className="gi-btn" href={releaseStatus.downloadUrl} target="_blank" rel="noreferrer">
-                  Download v{releaseStatus.latestVersion}
-                </a>
-              ) : null}
-            </div>
-            <p className="gi-muted text-xs" role="status" aria-live="polite">
-              {releaseNotice || describeReleaseStatus(releaseStatus)}
-            </p>
-            {releaseStatus?.releaseUrl ? (
-              <a className="gi-text-btn text-xs" href={releaseStatus.releaseUrl} target="_blank" rel="noreferrer">
-                View release notes ↗
-              </a>
-            ) : null}
-            <p className="gi-muted text-xs">
-              The release ZIP downloads in one click. To apply it, unzip the release and reload PigeonBox on <code>chrome://extensions</code>. Chrome does not let a locally installed extension install itself.
-            </p>
-          </>
-        )}
       </Section>
 
       <Section title="Drafts & follow-ups">
@@ -307,16 +302,6 @@ export function SettingsApp() {
         <Toggle label="Auto archive low-priority mail" checked={settings.autoArchive} onChange={(on) => update('autoArchive', on)} />
         <p className="gi-muted text-xs">{cloudMode ? 'Prepared replies follow your sync preferences below. Sending requires your approval.' : 'Drafts stay on this computer until you add them to Gmail.'}</p>
       </Section>
-
-      {cloudMode ? null : (
-        <Section title="AI on this computer" id="ai">
-          <p className="text-sm">{provider}{settings.aiModel && settings.aiMode !== 'disabled' ? ` · ${settings.aiModel}` : ''}</p>
-          <button type="button" className="gi-text-btn mt-2" onClick={() => setChangeAi((open) => !open)}>
-            {changeAi ? 'Hide AI setup' : 'Change AI'}
-          </button>
-          {changeAi ? <div className="mt-3"><AiConnect settings={settings} onPatch={patchSettings} onSignedIn={patchSettings} experimental={product.state.experimental} /></div> : null}
-        </Section>
-      )}
 
       <Section title="Email tracking" id="tracking">
         <Toggle label="Track opens" checked={settings.trackOpens} onChange={(on) => update('trackOpens', on)} />
@@ -369,7 +354,8 @@ export function SettingsApp() {
         </p>
       </Section>
 
-      {cloudMode && product.has("cloud_mail_sync") ? <Section title="Cloud / Sync" id="cloud"><CloudPreferences capabilities={product.state.capabilities} /></Section> : null}
+      {cloudSync ? <Section title="Cloud / Sync" id="cloud"><CloudPreferences capabilities={product.state.capabilities} /></Section> : null}
+      {cloudActive ? <Section title="Memory" id="memory"><MemorySettings /></Section> : null}
       <Section title="Personalization" id="personalization">
         <ProfileFields voice={settings.voiceProfile} onChange={(voiceProfile) => update('voiceProfile', voiceProfile)} />
         <Field label="Greeting">
@@ -380,11 +366,68 @@ export function SettingsApp() {
         </Field>
       </Section>
 
+      <Section title="Privacy & data" id="privacy">
+        <dl className="pb-settings-data">
+          <dt>On this computer</dt><dd>Your mail index, settings, drafts and downloaded models stay in this browser.</dd>
+          <dt>AI provider</dt><dd>Only when you set one up, the email content a request needs is sent to that provider.</dd>
+          <dt>PigeonBox Cloud</dt><dd>Only after you choose Cloud. Mail is processed by PigeonBox Cloud, which stores encrypted derived intelligence; keeping excerpts is a separate opt-in.</dd>
+          <dt>Tracking</dt><dd>Opens and clicks are recorded by the tracker you configure{cloudActive ? ', or by Cloud when hosted tracking is active' : ''}.</dd>
+        </dl>
+        <AnalyticsPreference />
+        {cloudActive ? <button className="gi-text-btn" type="button" onClick={() => openCloud('privacy')}>Manage Cloud data and retention ↗</button> : null}
+        <button className="gi-btn gi-btn-ghost" type="button" onClick={() => { if (window.confirm('Clear the mail index on this computer? Cloud data and your settings are unaffected.')) chrome.runtime.sendMessage({ type: 'CLEAR_INDEX' }); }}>Clear local mail index</button>
+      </Section>
+
+      <Section title="Updates" id="updates">
+        {storeInstall ? (
+          <p className="gi-muted text-xs">
+            Chrome keeps PigeonBox up to date from the Chrome Web Store. You are on v{chrome.runtime.getManifest().version}.
+          </p>
+        ) : (
+          <>
+            <p className="gi-muted text-xs">
+              Update checks work in Local and Cloud. The request sends no email or settings data to GitHub; GitHub can see your IP address.
+            </p>
+            <Toggle
+              label="Check GitHub automatically (once a day)"
+              checked={settings.automaticUpdateChecks}
+              onChange={(on) => void setAutomaticUpdateChecks(on)}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="gi-btn gi-btn-ghost"
+                disabled={checkingRelease}
+                onClick={() => void checkForUpdates()}
+              >
+                {checkingRelease ? 'Checking…' : 'Check for updates'}
+              </button>
+              {releaseStatus?.state === 'available' && releaseStatus.downloadUrl ? (
+                <a className="gi-btn" href={releaseStatus.downloadUrl} target="_blank" rel="noreferrer">
+                  Download v{releaseStatus.latestVersion}
+                </a>
+              ) : null}
+            </div>
+            <p className="gi-muted text-xs" role="status" aria-live="polite">
+              {releaseNotice || describeReleaseStatus(releaseStatus)}
+            </p>
+            {releaseStatus?.releaseUrl ? (
+              <a className="gi-text-btn text-xs" href={releaseStatus.releaseUrl} target="_blank" rel="noreferrer">
+                View release notes ↗
+              </a>
+            ) : null}
+            <p className="gi-muted text-xs">
+              The release ZIP downloads in one click. To apply it, unzip the release and reload PigeonBox on <code>chrome://extensions</code>. Chrome does not let a locally installed extension install itself.
+            </p>
+          </>
+        )}
+      </Section>
+
       <div className="gi-settings-save">
         <button type="button" className="gi-btn" onClick={save}>
           {saved ? 'Saved' : 'Save'}
         </button>
-        <button type="button" className="gi-text-btn" onClick={() => setAdvanced((open) => !open)}>
+        <button type="button" className="gi-text-btn" aria-expanded={advanced} onClick={() => advanced ? setAdvanced(false) : openAdvanced()}>
           {advanced ? 'Hide advanced' : 'Advanced'}
         </button>
       </div>
@@ -461,8 +504,6 @@ export function SettingsApp() {
           ) : null}
         </Section>
       ) : null}
-      {cloudMode ? <Section title="Memory" id="memory"><MemorySettings /></Section> : null}
-      <Section title="Privacy & data" id="privacy"><AnalyticsPreference /><p className="gi-muted text-xs">Local mail and settings stay in this browser unless you explicitly select another provider. Cloud processes mail on your configured infrastructure and stores encrypted derived intelligence; retaining excerpts requires a separate opt-in.</p>{cloudMode ? <button className="gi-text-btn" type="button" onClick={() => openCloud('privacy')}>Manage Cloud data and retention ↗</button> : null}<button className="gi-btn gi-btn-ghost" type="button" onClick={() => { if (window.confirm('Clear the mail index on this computer? Cloud data and your settings are unaffected.')) chrome.runtime.sendMessage({ type: 'CLEAR_INDEX' }); }}>Clear local mail index</button></Section>
       {DEV_REBUILD_URL ? (
         <Section title="Developer">
           <p className="gi-muted text-xs">Rebuild and restart this unpacked extension from the local development helper.</p>

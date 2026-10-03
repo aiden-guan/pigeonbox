@@ -73,7 +73,7 @@ More detail: [docs/local-setup.md](docs/local-setup.md).
 
 ### Updates
 
-Open **Settings → Updates** to check the latest GitHub release or opt in to a daily check. Automatic checks are off by default. The request sends no email or settings data to GitHub; GitHub can see your IP address. If a release is available, **Download** saves the ZIP. Unzip it and reload or load the extracted folder from `chrome://extensions` to apply it.
+Open the PigeonBox workspace in Gmail and click the **Settings** gear, then go to **Updates** to check the latest GitHub release or opt in to a daily check. Automatic checks are off by default. The request sends no email or settings data to GitHub; GitHub can see your IP address. If a release is available, **Download** saves the ZIP. Unzip it and reload or load the extracted folder from `chrome://extensions` to apply it.
 
 ---
 
@@ -87,7 +87,7 @@ All indexing, search, rule evaluation, and model inferences execute locally thro
 
 ## Local vs. Cloud
 
-PigeonBox provides two execution environments within a single extension package, selectable under **Settings → How should PigeonBox run?**:
+PigeonBox provides two execution environments within a single extension package, selectable under **Settings → PigeonBox** (the gear in the Gmail workspace):
 
 | Feature / Dimension | On This Computer (Local) | PigeonBox Cloud |
 | :--- | :--- | :--- |
@@ -270,7 +270,7 @@ PigeonBox email tracking is optional and completely self-hostable. Mail triage, 
 | **Cloudflare Worker + Supabase** | [docs/self-hosting.md](docs/self-hosting.md) | Public Cloudflare endpoint with durable Postgres storage. Supabase alone is not the HTTP tracker. |
 | **Local tracker** | `npm run tracker` | Development only. Reachable from this computer; uses memory by default. |
 
-Configure tracking endpoints in the extension under **Settings → Email Tracking**.
+Configure tracking endpoints in the extension under **Settings → Email tracking**.
 
 ---
 
