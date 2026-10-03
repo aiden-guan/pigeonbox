@@ -72,6 +72,8 @@ export type ComposeTrackingDeps = {
    * send the recipient to an error page, so unconfirmed links are sent as-is.
    */
   registerLinks: (update: { trackingId: string; links: Array<{ click_id: string; url: string }> }) => Promise<boolean>;
+  /** Update an unsent tracker's subject and recipients. Resolves true when the tracker confirmed them. */
+  updateTracked?: (update: { trackingId: string; subject: string; sender: string; recipients: string[] }) => Promise<boolean>;
   reportDiagnostics?: (session: ComposeTrackingSession) => void;
   onSent?: (info: { subject: string; recipients: string[]; bodyText: string }) => void;
 };
@@ -80,6 +82,10 @@ const sessions = new Map<string, ComposeTrackingSession>();
 const refreshers = new Map<string, () => void>();
 const allocationTasks = new Map<string, Promise<ComposeTrackingSession | null>>();
 const modifierTasks = new Map<string, Promise<boolean>>();
+const detailSyncTimers = new Map<string, number>();
+
+/** How long recipient and subject edits settle before the tracker is updated. */
+export const DETAILS_SYNC_DEBOUNCE_MS = 800;
 
 export function getComposeSession(composeId: string): ComposeTrackingSession | undefined {
   return sessions.get(composeId);
@@ -94,6 +100,8 @@ export function resetComposeSessionsForTests(): void {
   refreshers.clear();
   allocationTasks.clear();
   modifierTasks.clear();
+  for (const timer of detailSyncTimers.values()) window.clearTimeout(timer);
+  detailSyncTimers.clear();
 }
 
 /**
@@ -116,9 +124,10 @@ export function attachSdkComposeTracking(view: SdkComposeView, deps: ComposeTrac
   if (element) mountTrackingControl(element, composeSessionId, deps);
 
   const ensure = () => {
-    void ensureTrackingAllocation(composeSessionId, view, deps).then(() =>
-      ensureRequestModifierRegistered(composeSessionId, view, deps),
-    );
+    void ensureTrackingAllocation(composeSessionId, view, deps).then(() => {
+      scheduleDetailsSync(composeSessionId, view, deps);
+      return ensureRequestModifierRegistered(composeSessionId, view, deps);
+    });
   };
   ensure();
   void view.getDraftID?.().then(() => ensure()).catch((error: unknown) => {
@@ -189,6 +198,7 @@ export function attachSdkComposeTracking(view: SdkComposeView, deps: ComposeTrac
     const current = sessions.get(composeSessionId);
     if (!current) return;
     current.state = 'SENT';
+    clearDetailsSync(composeSessionId);
     void handleSent(current, view, event, deps);
   });
 
@@ -197,6 +207,7 @@ export function attachSdkComposeTracking(view: SdkComposeView, deps: ComposeTrac
     if (!current) return;
     current.destroyed = true;
     refreshers.delete(composeSessionId);
+    clearDetailsSync(composeSessionId);
     if (current.state !== 'SENT' && current.state !== 'SENDING' && current.trackingId) {
       deps.cancelTracked(current.trackingId);
       log(current, 'compose-discarded', {}, deps);
@@ -258,21 +269,17 @@ async function allocateNow(
   session.trackOpens = settings.trackOpens;
   session.trackLinks = settings.trackLinks;
   if (!trackingConfigured(settings) || !wantsTracking(session)) return session;
-  const recipients = collectRecipients(view);
-  if (recipients.length === 0) {
+  const details = trackedDetails(view);
+  if (details.recipients.length === 0) {
     session.state = 'WAITING_FOR_RECIPIENTS';
     log(session, 'waiting-for-recipients', {}, deps);
     return session;
   }
-  log(session, 'recipients-ready', { count: recipients.length }, deps);
+  log(session, 'recipients-ready', { count: details.recipients.length }, deps);
   session.state = 'ALLOCATING';
   log(session, 'allocation-start', {}, deps);
   try {
-    const created = await deps.createTracked({
-      subject: (view.getSubject?.() || '').slice(0, 998),
-      sender: view.getFromContact?.()?.emailAddress || 'me',
-      recipients,
-    });
+    const created = await deps.createTracked(details);
     const current = sessions.get(composeSessionId);
     if (!current) return null;
     if (!created?.tracking_id || !created.pixel_url) {
@@ -284,6 +291,7 @@ async function allocateNow(
     current.trackingId = created.tracking_id;
     current.pixelUrl = created.pixel_url;
     current.trackerCreatedAt = created.created_at || new Date().toISOString();
+    current.syncedDetails = detailsKey(details);
     for (const link of created.rewritten_links || []) {
       if (!link.original || !link.tracked_url) continue;
       current.linkMap.set(link.original, link.tracked_url);
@@ -308,6 +316,63 @@ async function allocateNow(
     log(current, 'allocation-failed', { error: current.lastError }, deps);
     return current;
   }
+}
+
+/**
+ * Recipients and subject can change after the tracker is created. Send them
+ * once edits settle so the tracker never holds a stale recipient list, even if
+ * Gmail never fires `sent` (scheduled send) or the send-time update fails.
+ */
+function scheduleDetailsSync(composeSessionId: string, view: SdkComposeView, deps: ComposeTrackingDeps): void {
+  const session = sessions.get(composeSessionId);
+  if (!session?.trackingId || !deps.updateTracked || !isUnsent(session)) return;
+  clearDetailsSync(composeSessionId);
+  detailSyncTimers.set(composeSessionId, window.setTimeout(() => {
+    detailSyncTimers.delete(composeSessionId);
+    void syncDetailsNow(composeSessionId, view, deps);
+  }, DETAILS_SYNC_DEBOUNCE_MS));
+}
+
+async function syncDetailsNow(composeSessionId: string, view: SdkComposeView, deps: ComposeTrackingDeps): Promise<void> {
+  const session = sessions.get(composeSessionId);
+  const trackingId = session?.trackingId;
+  if (!session || !trackingId || !deps.updateTracked || !isUnsent(session)) return;
+  const details = trackedDetails(view);
+  // Gmail cannot send without a recipient, and the send-time update carries the final list.
+  if (details.recipients.length === 0) return;
+  const key = detailsKey(details);
+  if (key === session.syncedDetails) return;
+  const confirmed = await deps.updateTracked({ trackingId, ...details }).catch(() => false);
+  const current = sessions.get(composeSessionId);
+  if (!current || current.trackingId !== trackingId) return;
+  if (confirmed) {
+    current.syncedDetails = key;
+    log(current, 'details-synced', { recipients: details.recipients.length }, deps);
+  } else {
+    log(current, 'details-sync-failed', {}, deps);
+  }
+}
+
+function clearDetailsSync(composeSessionId: string): void {
+  const timer = detailSyncTimers.get(composeSessionId);
+  if (timer !== undefined) window.clearTimeout(timer);
+  detailSyncTimers.delete(composeSessionId);
+}
+
+function isUnsent(session: ComposeTrackingSession): boolean {
+  return !session.destroyed && session.state !== 'SENT' && session.state !== 'SENDING';
+}
+
+function trackedDetails(view: SdkComposeView): { subject: string; sender: string; recipients: string[] } {
+  return {
+    subject: (view.getSubject?.() || '').slice(0, 998),
+    sender: view.getFromContact?.()?.emailAddress || 'me',
+    recipients: collectRecipients(view),
+  };
+}
+
+function detailsKey(details: { subject: string; recipients: string[] }): string {
+  return JSON.stringify([details.subject, [...details.recipients].sort()]);
 }
 
 async function registerNow(composeSessionId: string, view: SdkComposeView, deps: ComposeTrackingDeps): Promise<boolean> {

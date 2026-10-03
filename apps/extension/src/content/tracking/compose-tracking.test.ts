@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, toPublicSettings, type ExtensionSettings } from '@pig
 import { describe, expect, it, vi } from 'vitest';
 import {
   attachSdkComposeTracking,
+  DETAILS_SYNC_DEBOUNCE_MS,
   DRAFT_READY_TIMEOUT_MS,
   getComposeSession,
   listComposeSessions,
@@ -399,5 +400,47 @@ describe('compose tracking label', () => {
   it('does not stay preparing after a failed allocation or with tracking switched off', () => {
     expect(composeTrackingLabel({ ...on, session: session({ state: 'FAILED', modifierRegistered: true }) }).tone).toBe('unavailable');
     expect(composeTrackingLabel({ ...on, session: session({ trackOpens: false, trackLinks: false }) })).toEqual({ label: 'Tracking off', tone: 'disabled' });
+  });
+});
+
+describe('recipient changes after the tracker exists', () => {
+  it('updates the tracker with the new recipients once edits settle', async () => {
+    resetComposeSessionsForTests();
+    const updates: Array<{ trackingId: string; subject: string; recipients: string[] }> = [];
+    const tracking = deps({ updateTracked: async (update) => { updates.push(update); return true; } });
+    const gmail = new GmailComposeSendHarness('new');
+    gmail.recipients = [{ emailAddress: 'a@b.com' }];
+    const id = attachSdkComposeTracking(gmail.view(), tracking);
+    await vi.waitFor(() => expect(getComposeSession(id)?.trackingId).toBe('trk_1'));
+    await new Promise((resolve) => setTimeout(resolve, DETAILS_SYNC_DEBOUNCE_MS + 50));
+    expect(updates).toHaveLength(0);
+
+    gmail.recipients = [{ emailAddress: 'a@b.com' }, { emailAddress: 'C@D.com' }];
+    gmail.emit('recipientsChanged');
+    gmail.recipients = [{ emailAddress: 'c@d.com' }, { emailAddress: 'e@f.com' }];
+    gmail.emit('recipientsChanged');
+    await vi.waitFor(() => expect(updates).toHaveLength(1), { timeout: DETAILS_SYNC_DEBOUNCE_MS * 3 });
+    expect(updates[0]).toMatchObject({ trackingId: 'trk_1', subject: 'Hello', recipients: ['c@d.com', 'e@f.com'] });
+    expect(tracking.created).toBe(1);
+
+    gmail.emit('recipientsChanged');
+    await new Promise((resolve) => setTimeout(resolve, DETAILS_SYNC_DEBOUNCE_MS + 50));
+    expect(updates).toHaveLength(1);
+  });
+
+  it('does not update the tracker after the message is sent', async () => {
+    resetComposeSessionsForTests();
+    const updates: unknown[] = [];
+    const tracking = deps({ updateTracked: async (update) => { updates.push(update); return true; } });
+    const gmail = new GmailComposeSendHarness('new');
+    gmail.recipients = [{ emailAddress: 'a@b.com' }];
+    const id = attachSdkComposeTracking(gmail.view(), tracking);
+    await vi.waitFor(() => expect(getComposeSession(id)?.trackingId).toBe('trk_1'));
+    gmail.recipients = [{ emailAddress: 'x@y.com' }];
+    gmail.emit('recipientsChanged');
+    gmail.emit('sent', { getMessageID: async () => 'm1', getThreadID: async () => 't1' });
+    await new Promise((resolve) => setTimeout(resolve, DETAILS_SYNC_DEBOUNCE_MS + 50));
+    expect(updates).toHaveLength(0);
+    expect(tracking.sent[0]).toMatchObject({ trackingId: 'trk_1', recipients: ['x@y.com'] });
   });
 });

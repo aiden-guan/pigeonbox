@@ -30,6 +30,8 @@ export type ComposeTrackingSession = {
   trackOpens: boolean;
   trackLinks: boolean;
   trackerCreatedAt: string | null;
+  /** Subject and recipients the tracker last confirmed, so edits are only sent when they differ. */
+  syncedDetails: string | null;
   gmailDraftId: string | null;
   gmailThreadId: string | null;
   gmailMessageId: string | null;
@@ -64,6 +66,7 @@ export function createTrackingSession(input: {
     trackOpens: input.trackOpens,
     trackLinks: input.trackLinks,
     trackerCreatedAt: null,
+    syncedDetails: null,
     gmailDraftId: null,
     gmailThreadId: null,
     gmailMessageId: null,

@@ -1448,7 +1448,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         return;
       }
-      if (message?.type === 'MARK_TRACKED_SENT' || message?.type === 'SYNC_TRACKED_LINKS' || message?.type === 'CANCEL_TRACKED_EMAIL') {
+      if (message?.type === 'MARK_TRACKED_SENT' || message?.type === 'SYNC_TRACKED_LINKS' || message?.type === 'UPDATE_TRACKED_EMAIL' || message?.type === 'CANCEL_TRACKED_EMAIL') {
         const trackingId = String(message.trackingId || '');
         if (!trackingId) {
           sendResponse({ error: 'missing_tracking_id' });

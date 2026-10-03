@@ -322,6 +322,7 @@ function trackingDeps() {
     markSent,
     cancelTracked,
     registerLinks,
+    updateTracked,
     reportDiagnostics: reportTracking,
     onSent: ({ subject, recipients, bodyText }: { subject: string; recipients: string[]; bodyText: string }) => {
       void send({ type: 'OUTGOING_COMPOSE', subject, recipients, bodyText, threadId: currentThreadId || 'sent' });
@@ -639,6 +640,12 @@ const LINK_REGISTRATION_TIMEOUT_MS = 4_000;
 
 async function registerLinks(update: { trackingId: string; links: Array<{ click_id: string; url: string }> }): Promise<boolean> {
   const res = await send<{ trackerSynced?: boolean }>({ type: 'SYNC_TRACKED_LINKS', ...update }, LINK_REGISTRATION_TIMEOUT_MS);
+  return res?.trackerSynced === true;
+}
+
+/** Keep an unsent tracker's subject and recipients in step with the compose. */
+async function updateTracked(update: { trackingId: string; subject: string; sender: string; recipients: string[] }): Promise<boolean> {
+  const res = await send<{ trackerSynced?: boolean }>({ type: 'UPDATE_TRACKED_EMAIL', ...update });
   return res?.trackerSynced === true;
 }
 
