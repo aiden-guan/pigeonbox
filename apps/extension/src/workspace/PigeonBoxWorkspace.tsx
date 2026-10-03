@@ -260,7 +260,7 @@ function WorkspaceContent() {
   return (
     <div className="gi-app pb-panel flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden" data-embedded={window.parent !== window} data-command-open={palette} data-view={mode}>
       <header className="pb-panel-header">
-        <div className="pb-panel-identity"><Brand state={context?.drafting ? 'drafting' : context?.pending ? 'indexing' : loading ? 'working' : 'idle'} /><span className="pb-mode-label">{cloudMode ? 'Cloud' : 'Local'}</span>{window.parent === window ? <AppearanceButton /> : null}</div>
+        <div className="pb-panel-identity"><Brand state={context?.drafting ? 'drafting' : context?.pending ? 'indexing' : loading ? 'working' : 'idle'} /><span className="pb-mode-label">{cloudMode ? 'Cloud' : 'Local'}</span></div>
         <div className="pb-command-anchor"><CommandLauncher open={palette} onOpen={() => setPalette(true)} />
           {palette ? <CommandPalette inline commands={commands} cloud={cloudMode} onClose={() => setPalette(false)} onAskQuery={(question) => { navigate('ask'); setPendingAsk({ id: crypto.randomUUID(), query: question }); }} /> : null}
         </div>
@@ -268,7 +268,7 @@ function WorkspaceContent() {
           <Tab active={mode === 'home'} onClick={() => navigate('home')}>Home</Tab>
           <Tab active={mode === 'inbox'} onClick={() => navigate('inbox')}>Inbox</Tab>
           <Tab active={mode === 'ask'} onClick={() => navigate('ask')}>Ask</Tab>
-        </nav><div className="pb-window-controls">{window.parent !== window ? <AppearanceButton /> : null}<IconButton label="Open PigeonBox Settings" data-settings-entry onClick={() => openSettings('workspace_header', cloudMode ? 'cloud' : 'local')}><WorkspaceIcon name="settings" size={16} /></IconButton><button type="button" className="pb-icon-btn" aria-label={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} title={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} onClick={() => { setDisplayError(''); void requestWorkspaceDisplay(location.pathname.includes('sidepanel') ? 'float' : 'dock').catch(() => setDisplayError('Could not move the workspace. Try again.')); }}><WorkspaceIcon name="dock" size={16} /></button></div></div>
+        </nav><div className="pb-window-controls"><AppearanceButton /><IconButton label="Open PigeonBox Settings" data-settings-entry onClick={() => openSettings('workspace_header', cloudMode ? 'cloud' : 'local')}><WorkspaceIcon name="settings" size={16} /></IconButton><button type="button" className="pb-icon-btn" aria-label={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} title={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} onClick={() => { setDisplayError(''); void requestWorkspaceDisplay(location.pathname.includes('sidepanel') ? 'float' : 'dock').catch(() => setDisplayError('Could not move the workspace. Try again.')); }}><WorkspaceIcon name="dock" size={16} /></button></div></div>
       </header>
       {displayError ? <p className="gi-warn px-4" role="alert">{displayError}</p> : null}
       <div className="pb-panel-content" inert={palette}>

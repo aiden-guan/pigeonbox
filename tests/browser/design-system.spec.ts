@@ -58,7 +58,7 @@ test('Pidgy and the shell remain one spatial object through interruption and red
   expect(await shell.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgb(255, 255, 255)');
   await workspace.getByRole('button', { name:'Appearance: light. Switch to dark' }).click();
   await expect(host).toHaveAttribute('data-pb-theme','dark');
-  expect(await shell.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgb(33, 41, 47)');
+  expect(await shell.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgb(25, 27, 30)');
   await workspace.getByRole('button', { name:'Appearance: dark. Switch to system' }).click();
   await host.getByRole('button', { name: 'Collapse PigeonBox' }).click();
   await expect(host.getByRole('button', { name: 'Reopen PigeonBox' })).toBeVisible();
