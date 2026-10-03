@@ -377,18 +377,59 @@ ${orbCss}
   color: var(--pb-fg) !important;
 }
 .gi-compose-track {
-  margin: 0 var(--pb-space-2) !important;
-  border: 0 !important;
-  border-radius: var(--pb-radius-xs) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  margin: 0 var(--pb-space-2) 0 0 !important;
+  border: 1px solid var(--pb-border-strong, #b5c1bc) !important;
+  border-radius: var(--pb-radius-pill, 999px) !important;
   background: transparent !important;
-  color: #5f6368 !important;
-  font: 600 var(--pb-size-label)/1 ui-sans-serif, system-ui, sans-serif !important;
+  color: var(--pb-fg-muted, #64717b) !important;
+  font: 600 var(--pb-size-label)/1 var(--pb-sans, ui-sans-serif, system-ui, sans-serif) !important;
+  letter-spacing: var(--pb-tracking-label, .01em) !important;
   cursor: pointer !important;
-  padding: var(--pb-space-1) var(--pb-space-2) !important;
+  padding: 8px 14px 8px 10px !important;
+  transition: background .2s ease, border-color .2s ease, box-shadow .2s ease, transform .12s ease;
+}
+.gi-compose-track::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6'%3E%3Ccircle cx='8' cy='8' r='6.2'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6'%3E%3Ccircle cx='8' cy='8' r='6.2'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.gi-compose-track { position: relative !important; overflow: hidden !important; }
+.gi-compose-track[data-tone="preparing"] {
+  color: var(--pb-tracking, #496775) !important;
+  border-color: color-mix(in srgb, var(--pb-tracking, #496775) 45%, transparent) !important;
+  animation: pb-track-breathe 2.4s ease-in-out infinite;
+}
+/* The real thinking orb (injected by compose-tracking) replaces the static ring glyph. */
+.gi-compose-track[data-tone="preparing"]::before { display: none; }
+.gi-compose-track[data-tone="preparing"] { padding-left: 9px !important; }
+.gi-compose-track .gi-orb { font-size: 26px !important; margin: -5px 0 -5px 0; color: var(--pb-tracking, #496775); filter: drop-shadow(0 0 5px color-mix(in srgb, var(--pb-tracking, #496775) 45%, transparent)); }
+@keyframes pb-track-breathe { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 10px color-mix(in srgb, var(--pb-tracking, #496775) 28%, transparent); } }
+@media (prefers-reduced-motion: reduce) {
+  .gi-compose-track[data-tone="preparing"] { animation: none !important; }
 }
 .gi-compose-track[data-on="1"] {
-  color: #78421e !important;
-  background: var(--pb-accent-soft) !important;
+  color: var(--pb-accent, #9a4b2e) !important;
+  border-color: color-mix(in srgb, var(--pb-accent, #9a4b2e) 45%, transparent) !important;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--pb-accent, #9a4b2e) 20%, transparent), color-mix(in srgb, var(--pb-accent, #9a4b2e) 6%, transparent)) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--pb-accent, #9a4b2e) 18%, transparent), 0 1px 2px color-mix(in srgb, var(--pb-accent, #9a4b2e) 18%, transparent) !important;
+}
+.gi-compose-track[data-on="1"]::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='6.2'/%3E%3Cpath d='M5.2 8.2l2 2 3.6-4'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='6.2'/%3E%3Cpath d='M5.2 8.2l2 2 3.6-4'/%3E%3C/svg%3E");
+}
+/* Hovering the badge or anywhere in the Send group lifts the badge onto an opaque themed fill so the copper text stays legible over Gmail's blue. */
+.gi-compose-track[data-on="1"]:hover,
+:has(> :not(.gi-compose-track):hover) > .gi-compose-track[data-on="1"] {
+  background: color-mix(in srgb, var(--pb-accent, #9a4b2e) 16%, var(--pb-surface-raised, #fff)) !important;
+  border-color: var(--pb-accent, #9a4b2e) !important;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--pb-accent, #9a4b2e) 28%, transparent) !important;
 }
 .gi-compose-track:active { transform: translateY(1px); }
 

@@ -12,6 +12,7 @@ import {
 } from '@pigeonbox/tracking';
 import { findSendButton } from '@pigeonbox/gmail';
 import { ensureSurface } from '../shell/surface';
+import { createOrb } from '../../ui/orb-markup';
 import {
   composeTrackingLabel,
   createTrackingSession,
@@ -667,7 +668,20 @@ function mountTrackingControl(compose: HTMLElement, composeSessionId: string, de
     });
     button.dataset.on = status.tone === 'ready' ? '1' : '0';
     button.dataset.tone = status.tone;
-    button.textContent = status.label;
+    if (status.tone === 'preparing') {
+      try {
+        const orb = createOrb(26, 'bare', 'analyzing');
+        orb.dataset.compact = 'false';
+        orb.dataset.visible = 'true';
+        const text = document.createElement('span');
+        text.textContent = status.label;
+        button.replaceChildren(orb, text);
+      } catch {
+        button.textContent = status.label;
+      }
+    } else {
+      button.textContent = status.label;
+    }
     button.title = status.label;
   };
   render();
