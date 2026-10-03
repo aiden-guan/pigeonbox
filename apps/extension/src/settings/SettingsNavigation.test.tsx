@@ -74,11 +74,23 @@ describe('Settings navigation and Cloud gating', () => {
   });
 
   it('the Advanced link reveals the collapsed section instead of pointing at nothing', async () => {
-    await render();
-    expect(container.querySelector('#advanced')).toBeNull();
-    const advanced = [...container.querySelectorAll<HTMLAnchorElement>('.gi-settings-nav a')].find((link) => link.hash === '#advanced')!;
-    await act(async () => advanced.click());
-    expect(container.querySelector('#advanced')).not.toBeNull();
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView });
+    try {
+      await render();
+      expect(container.querySelector('#advanced')).toBeNull();
+      const advanced = [...container.querySelectorAll<HTMLAnchorElement>('.gi-settings-nav a')].find((link) => link.hash === '#advanced')!;
+      await act(async () => {
+        advanced.click();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      });
+      expect(container.querySelector('#advanced')).not.toBeNull();
+      expect(scrollIntoView).toHaveBeenCalled();
+    } finally {
+      if (originalScrollIntoView) Object.defineProperty(Element.prototype, 'scrollIntoView', originalScrollIntoView);
+      else Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    }
   });
 
   it('a stored Cloud mode without a configured Cloud backend exposes no account controls', async () => {
