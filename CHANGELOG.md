@@ -8,7 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.5.1] — 2026-10-04
+
 ### Changed
+- **Ask Pigeon (Cloud) is a conversation.** Answers stream in as they are written, show what Pigeon is searching, and follow-up questions keep the earlier turns.
+- **Ask answers are easier to read.** Body-size text instead of a large serif, the direct answer first, details as short labelled bullets, and small group labels.
+- Cloud entitlements report the share of the monthly Cloud AI allowance used (`aiMonthlyUsed`), for a usage bar without token counts.
 - **Narrower permissions.** Settings asks Chrome for tracker and AI host access only when that feature is on and Cloud mode is off.
 - **Compose tracking badge** sits in its own bar below Send without covering Gmail's tools, shows the thinking orb while preparing, and no longer stays on Preparing. Sent-status marks have their own slot.
 - **Drafts** may not claim you reviewed, sent or completed something unless your own text says so. Replies that open with "Here's my reply" or a subject line are cleaned or rejected.
