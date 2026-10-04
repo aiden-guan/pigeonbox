@@ -72,8 +72,8 @@ function flattenExtensionHtml(): Plugin {
  * `tracker-config.json` (a developer's personal tracker token).
  */
 const release = process.env.PIGEONBOX_RELEASE === '1';
-/** Release builds go to their own folder so the unpacked dev build in dist/ is left alone. */
-const outDir = process.env.PIGEONBOX_OUT_DIR || (release ? 'dist-release' : 'dist');
+/** One working build; packaging supplies its own temporary staging directory. */
+const outDir = process.env.PIGEONBOX_OUT_DIR || 'dist';
 if (release) process.env.VITE_PIGEONBOX_EXPERIMENTAL = 'false';
 /** Source builds call the local `npm run dev:reload` helper; release builds never do. */
 if (release) process.env.VITE_PIGEONBOX_DEV_REBUILD_URL = '';

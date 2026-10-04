@@ -52,4 +52,4 @@ shasum -a 256 -c PigeonBox-v0.3.0.sha256
 
 ## What is in the ZIP
 
-Only the release build output in `apps/extension/dist-release`, minus anything `isExcludedFromPackage` matches. See the checks in [chrome-web-store.md](chrome-web-store.md).
+Only a fresh release build from an isolated temporary staging directory, minus anything `isExcludedFromPackage` matches. Staging is removed after packaging; the ZIP and checksum go to `release/` (or `--out`). Packaging never changes `apps/extension/dist`, the working folder loaded in Chrome. See the checks in [chrome-web-store.md](chrome-web-store.md).

@@ -4,7 +4,7 @@ import { resolve, dirname } from 'node:path';
 
 const outputDir = process.env.PIGEONBOX_BROWSER_EXTENSION_PATH || 'apps/extension/dist';
 
-// Test-only entry in the ignored dev build. Release packaging rebuilds dist-release.
+// Test-only entry in the ignored working build. Release packaging uses temporary staging.
 await build({
   entryPoints: ['tests/browser/tracking-runtime.ts'],
   outfile: resolve(outputDir, 'browser-fixture.js'),

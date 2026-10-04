@@ -1,6 +1,6 @@
 node_modules/
-dist/
-dist-release/
+dist
+dist-release
 release/
 dist-types/
 *.tsbuildinfo

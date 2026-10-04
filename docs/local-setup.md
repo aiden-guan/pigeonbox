@@ -60,6 +60,8 @@ npm run verify       # everything CI runs, including the release ZIP check
 
 `npm run dev` never starts Convex, a tracker, or any Cloud service.
 
+Use `apps/extension/dist` as the single working extension folder in Chrome. `npm run build`, `npm run dev`, and the reload helper all update this folder. `npm run package` builds in temporary staging and writes a ZIP to `release/`; it does not replace your working build. After rebuilding, reload PigeonBox in `chrome://extensions` and refresh Gmail to replace its running content script.
+
 `npm run dev:reload` starts a small helper on `127.0.0.1:5199` that only accepts requests from Chrome extensions. While it runs, Settings’ **Reload extension** button rebuilds `apps/extension/dist` from your current source before restarting the extension; a failed build leaves the running extension alone. Without the helper the button does a plain reload. Release builds never contact it.
 
 On macOS, `npm run dev:reload:install` keeps the helper running in the background and starts it at every login (a per-user LaunchAgent; logs in `~/Library/Logs/PigeonBox/dev-reload.log`). `npm run dev:reload:status` checks it and `npm run dev:reload:uninstall` removes it. Re-run install if you move the repo or change Node versions.

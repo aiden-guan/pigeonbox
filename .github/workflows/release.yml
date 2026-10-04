@@ -39,7 +39,6 @@ jobs:
       - name: Rebuild and confirm the ZIP is reproducible
         run: |
           first=$(cut -d' ' -f1 release/PigeonBox-${GITHUB_REF_NAME}.sha256)
-          rm -rf apps/extension/dist-release
           node scripts/package-extension.mjs --out "$RUNNER_TEMP/second"
           second=$(cut -d' ' -f1 "$RUNNER_TEMP/second/PigeonBox-${GITHUB_REF_NAME}.sha256")
           test "$first" = "$second" || { echo "Release ZIP is not reproducible: $first vs $second"; exit 1; }

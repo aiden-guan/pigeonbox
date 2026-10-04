@@ -4,7 +4,7 @@
  *
  *   npm run package                 release build, validate, write release/PigeonBox-vX.Y.Z.zip + .sha256
  *   npm run package -- --cloud      configured Cloud beta (separate from the Local store release)
- *   npm run package -- --skip-build package the existing apps/extension/dist-release
+ *   npm run package -- --skip-build --from <dir> validate and package an existing release build
  *   npm run package -- --out <dir>  write artifacts somewhere else
  *
  * The release build sets PIGEONBOX_RELEASE=1: no source maps, no experimental
@@ -12,7 +12,8 @@
  */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { collectFiles, isExcludedFromPackage, localSecretValues, validatePackage, vendorPublicValues } from './lib/extension-package.mjs';
@@ -23,8 +24,16 @@ const args = process.argv.slice(2);
 const cloudBuild = args.includes('--cloud');
 const skipBuild = args.includes('--skip-build');
 const outIndex = args.indexOf('--out');
+const fromIndex = args.indexOf('--from');
+if (outIndex >= 0 && (!args[outIndex + 1] || args[outIndex + 1].startsWith('--'))) fail('--out requires an output directory.');
+if (skipBuild && (fromIndex < 0 || !args[fromIndex + 1] || args[fromIndex + 1].startsWith('--'))) fail('--skip-build requires --from <dir> for an existing release build.');
+if (!skipBuild && fromIndex >= 0) fail('--from is only supported with --skip-build.');
 const outDir = outIndex >= 0 ? resolve(args[outIndex + 1]) : join(root, 'release');
-const dist = join(root, 'apps', 'extension', 'dist-release');
+// Packaging never replaces the folder Chrome loads. Each build gets clean,
+// isolated staging and removes it on success or failure.
+const staging = skipBuild ? null : mkdtempSync(join(tmpdir(), 'pigeonbox-package-'));
+const dist = staging ? join(staging, 'extension') : resolve(args[fromIndex + 1]);
+if (staging) process.on('exit', () => rmSync(staging, { recursive: true, force: true }));
 
 function fail(message) {
   console.error(`\n${message}\n`);
@@ -40,14 +49,14 @@ if (!skipBuild) {
     stdio: 'inherit',
     shell: process.platform === 'win32',
     env: {
-      ...process.env, PIGEONBOX_RELEASE: '1', VITE_PIGEONBOX_EXPERIMENTAL: 'false',
+      ...process.env, PIGEONBOX_RELEASE: '1', PIGEONBOX_OUT_DIR: dist, VITE_PIGEONBOX_EXPERIMENTAL: 'false',
       ...(!cloudBuild ? { VITE_PIGEONBOX_CLOUD_API_URL: '', VITE_PIGEONBOX_CLOUD_TRACKER_URL: '', VITE_PIGEONBOX_CLOUD_TRACKER_PREVIOUS_URLS: '' } : {}),
     },
   });
   if (result.status !== 0) fail('Release build failed.');
 }
 
-if (!existsSync(join(dist, 'manifest.json'))) fail('apps/extension/dist-release/manifest.json is missing. Run npm run package without --skip-build.');
+if (!existsSync(join(dist, 'manifest.json'))) fail(`No manifest.json in ${dist}. Run npm run package without --skip-build to build from source.`);
 
 const all = collectFiles(dist);
 const files = all.filter((file) => !isExcludedFromPackage(file.name));
