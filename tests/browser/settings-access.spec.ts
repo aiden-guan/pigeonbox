@@ -82,7 +82,7 @@ test('an enabled Cloud workspace keeps Settings and the account action derives f
   await expect(settings.getByRole('button', { name: 'Manage billing' })).toBeVisible();
   const account = app.context.waitForEvent('page');
   await settings.getByRole('button', { name: 'Manage Cloud account ↗' }).click();
-  await expect(await account).toHaveURL(`${new URL(app.api.baseUrl).origin}/app#overview`);
+  await expect(await account).toHaveURL(`${new URL(app.api.baseUrl).origin}/dashboard#overview`);
 });
 
 test('the command palette still opens Settings', async ({ app }) => {
@@ -127,6 +127,6 @@ test('a public Local build keeps Settings one click away and shows Cloud only as
   const nav = settings.getByRole('navigation', { name: 'Settings sections' });
   await expect(nav.getByRole('link', { name: 'Cloud / Sync' })).toHaveCount(0);
   await expect(nav.getByRole('link', { name: 'Memory' })).toHaveCount(0);
-  expect(await settings.content()).not.toMatch(/workers\.dev|\/app#/);
+  expect(await settings.content()).not.toMatch(/workers\.dev|\/app#|\/dashboard#/);
   expect(app.api.calls.some((call) => /auth|checkout|billing/.test(call.route))).toBe(false);
 });
