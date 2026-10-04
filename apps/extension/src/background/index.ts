@@ -87,7 +87,7 @@ import { cloudSection, panelSection } from '../ui/cloud-features';
 import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, isGmailContentScript, senderMaySend } from './messaging';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
-import { EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl, cloudTrackerUrls, trackerIssuer } from '../config';
+import { CLOUD_DASHBOARD_URL, EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl, cloudTrackerUrls, trackerIssuer } from '../config';
 import { gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './tracking/notifications';
 
 const db = getMailboxDb();
@@ -2066,7 +2066,10 @@ async function productState() {
 /** The Cloud web app (served by the Cloud API's origin), for a section such as "approvals". */
 function cloudWebUrl(section = 'overview'): string | null {
   const base = cloudApiUrl(settings);
-  return base ? `${new URL(base).origin}/app#${cloudSection(section)}` : null;
+  if (!base) return null;
+  const api = new URL(base);
+  const dashboard = ['localhost', '127.0.0.1', '[::1]'].includes(api.hostname) ? `${api.origin}/dashboard` : CLOUD_DASHBOARD_URL;
+  return `${dashboard}#${cloudSection(section)}`;
 }
 
 /** A Cloud client only when Cloud's always-on features (`cloud_mail_sync`) are available; null in Local mode. */

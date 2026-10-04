@@ -1,4 +1,6 @@
 export const CLOUD_WAITLIST_URL = 'https://usepigeonbox.com/waitlist?source=extension';
+/** The Cloud dashboard on the website; loopback API overrides use their own copy. */
+export const CLOUD_DASHBOARD_URL = 'https://usepigeonbox.com/dashboard';
 export function openCloudWaitlist() { void chrome.tabs.create({ url: CLOUD_WAITLIST_URL }); }
 
 import { normalizeBaseUrl } from '@pigeonbox/cloud-client';
