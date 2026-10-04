@@ -10,7 +10,7 @@ import {
   type CreateTrackedEmailResult,
   type TrackedEmailPatch,
 } from '@pigeonbox/tracking';
-import { findSendButton } from '@pigeonbox/gmail';
+import { findSendButton, SELECTORS } from '@pigeonbox/gmail';
 import { ensureSurface } from '../shell/surface';
 import { createOrb } from '../../ui/orb-markup';
 import {
@@ -58,6 +58,7 @@ export type SdkComposeView = {
   isReply?: () => boolean;
   isForward?: () => boolean;
   addButton?: (desc: unknown) => void;
+  addStatusBar?: (options: { height: number; addAboveNativeStatusBar: boolean }) => { el: HTMLElement; destroy: () => void };
 };
 
 export type ComposeTrackingDeps = {
@@ -83,6 +84,7 @@ const refreshers = new Map<string, () => void>();
 const allocationTasks = new Map<string, Promise<ComposeTrackingSession | null>>();
 const modifierTasks = new Map<string, Promise<boolean>>();
 const detailSyncTimers = new Map<string, number>();
+const controlCleanups = new Map<string, () => void>();
 
 /** How long recipient and subject edits settle before the tracker is updated. */
 export const DETAILS_SYNC_DEBOUNCE_MS = 800;
@@ -96,6 +98,8 @@ export function listComposeSessions(): ComposeTrackingSession[] {
 }
 
 export function resetComposeSessionsForTests(): void {
+  for (const cleanup of controlCleanups.values()) cleanup();
+  controlCleanups.clear();
   sessions.clear();
   refreshers.clear();
   allocationTasks.clear();
@@ -120,8 +124,11 @@ export function attachSdkComposeTracking(view: SdkComposeView, deps: ComposeTrac
   });
   sessions.set(composeSessionId, session);
   log(session, 'session-created', { kind: session.kind }, deps);
+  // Gmail removes recipient chips and the body before its async sent IDs resolve.
+  // Keep the final send snapshot in this closure, outside diagnostic session state.
+  let sendSnapshot: ReturnType<typeof composeSendSnapshot> | null = null;
 
-  if (element) mountTrackingControl(element, composeSessionId, deps);
+  if (element) mountTrackingControl(view, element, composeSessionId, deps);
 
   const ensure = () => {
     void ensureTrackingAllocation(composeSessionId, view, deps).then(() => {
@@ -160,6 +167,7 @@ export function attachSdkComposeTracking(view: SdkComposeView, deps: ComposeTrac
   view.on?.('presending', (event) => {
     const current = sessions.get(composeSessionId);
     if (!current || current.destroyed) return;
+    sendSnapshot = composeSendSnapshot(view);
     log(current, 'presending', { state: current.state }, deps);
     const decision = decidePresending(current, trackingConfigured(deps.getSettings()));
     if (decision === 'allow') {
@@ -181,6 +189,7 @@ export function attachSdkComposeTracking(view: SdkComposeView, deps: ComposeTrac
   view.on?.('sending', () => {
     const current = sessions.get(composeSessionId);
     if (!current) return;
+    sendSnapshot ??= composeSendSnapshot(view);
     current.state = 'SENDING';
     log(current, 'sending', {}, deps);
   });
@@ -188,6 +197,7 @@ export function attachSdkComposeTracking(view: SdkComposeView, deps: ComposeTrac
   view.on?.('sendCanceled', () => {
     const current = sessions.get(composeSessionId);
     if (!current || current.recovering) return;
+    sendSnapshot = null;
     if (current.state === 'SENDING') {
       current.state = current.modifierRegistered ? 'MODIFIER_REGISTERED' : current.trackingId ? 'ALLOCATED' : current.state;
       log(current, 'send-canceled', {}, deps);
@@ -199,13 +209,15 @@ export function attachSdkComposeTracking(view: SdkComposeView, deps: ComposeTrac
     if (!current) return;
     current.state = 'SENT';
     clearDetailsSync(composeSessionId);
-    void handleSent(current, view, event, deps);
+    void handleSent(current, view, event, deps, sendSnapshot ?? composeSendSnapshot(view));
   });
 
   view.on?.('destroy', () => {
     const current = sessions.get(composeSessionId);
     if (!current) return;
     current.destroyed = true;
+    controlCleanups.get(composeSessionId)?.();
+    controlCleanups.delete(composeSessionId);
     refreshers.delete(composeSessionId);
     clearDetailsSync(composeSessionId);
     if (current.state !== 'SENT' && current.state !== 'SENDING' && current.trackingId) {
@@ -371,6 +383,10 @@ function trackedDetails(view: SdkComposeView): { subject: string; sender: string
   };
 }
 
+function composeSendSnapshot(view: SdkComposeView) {
+  return { ...trackedDetails(view), bodyText: view.getTextContent?.() || '' };
+}
+
 function detailsKey(details: { subject: string; recipients: string[] }): string {
   return JSON.stringify([details.subject, [...details.recipients].sort()]);
 }
@@ -523,6 +539,7 @@ async function handleSent(
     getThreadIDAsync?: () => Promise<string>;
   } | undefined,
   deps: ComposeTrackingDeps,
+  snapshot: ReturnType<typeof composeSendSnapshot>,
 ): Promise<void> {
   const trackingId = session.trackingId;
   let gmailThreadId: string | null = null;
@@ -554,9 +571,9 @@ async function handleSent(
     gmailThreadId,
   }, deps);
   deps.onSent?.({
-    subject: view.getSubject?.() || '',
-    recipients: collectRecipients(view),
-    bodyText: view.getTextContent?.() || '',
+    subject: snapshot.subject,
+    recipients: snapshot.recipients,
+    bodyText: snapshot.bodyText,
   });
   if (!trackingId) return;
   deps.markSent({
@@ -565,9 +582,9 @@ async function handleSent(
     sent_at: session.sentAt,
     gmail_thread_id: gmailThreadId,
     gmail_message_id: gmailMessageId,
-    subject: (view.getSubject?.() || '').slice(0, 998),
-    sender: view.getFromContact?.()?.emailAddress || 'me',
-    recipients: collectRecipients(view),
+    subject: snapshot.subject,
+    sender: snapshot.sender,
+    recipients: snapshot.recipients,
     links: linksFromSession(session),
   });
   log(session, 'backend-linked', {
@@ -717,8 +734,8 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
-function mountTrackingControl(compose: HTMLElement, composeSessionId: string, deps: ComposeTrackingDeps): void {
-  if (compose.querySelector('[data-gi-ui="track-toggle"]')) return;
+function mountTrackingControl(view: SdkComposeView, compose: HTMLElement, composeSessionId: string, deps: ComposeTrackingDeps): void {
+  if (controlCleanups.has(composeSessionId)) return;
   ensureSurface();
   const button = document.createElement('button');
   button.type = 'button';
@@ -756,9 +773,63 @@ function mountTrackingControl(compose: HTMLElement, composeSessionId: string, de
     event.stopPropagation();
     toggleMenu(button, composeSessionId, deps, render);
   });
-  const send = findSendButton(compose);
-  if (send?.parentElement) send.parentElement.insertBefore(button, send);
-  else compose.append(button);
+  // InboxSDK reserves space inside Gmail's compose card and maintains it across
+  // native toolbar rendering, resizing and reply/forward changes.
+  if (view.addStatusBar) {
+    try {
+      const bar = view.addStatusBar({ height: 36, addAboveNativeStatusBar: false });
+      bar.el.classList.add('gi-compose-tracking-bar');
+      bar.el.append(button);
+      controlCleanups.set(composeSessionId, () => { button.remove(); bar.destroy(); });
+      return;
+    } catch {
+      // Older SDK adapters can use the scoped toolbar-row fallback below.
+    }
+  }
+  let statusRow: HTMLTableRowElement | null = null;
+  const bar = document.createElement('div');
+  bar.className = 'gi-compose-tracking-bar';
+  bar.append(button);
+  const place = () => {
+    // The compose view can arrive before Send, or contain a nested body-only
+    // compose root. Wait for its actual toolbar instead of appending an orphan
+    // badge below the reply; move it again if Gmail replaces the toolbar.
+    const send = findSendButton(compose) || compose.querySelector<HTMLElement>(SELECTORS.sendButton.join(','));
+    if (!send?.parentElement) {
+      bar.remove();
+      statusRow?.remove();
+      statusRow = null;
+      return;
+    }
+    const sendCell = send.closest('td');
+    const row = sendCell?.parentElement;
+    if (sendCell && row instanceof HTMLTableRowElement && compose.contains(row)) {
+      if (!statusRow) {
+        statusRow = document.createElement('tr');
+        statusRow.setAttribute('data-gi-ui', 'track-control-row');
+        statusRow.insertCell();
+      }
+      const cell = statusRow.cells[0]!;
+      cell.colSpan = row.cells.length;
+      if (bar.parentElement !== cell) cell.append(bar);
+      if (row.previousElementSibling !== statusRow) row.parentElement!.insertBefore(statusRow, row);
+    } else {
+      statusRow?.remove();
+      statusRow = null;
+      const group = send.closest<HTMLElement>('[role="group"]') || send;
+      const parent = group.parentElement!;
+      if (bar.parentElement !== parent || group.previousElementSibling !== bar) parent.insertBefore(bar, group);
+    }
+  };
+  const observer = new MutationObserver(place);
+  observer.observe(compose, { childList: true, subtree: true });
+  place();
+  controlCleanups.set(composeSessionId, () => {
+    observer.disconnect();
+    button.remove();
+    bar.remove();
+    statusRow?.remove();
+  });
 }
 
 function toggleMenu(

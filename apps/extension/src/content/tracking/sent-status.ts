@@ -351,7 +351,7 @@ function statusSignatureFor(root: ParentNode, emails: TrackedEmailSummary[], tra
   return `${match.trackingId}:${copy.markLabel}:${copy.countLabel}`;
 }
 
-/** Sit the check in the recipient line, just before "To: Name". A span between table cells is not shown. */
+/** List rows reserve room in the sender cell; expanded messages use the sender name itself. */
 function senderHost(row: HTMLElement): HTMLElement | null {
   const named = row.querySelector<HTMLElement>('.yW');
   if (named && !named.closest('.gi-track-slot')) return named;
@@ -365,6 +365,16 @@ function senderHost(row: HTMLElement): HTMLElement | null {
 }
 
 function placeRowSlot(row: HTMLElement, existing: HTMLElement | null): HTMLElement {
+  const senderName = row.querySelector<HTMLElement>('.gD[email], .gD[data-hovercard-id]');
+  if (senderName && !senderName.closest('.gi-track-slot')) {
+    if (existing?.previousElementSibling === senderName && existing.classList.contains('gi-track-message-slot')) return existing;
+    existing?.remove();
+    const slot = document.createElement('span');
+    slot.className = 'gi-track-slot gi-track-message-slot';
+    slot.setAttribute('data-gi-ui', 'track');
+    senderName.insertAdjacentElement('afterend', slot);
+    return slot;
+  }
   const host = senderHost(row);
   if (existing && host && existing.parentElement === host && host.firstElementChild === existing) return existing;
   existing?.remove();

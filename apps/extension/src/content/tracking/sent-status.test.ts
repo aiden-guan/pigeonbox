@@ -50,6 +50,28 @@ function row(threadId: string, email: string, subject: string): void {
 }
 
 describe('sent mail open status', () => {
+  it('places the message status beside the sender name, away from the avatar and recipient line', () => {
+    document.body.innerHTML = `<div role="listitem" data-legacy-thread-id="thread-1">
+      <div class="avatar"><img alt="Sender avatar"></div>
+      <span class="bog">Hello</span><div class="header"><span class="gD" email="aiden@example.com">Aiden</span><span class="go">&lt;aiden@example.com&gt;</span>
+        <div>to Aiden</div></div><div class="body">Hello</div>
+      <span class="gi-track-slot"></span>
+    </div>`;
+    paintRows(document, [opened], 'https://track.example', () => undefined);
+    const name = document.querySelector('.gD')!;
+    const slot = document.querySelector('.gi-track-message-slot');
+    expect(name.nextElementSibling).toBe(slot);
+    expect(slot?.parentElement?.className).toBe('header');
+    expect(document.querySelector('.avatar .gi-track-slot')).toBeNull();
+    paintRows(document, [opened], 'https://track.example', () => undefined);
+    expect(document.querySelectorAll('.gi-track-slot')).toHaveLength(1);
+    // Gmail can replace the name without replacing the message container.
+    name.outerHTML = '<span class="gD" email="aiden@example.com">Aiden updated</span>';
+    paintRows(document, [opened], 'https://track.example', () => undefined);
+    expect(document.querySelector('.gD')?.nextElementSibling).toBe(slot);
+    expect(document.querySelectorAll('.gi-track-slot')).toHaveLength(1);
+  });
+
   it('shows a copper opened check and a gray not-opened check', () => {
     row('thread-1', 'aiden@example.com', 'Hello');
     row('thread-2', 'sam@example.com', 'Follow up');

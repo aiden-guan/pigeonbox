@@ -49,6 +49,8 @@ it('shares ID-free artwork with plain-DOM busy toasts and never replaces the adj
   const domOrb = createOrb(16, 'bare', 'drafting');
   expect(domOrb.innerHTML).toBe(reactOrb.innerHTML);
   expect(domOrb.querySelector('[id]')).toBeNull();
+  // The same markup ships in the site's strict style-src 'self' walkthrough.
+  expect(domOrb.querySelector('[style]')).toBeNull();
   expect(domOrb.getAttribute('aria-hidden')).toBe('true');
   expect(host.querySelector('[role="status"]')!.textContent).toBe('Drafting…');
   expect(domOrb.dataset.visible).toBe('false');

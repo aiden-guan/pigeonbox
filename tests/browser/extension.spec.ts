@@ -158,6 +158,31 @@ test('tracking instruments the controlled composer, transforms only outbound HTM
   await page.getByRole('button', { name: 'Inspect self and recipient opens' }).click();
   await expect(page.locator('#timeline')).toHaveText('1 likely open · 1 timeline event · sender suppressed true');
 });
+test('tracking badge stays inside the compose footer without covering native controls at normal and narrow widths', async ({ app }) => {
+  const page = await app.context.newPage();
+  await page.goto(`chrome-extension://${app.id}/browser-fixture.html`);
+  const badge = page.locator('#tracking-compose [data-gi-ui="track-toggle"]');
+  await expect(badge).toHaveText('Tracking ready');
+  for (const width of [800, 320]) {
+    await page.setViewportSize({ width, height: 600 });
+    const bounds = await page.evaluate(() => {
+      const root = document.querySelector('#tracking-compose')!;
+      const badge = root.querySelector('[data-gi-ui="track-toggle"]')!;
+      const send = root.querySelector('[aria-label="Send"]')!;
+      const b = badge.getBoundingClientRect(), s = send.getBoundingClientRect(), c = root.getBoundingClientRect();
+      const clearOfNativeTools = Array.from(root.querySelectorAll('button:not([data-gi-ui])')).every((tool) => {
+        const n = tool.getBoundingClientRect();
+        return b.right <= n.left || b.left >= n.right || b.bottom <= n.top || b.top >= n.bottom;
+      });
+      return { insideToolbar: root.contains(badge) && Boolean(badge.closest('.gi-compose-tracking-bar')), belowSend: b.top >= s.bottom, left: b.left - c.left, right: c.right - b.right, clearOfNativeTools };
+    });
+    expect(bounds.insideToolbar).toBe(true);
+    expect(bounds.clearOfNativeTools).toBe(true);
+    expect(bounds.belowSend).toBe(true);
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeGreaterThanOrEqual(0);
+  }
+});
 test('Chrome permission boundary grants declared Gmail access and denies undeclared access on a direct gesture', async ({
   app,
 }) => {

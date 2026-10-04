@@ -266,6 +266,7 @@ ${orbCss}
 .gi-cat-chip[data-category="PRIORITY"], .gi-cat-chip[data-category="FOLLOW_UPS"] { color: #8d4b16 !important; }
 
 .gi-track-slot { display: inline-flex !important; align-items: center; margin: 0 var(--pb-space-2) 0 0; vertical-align: middle; flex: 0 0 auto; min-width: 16px; line-height: 0; overflow: visible; }
+.gi-track-message-slot { margin: 0 0 0 6px; }
 .gi-track-btn { display: inline-flex; align-items: center; gap: var(--pb-space-1); cursor: pointer; }
 .gi-track-btn[data-state="opened"] { color: #935023 !important; }
 .gi-track-btn[data-state="pending"] { color: #80868b !important; }
@@ -376,9 +377,13 @@ ${orbCss}
   cursor: pointer;
   color: var(--pb-fg) !important;
 }
+.gi-compose-tracking-bar { display: flex; align-items: center; box-sizing: border-box; min-height: 36px; max-width: 100%; padding: 0 8px; }
+.gi-compose-tracking-bar .gi-compose-track { margin: 0 !important; padding: 5px 10px !important; }
 .gi-compose-track {
   display: inline-flex !important;
   align-items: center !important;
+  vertical-align: middle !important;
+  white-space: nowrap !important;
   gap: 7px !important;
   margin: 0 var(--pb-space-2) 0 0 !important;
   border: 1px solid var(--pb-border-strong, #b5c1bc) !important;

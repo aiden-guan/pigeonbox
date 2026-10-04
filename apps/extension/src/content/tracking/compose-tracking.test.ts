@@ -55,6 +55,48 @@ function deps(overrides: Partial<ComposeTrackingDeps> = {}): ComposeTrackingDeps
 }
 
 describe('compose tracking sessions', () => {
+  it('uses the SDK reserved status bar and destroys it with its compose view', () => {
+    resetComposeSessionsForTests();
+    const gmail = new GmailComposeSendHarness('reply');
+    const bar = document.createElement('div');
+    gmail.element.append(bar);
+    const destroy = vi.fn(() => bar.remove());
+    const addStatusBar = vi.fn(() => ({ el: bar, destroy }));
+    attachSdkComposeTracking({ ...gmail.view(), addStatusBar }, deps());
+    expect(addStatusBar).toHaveBeenCalledWith({ height: 36, addAboveNativeStatusBar: false });
+    expect(bar.querySelector('[data-gi-ui="track-toggle"]')).not.toBeNull();
+    expect(gmail.element.querySelectorAll('[data-gi-ui="track-toggle"]')).toHaveLength(1);
+    gmail.emit('destroy');
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(gmail.element.contains(bar)).toBe(false);
+  });
+
+  it('waits for the Send toolbar and stays inside it when Gmail replaces it', async () => {
+    resetComposeSessionsForTests();
+    const gmail = new GmailComposeSendHarness('reply');
+    const root = gmail.element;
+    root.querySelector('[data-tooltip="Send"]')!.remove();
+    const nestedBody = document.createElement('div');
+    nestedBody.className = 'M9';
+    root.append(nestedBody);
+    attachSdkComposeTracking(gmail.view(), deps());
+    expect(root.querySelector('[data-gi-ui="track-toggle"]')).toBeNull();
+    const toolbar = document.createElement('table');
+    toolbar.innerHTML = '<tbody><tr><td><div role="group"><button aria-label="Send">Send</button><button>Schedule</button></div></td><td>Attachments</td></tr></tbody>';
+    root.append(toolbar);
+    await vi.waitFor(() => expect(toolbar.querySelector('[data-gi-ui="track-toggle"]')).not.toBeNull());
+    expect(toolbar.rows[0]!.cells[0]!.querySelector('[data-gi-ui="track-toggle"]')).not.toBeNull();
+    expect(toolbar.rows[0]!.cells[0]!.colSpan).toBe(2);
+    expect(toolbar.querySelector('[role="group"]')!.children).toHaveLength(2);
+    const replacement = toolbar.cloneNode(true) as HTMLTableElement;
+    replacement.querySelector('[data-gi-ui="track-control-row"]')!.remove();
+    toolbar.replaceWith(replacement);
+    await vi.waitFor(() => expect(replacement.querySelector('[data-gi-ui="track-toggle"]')).not.toBeNull());
+    expect(root.querySelectorAll('[data-gi-ui="track-toggle"]')).toHaveLength(1);
+    gmail.emit('destroy');
+    expect(root.querySelector('[data-gi-ui="track-toggle"]')).toBeNull();
+  });
+
   it('waits for a recipient and allocates one tracker', async () => {
     resetComposeSessionsForTests();
     const gmail = new GmailComposeSendHarness('new');
@@ -404,6 +446,29 @@ describe('compose tracking label', () => {
 });
 
 describe('recipient changes after the tracker exists', () => {
+  it.each(['before sent', 'during ID lookup'])('preserves final send details when Gmail tears down the composer %s', async (timing) => {
+    resetComposeSessionsForTests();
+    const delivered: unknown[] = [];
+    const tracking = deps({ onSent: (info) => delivered.push(info) });
+    const gmail = new GmailComposeSendHarness('new');
+    gmail.recipients = [{ emailAddress: 'original@example.com' }];
+    const id = attachSdkComposeTracking(gmail.view(), tracking);
+    await vi.waitFor(() => expect(getComposeSession(id)?.trackingId).toBe('trk_1'));
+    gmail.recipients = [{ emailAddress: 'final@example.com' }];
+    gmail.cc = [{ emailAddress: 'cc@example.com' }];
+    gmail.subject = 'Final subject';
+    gmail.emit('presending');
+    const teardown = () => { gmail.recipients = []; gmail.cc = []; gmail.subject = ''; gmail.element.replaceChildren(); };
+    if (timing === 'before sent') teardown();
+    gmail.emit('sent', {
+      getThreadID: async () => { if (timing === 'during ID lookup') teardown(); return 't1'; },
+      getMessageID: async () => 'm1',
+    });
+    await vi.waitFor(() => expect(tracking.sent).toHaveLength(1));
+    expect(tracking.sent[0]).toMatchObject({ subject: 'Final subject', sender: 'me@example.com', recipients: ['final@example.com', 'cc@example.com'] });
+    expect(delivered).toEqual([{ subject: 'Final subject', recipients: ['final@example.com', 'cc@example.com'], bodyText: 'Hi' }]);
+  });
+
   it('updates the tracker with the new recipients once edits settle', async () => {
     resetComposeSessionsForTests();
     const updates: Array<{ trackingId: string; subject: string; recipients: string[] }> = [];

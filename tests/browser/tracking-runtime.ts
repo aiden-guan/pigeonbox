@@ -12,12 +12,29 @@ const compose = new GmailComposeSendHarness('reply');
 compose.recipients = [{ emailAddress: 'recipient@fixture.test' }];
 compose.threadId = 'abc123';
 compose.setDraftId('abc999');
+compose.element.id = 'tracking-compose';
+compose.element.style.cssText = 'box-sizing:border-box;width:520px;max-width:100%;padding:8px;background:white;';
+const bodyRoot = document.createElement('div');
+bodyRoot.className = 'M9';
+bodyRoot.append(compose.view().getBodyElement()!);
+compose.element.prepend(bodyRoot);
+const nativeSend = compose.element.querySelector<HTMLElement>('[data-tooltip="Send"]')!;
+const toolbar = document.createElement('table');
+toolbar.style.width = '100%';
+toolbar.innerHTML = '<tbody><tr><td><div role="group" style="display:inline-flex;white-space:nowrap;align-items:center"><button aria-label="Send" style="height:36px">Send</button><button aria-label="Schedule send" style="height:36px">▾</button></div></td><td style="width:100%"><button data-native-tool aria-label="Attach file" style="height:36px">⌁</button></td></tr></tbody>';
+nativeSend.remove();
+compose.element.append(toolbar);
 document.body.append(compose.element);
 const sent = document.createElement('output');
 sent.id = 'sent-state';
 document.body.append(sent);
 let allocations = 0;
-const sessionId = attachSdkComposeTracking(compose.view(), {
+const sessionId = attachSdkComposeTracking({ ...compose.view(), addStatusBar: ({ height }) => {
+  const el = document.createElement('div');
+  el.style.height = `${height}px`;
+  toolbar.insertAdjacentElement('afterend', el);
+  return { el, destroy: () => el.remove() };
+} }, {
   getSettings: () => ({
     ...DEFAULT_SETTINGS,
     trackingEnabled: true,
