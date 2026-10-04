@@ -280,7 +280,7 @@ describe('AI job asynchronous lifecycle and deduplication', () => {
       draftReply: async () => ({
         result: {
           mode: 'direct' as const,
-          body: 'Here is the draft content.',
+          body: 'Thanks for the update.',
           placeholders: [],
         },
       }),
@@ -312,7 +312,7 @@ describe('AI job asynchronous lifecycle and deduplication', () => {
 
     const draft = await db.draft_suggestions.get(job!.resultId!);
     expect(draft).toBeDefined();
-    expect(draft?.suggestion.body).toBe('Here is the draft content.');
+    expect(draft?.suggestion.body).toBe('Thanks for the update.');
   });
 
   it('preserves newer inFlightJob entry when an earlier job completes (ownership check)', async () => {

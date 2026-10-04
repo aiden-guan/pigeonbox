@@ -73,13 +73,14 @@ export function compactDraftPrompt(
       ? 'If the email asks something, answer it or say you will check. If it asks for nothing, write a short thank-you.'
       : 'Write a short, polite follow-up that nudges the sender about the latest open point.',
     'Do not invent facts, names, dates, or promises. Do not accept or decline anything the user has not decided.',
+    'Never claim I have reviewed, checked, sent, or completed something unless a message from me explicitly says I did. Otherwise acknowledge the request without claiming it is done.',
     `Tone: ${voice?.formality || 'neutral'}. Length: ${voice?.concision === 'long' ? 'up to 6 sentences' : voice?.concision === 'short' ? '1 to 2 sentences' : '2 to 4 sentences'}.`,
     voice?.greeting ? `Start with the greeting "${voice.greeting}".` : '',
     'Stop after the last sentence. Do not write a sign-off, a name, or a signature; they are added for you.',
     voice?.emoji ? '' : 'No emoji.',
     voice?.personalInstructions ? `User preference: ${voice.personalInstructions}` : '',
     'Output only the reply text. No subject line, labels, quotes, or notes.',
-    retry ? 'Important: your last answer described the email. This time write the reply itself, as the user, to the sender.' : '',
+    retry ? 'Important: your last answer was not a grounded reply. Write only the reply itself: no subject, explanation, or unsupported claims about actions I completed.' : '',
   ].filter(Boolean).join('\n');
 
   const latest = messageToAnswer(input, kind);
@@ -110,7 +111,7 @@ export function compactDraftPrompt(
           body: `Hi ${exampleFirst},\n\nCould you send me the slides from Tuesday's planning meeting? I want to review them before Friday.\n\nThanks,\nDana`,
           kind: 'reply',
         }),
-        assistant: 'Hi Dana,\n\nSure, I\'ll send the slides over today so you have them before Friday.',
+        assistant: 'Hi Dana,\n\nThanks for the note. I\'ll check which slides I can share.',
       },
       {
         user: framedEmail({
@@ -265,6 +266,7 @@ export function draftNeedsRefresh(draft: string, input: DraftInput): boolean {
 /** Strip wrappers small models add around an otherwise usable reply. */
 export function cleanCompactDraft(text: string): string {
   let body = text.trim();
+  body = body.replace(/^(?:Got it[,!]\s*)?(?:here(?:['’]s| is)\s+(?:my|your|the|a)\s+(?:reply|response|draft)(?:\s+email)?)[^\n]*\n+/i, '');
   body = body.replace(/^(?:\*\*)?(?:reply|response|draft|email|my reply)(?:\*\*)?\s*:\s*/i, '');
   body = body.replace(/^subject\s*:[^\n]*\n+/i, '');
   // Drop a quoted copy of the original that some models append.
@@ -324,7 +326,7 @@ export function formatDraftContext(
 }
 
 export function draftQualityIssue(
-  messages: Array<{ bodyText: string }>,
+  messages: Array<{ bodyText: string; sender?: string }>,
   draft: string,
   owner?: MailboxOwner,
   voice?: DraftInput['voice'],
@@ -341,6 +343,23 @@ export function draftQualityIssue(
   }
   if (describesEmail(trimmed)) {
     return 'The model summarized the email instead of writing a reply. Try again or choose a larger model.';
+  }
+
+  // Reject unsupported completed-action claims before they reach Gmail. Only
+  // the owner's current text can support "I did"; incoming or quoted text cannot.
+  if (/^\s*subject\s*:/im.test(trimmed) || /\bhere(?:['’]s| is)\s+(?:my|your|the|a)\s+(?:reply|response|draft)(?:\s+email)?\b/i.test(trimmed)) {
+    return 'The model included an explanation or subject instead of only a reply. Try again or edit the reply yourself.';
+  }
+  const completedAction = /(?:\bI(?:['’]ve| have)?\s+|\band have\s+)(?:(?:already|just|now)\s+)?(reviewed|checked|verified|tested|sent|submitted|scheduled|booked|paid|cancelled|canceled|attached|uploaded|completed|updated|fixed)\b([^.!?\n]*)/gi;
+  const ownText = messages.filter((message) => isOwnMessage(message.sender || '', owner))
+    .map((message) => splitSuperseded(message.bodyText).current
+      .split(/\n(?:On [^\n]*wrote:|-{2,}\s*Original Message|From:\s)/i)[0]!
+      .split('\n').filter((line) => !line.trimStart().startsWith('>')).join('\n')).join('\n');
+  const claims = (text: string) => Array.from(text.matchAll(completedAction), (match) =>
+    normalizeWords(`${match[1]} ${match[2]}`).slice(0, 5).join(' '));
+  const supported = claims(ownText);
+  if (claims(trimmed).some((claim) => !supported.some((sourceClaim) => sourceClaim === claim))) {
+    return 'The model claimed you completed an action that your messages do not confirm. Try again or edit the reply yourself.';
   }
 
   const words = normalizeWords(trimmed);

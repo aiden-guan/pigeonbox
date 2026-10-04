@@ -270,6 +270,47 @@ describe('compact on-device drafting', () => {
     expect(draftQualityIssue(email.messages, 'The sender wants to know if badge access is still needed.')).toMatch(/summarized/);
     expect(draftQualityIssue(email.messages, 'Thanks for your email! Yes, I still need access next week.')).toBeNull();
   });
+
+  it('removes a model preamble before the subject without dropping the reply', async () => {
+    const { cleanCompactDraft } = await import('./draft-prompt.js');
+    expect(cleanCompactDraft("Got it, here's my response:\nSubject: Re: Verification\nThanks for confirming receipt."))
+      .toBe('Thanks for confirming receipt.');
+    expect(cleanCompactDraft('Here is your draft:\nSubject: Verification\nHi Priya,\n\nI will check.'))
+      .toBe('Hi Priya,\n\nI will check.');
+    expect(cleanCompactDraft('Got it, thanks for confirming receipt.')).toBe('Got it, thanks for confirming receipt.');
+  });
+
+  it('retries unsupported completed actions and refuses a persistent invented claim', async () => {
+    const { createPromptBackedProvider } = await import('./prompt-provider.js');
+    const outputs = ["I've reviewed the logs and everything seems to be in order.", 'Thanks for confirming receipt.'];
+    const complete = vi.fn(async () => ({ text: outputs.shift()! }));
+    const provider = createPromptBackedProvider('local', complete, { summaryStyle: 'compact' });
+    const input = { ...email, owner, voice: undefined as never, kind: 'reply' as const };
+    expect((await provider.draftReply(input)).result.body).toBe('Thanks for confirming receipt.\n\nAiden');
+    expect(complete).toHaveBeenCalledTimes(2);
+    const stubborn = createPromptBackedProvider('local', async () => ({ text: "I've reviewed the logs and everything seems to be in order." }), { summaryStyle: 'compact' });
+    await expect(stubborn.draftReply(input)).rejects.toThrow(/completed an action/);
+  });
+
+  it('only grounds a completed action in the owner current text', async () => {
+    const { draftQualityIssue } = await import('./draft-prompt.js');
+    const claim = "I've reviewed the logs.";
+    const message = { sender: 'Priya <priya@example.com>', bodyText: claim };
+    expect(draftQualityIssue([message], claim, owner)).toMatch(/completed an action/);
+    expect(draftQualityIssue([{ sender: owner.email, bodyText: 'Thanks.\nOn Thursday Priya wrote:\n> I have reviewed the logs.' }], claim, owner)).toMatch(/completed an action/);
+    expect(draftQualityIssue([{ sender: owner.email, bodyText: 'I have reviewed the logs.' }], "I've reviewed the logs. All looks good.", owner)).toBeNull();
+    expect(draftQualityIssue([message], "I haven't reviewed the logs yet.", owner)).toBeNull();
+    expect(draftQualityIssue([message], "I've received it and have verified it successfully.", owner)).toMatch(/completed an action/);
+  });
+
+  it('refuses the real model wrapper after an opening acknowledgment', async () => {
+    const { createPromptBackedProvider } = await import('./prompt-provider.js');
+    const provider = createPromptBackedProvider('local', async () => ({ text:
+      "Thanks for sharing the details. Here's my response:\nSubject: Confirmation of ZIP Verification\nDear Aiden,\nI've received it and have verified it successfully.",
+    }), { summaryStyle: 'compact' });
+    await expect(provider.draftReply({ ...email, owner, voice: undefined as never, kind: 'reply' }))
+      .rejects.toThrow(/explanation or subject/);
+  });
 });
 
 describe('summary thread formatting and coercion', () => {
