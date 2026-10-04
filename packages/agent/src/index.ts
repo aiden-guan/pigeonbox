@@ -610,7 +610,10 @@ export class AgentLoop {
     if (!input.messages.some((message) => message.bodyText.trim())) {
       return { ok: false, reason: 'Open the thread so the message can be read.' };
     }
+    // Fingerprint first: the job can finish while this awaits, and finishing removes it from inFlightJobs.
+    const key = `summary:${input.threadId}:${await summaryFingerprint(input)}`;
     const launched = await this.startSummaryJob(input);
+    const job = this.inFlightJobs.get(key);
     if (launched.status === 'succeeded') {
       return {
         ok: true,
@@ -629,9 +632,6 @@ export class AgentLoop {
         oneLine: launched.oneLine,
       };
     }
-    const fingerprint = await summaryFingerprint(input);
-    const key = `summary:${input.threadId}:${fingerprint}`;
-    const job = this.inFlightJobs.get(key);
     if (job) {
       const res = await job.promise;
       if (res.ok) {
