@@ -83,6 +83,7 @@ import { effectiveSettings, resolveAIProvider } from './ai/provider-router';
 import { cachedCloudState, clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud/client';
 import { cloudThreadStateAvailable, forgetThreadIntel } from './cloud/thread-state';
 import { handleCloudRequest } from './cloud/handlers';
+import { serveAskStream } from './cloud/ask-stream';
 import { cloudSection, panelSection } from '../ui/cloud-features';
 import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, isGmailContentScript, senderMaySend } from './messaging';
@@ -1090,6 +1091,9 @@ async function workspaceContext(senderTab?: chrome.tabs.Tab): Promise<{ context:
   const stored = await chrome.storage.session.get('workspaceContexts');
   return { context: stored.workspaceContexts?.[tab.id] || null, tabId: tab.id, windowId: tab.windowId };
 }
+
+// Streamed Ask Pigeon from extension pages (the side panel).
+chrome.runtime.onConnect.addListener((port) => serveAskStream(port, async () => (settings.runMode === 'cloud' ? getCloudClient(settings) : null)));
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (

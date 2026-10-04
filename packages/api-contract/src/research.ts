@@ -3,17 +3,26 @@ import { IdSchema, InstantSchema, IsoSchema, MailboxSelectorSchema, SourceRefSch
 import { DraftSchema } from './mail.js';
 
 /**
- * Ask Pigeon: research across synced mail, calendar, contacts, commitments,
- * tracking activity and notes. Retrieval happens first and narrowly; the model
- * only sees the retrieved records. Every factual claim cites source records,
- * and incomplete coverage is stated rather than papered over.
+ * Ask Pigeon: an assistant over the user's mail, calendar, contacts,
+ * commitments, tracking activity and notes. The model works agentically: it
+ * searches Gmail, reads threads and queries the user's records with tools,
+ * as many rounds as the question needs, then answers. Facts from the
+ * mailbox cite the source records they came from.
  */
+export const AskTurnSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string().max(8_000),
+});
+export type AskTurn = z.infer<typeof AskTurnSchema>;
+
 export const AskPigeonRequestSchema = MailboxSelectorSchema.extend({
   query: z.string().min(1).max(2_000),
   threadId: z.string().max(128).optional(),
   /** Only honoured when the user enabled web research in preferences. */
   includeWeb: z.boolean().optional(),
   timeZone: z.string().max(64).optional(),
+  /** Earlier turns of this conversation, oldest first, so follow-up questions have context. */
+  history: z.array(AskTurnSchema).max(20).optional(),
 });
 
 export const AskClaimSchema = z.object({
@@ -53,5 +62,22 @@ export const AskPigeonResponseSchema = z.object({
   }),
 });
 export type AskPigeonResponse = z.infer<typeof AskPigeonResponseSchema>;
+
+/**
+ * Ask Pigeon, streamed: one JSON event per line (application/x-ndjson).
+ * `status` says what the agent is doing ("Searching Gmail: from:allen"),
+ * `delta` is answer text as it is written (raw: citation markers like [S3]
+ * are not resolved yet), `reset` discards deltas from a round that turned
+ * into tool calls, and `done` carries the final, cited response. A stream
+ * ends with exactly one `done` or `error`.
+ */
+export const AskStreamEventSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('status'), text: z.string().max(300) }),
+  z.object({ type: z.literal('delta'), text: z.string().max(4_000) }),
+  z.object({ type: z.literal('reset') }),
+  z.object({ type: z.literal('done'), response: AskPigeonResponseSchema }),
+  z.object({ type: z.literal('error'), code: z.string().max(64), message: z.string().max(500) }),
+]);
+export type AskStreamEvent = z.infer<typeof AskStreamEventSchema>;
 
 export const ParsedWindowSchema = z.object({ from: InstantSchema.nullable(), to: InstantSchema.nullable() });

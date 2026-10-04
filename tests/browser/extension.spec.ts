@@ -39,15 +39,40 @@ test('Cloud disconnection offers Google setup; failure preserves the last loaded
   await expect(page.getByText('Could not refresh', { exact: true })).toBeVisible();
   await expect(page.getByText('Reviewed 7 conversations')).toBeVisible();
 });
-test('Cloud Ask shows loading, grounded claims and account-bound sources', async ({ app }) => {
+test('Cloud Ask shows loading, a cited answer, account-bound sources and keeps the conversation', async ({ app }) => {
   const page = await app.page('sidepanel', true);
   await page.getByRole('button', { name: 'Ask', exact: true }).click();
   await page.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('What needs a reply?');
   await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
-  await expect(page.getByText('Reviewing your mail…')).toBeVisible();
-  await expect(page.getByText('Maya needs pricing.', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Pricing', exact: true })).toBeVisible();
+  await expect(page.getByText('Searching your mail…')).toBeVisible();
+  // Progress streams in before the answer.
+  await expect(page.locator('.pb-ask-steps li', { hasText: 'Searching Gmail: pricing' })).toBeVisible();
+  await expect(page.locator('.pb-ask-steps li', { hasText: 'Reading "Pricing"' })).toBeVisible();
+  await expect(page.locator('.pb-answer-text strong', { hasText: 'Pricing' })).toBeVisible();
+  await expect(page.locator('.pb-ask-steps')).toHaveCount(0);
+  expect(app.api.calls.filter((call) => call.route === '/v1/ask/stream')).toHaveLength(1);
+  await expect(page.locator('.pb-answer-text button.pb-citation-ref')).toHaveText('[01]');
+  await expect(page.getByRole('button', { name: /^Pricing/ })).toBeVisible();
   await expect(page.getByText('Only fixture mail was checked.')).toBeVisible();
+  await page.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('And what else?');
+  await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
+  await expect(page.locator('.pb-ask-turn')).toHaveCount(2);
+  await expect(page.locator('.gi-asked').first()).toHaveText('What needs a reply?');
+  await expect(page.locator('.pb-answer-text')).toHaveCount(2);
+  const followUp = app.api.calls.filter((call) => call.route === '/v1/ask/stream')[1]!;
+  expect(followUp.body.history).toEqual([
+    { role: 'user', content: 'What needs a reply?' },
+    { role: 'assistant', content: 'Maya needs pricing.\n\nShe asked in the **Pricing** thread. ' },
+  ]);
+});
+test('Cloud Ask falls back to a one-shot answer when Cloud cannot stream', async ({ app }) => {
+  const page = await app.page('sidepanel', true);
+  app.api.noStream = true;
+  await page.getByRole('button', { name: 'Ask', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('What needs a reply?');
+  await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
+  await expect(page.locator('.pb-answer-text strong', { hasText: 'Pricing' })).toBeVisible();
+  expect(app.api.calls.map((call) => call.route)).toEqual(expect.arrayContaining(['/v1/ask/stream', '/v1/ask']));
 });
 test('Gmail SPA lifecycle mounts one companion, palette restores focus and ignores editors', async ({ app }) => {
   await app.page('sidepanel');
@@ -103,7 +128,7 @@ test('side panel palette opens capability-aware tools and submits Cloud question
   await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('What needs a reply?');
   await page.keyboard.press('Enter');
   await expect(page.getByText('Maya needs pricing.', { exact: true })).toBeVisible();
-  expect(app.api.calls.filter((call) => call.route === '/v1/ask').length).toBeLessThanOrEqual(1);
+  expect(app.api.calls.filter((call) => call.route.startsWith('/v1/ask')).length).toBeLessThanOrEqual(1);
 });
 test('Smart View previews explainable actions and saves only in Shadow Mode', async ({ app }) => {
   const page = await app.page('sidepanel', true);
@@ -231,5 +256,5 @@ test('Local Ask stays local and responds when Cloud is failing', async ({ app })
   await page.locator('form').getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByText('Who needs a reply?', { exact: true })).toBeVisible();
   await expect(page.getByText('Looking through your mail…')).toHaveCount(0);
-  expect(app.api.calls.some(call => call.route === '/v1/ask')).toBe(false);
+  expect(app.api.calls.some(call => call.route.startsWith('/v1/ask'))).toBe(false);
 });

@@ -217,9 +217,70 @@ export class PigeonBoxCloudClient {
     return this.readResponse(response, route.response) as Promise<RouteResponse<N>>;
   }
 
-  private async send(method: string, path: string, payload: unknown, token: string | null, options: CallOptions = {}): Promise<Response> {
+  /**
+   * Streaming call for routes marked `stream: 'ndjson'`: each line of the
+   * response is validated against the route's event schema and handed to
+   * `onEvent` as it arrives. Resolves when the stream ends. Errors before the
+   * stream starts throw like `call()`; a malformed event throws `invalid_response`.
+   */
+  async stream<N extends RouteName>(name: N, body: RouteRequest<N>, onEvent: (event: RouteResponse<N>) => void, options: CallOptions = {}): Promise<void> {
+    const route = ROUTES[name] as (typeof ROUTES)[RouteName] & { stream?: 'ndjson' };
+    if (route.stream !== 'ndjson') throw new CloudApiError({ code: 'invalid_request', message: 'That PigeonBox Cloud route does not stream.' });
+    const parsed = 'request' in route ? route.request.safeParse(body ?? {}) : null;
+    if (parsed && !parsed.success) throw new CloudApiError({ code: 'invalid_request', status: 400, message: 'The request did not match the PigeonBox Cloud contract.' });
+    const payload = parsed?.data;
+    let token = (await this.tokens?.get()) ?? null;
+    if (route.auth === 'user' && !token) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Sign in to PigeonBox Cloud first.' });
+    const streamOptions = { ...options, accept: 'application/x-ndjson' };
+    let response = await this.send(route.method, route.path, payload, token, streamOptions);
+    if (response.status === 401 && route.auth === 'user' && this.tokens) {
+      token = await this.tokens.refresh();
+      if (!token) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Your PigeonBox Cloud session ended. Sign in again.' });
+      response = await this.send(route.method, route.path, payload, token, streamOptions);
+    }
+    if (!response.ok || !response.body) {
+      await this.readResponse(response, route.response);
+      throw new CloudApiError({ code: 'invalid_response', status: response.status, message: 'PigeonBox Cloud did not stream a response.' });
+    }
+    const requestId = response.headers.get(REQUEST_ID_HEADER) ?? undefined;
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = '';
+    const emit = (line: string) => {
+      if (!line.trim()) return;
+      let json: unknown;
+      try {
+        json = JSON.parse(line);
+      } catch {
+        json = null;
+      }
+      const event = route.response.safeParse(json);
+      if (!event.success) throw new CloudApiError({ code: 'invalid_response', requestId, message: 'PigeonBox Cloud sent a response this version of PigeonBox does not understand.' });
+      onEvent(event.data as RouteResponse<N>);
+    };
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let newline = buffer.indexOf('\n');
+        while (newline >= 0) {
+          emit(buffer.slice(0, newline));
+          buffer = buffer.slice(newline + 1);
+          newline = buffer.indexOf('\n');
+        }
+      }
+      emit(buffer);
+    } catch (error) {
+      await reader.cancel().catch(() => undefined);
+      if (error instanceof CloudApiError) throw error;
+      if (options.signal?.aborted) throw new CloudApiError({ code: 'aborted', retryable: false, message: 'The request was cancelled.' });
+      throw new CloudApiError({ code: 'network', retryable: true, requestId, message: 'The connection to PigeonBox Cloud dropped.' });
+    }
+  }
+
+  private async send(method: string, path: string, payload: unknown, token: string | null, options: CallOptions & { accept?: string } = {}): Promise<Response> {
     const headers: Record<string, string> = {
-      Accept: 'application/json',
+      Accept: options.accept ?? 'application/json',
       [PROTOCOL_HEADER]: String(PROTOCOL_VERSION),
       [CLIENT_HEADER]: this.clientName,
     };

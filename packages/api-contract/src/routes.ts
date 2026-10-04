@@ -135,7 +135,7 @@ import {
   ThreadSignalsRequestSchema,
   ThreadSignalsResponseSchema,
 } from './relationships.js';
-import { AskPigeonRequestSchema, AskPigeonResponseSchema } from './research.js';
+import { AskPigeonRequestSchema, AskPigeonResponseSchema, AskStreamEventSchema } from './research.js';
 import {
   AssignRequestSchema,
   AssignmentUpdateRequestSchema,
@@ -168,6 +168,12 @@ export type RouteDef = {
    * calling. Routes without a capability need only a signed-in user.
    */
   capability?: PigeonBoxCapability;
+  /**
+   * Set on routes that answer with a stream of newline-delimited JSON events
+   * instead of one JSON body. `response` then validates each event, and
+   * clients read them with `stream()` rather than `call()`.
+   */
+  stream?: 'ndjson';
 };
 
 /**
@@ -232,6 +238,7 @@ export const ROUTES = {
   taskCreate: { method: 'POST', path: '/v1/tasks', auth: 'user', request: TaskCreateSchema, response: TasksSchema, capability: 'cloud_mail_sync' },
   taskUpdate: { method: 'POST', path: '/v1/tasks/update', auth: 'user', request: TaskUpdateSchema, response: TasksSchema, capability: 'cloud_mail_sync' },
   askPigeon: { method: 'POST', path: '/v1/ask', auth: 'user', request: AskPigeonRequestSchema, response: AskPigeonResponseSchema, capability: 'cloud_semantic_search' },
+  askPigeonStream: { method: 'POST', path: '/v1/ask/stream', auth: 'user', request: AskPigeonRequestSchema, response: AskStreamEventSchema, capability: 'cloud_semantic_search', stream: 'ndjson' },
 
   // Calendar Copilot and briefings.
   calendarAvailability: { method: 'POST', path: '/v1/calendar/availability', auth: 'user', request: AvailabilityRequestSchema, response: AvailabilityResponseSchema, capability: 'cloud_calendar' },

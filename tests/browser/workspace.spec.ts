@@ -76,7 +76,7 @@ test('current conversation follows Gmail, Ask carries account-bound context, and
   await frame.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('Summarize this thread');
   await frame.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
   await expect(frame.getByText('Maya needs pricing.', { exact: true })).toBeVisible();
-  expect(app.api.calls.find((call) => call.route === '/v1/ask')?.body).toMatchObject({ threadId: 'abc123', mailbox: 'owner@fixture.test' });
+  expect(app.api.calls.find((call) => call.route === '/v1/ask/stream')?.body).toMatchObject({ threadId: 'abc123', mailbox: 'owner@fixture.test' });
   await frame.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('Add this to my tasks');
   await frame.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
   await expect(frame.getByText('Task saved: Pricing. The source email is attached.')).toBeVisible();

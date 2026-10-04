@@ -137,7 +137,23 @@ const briefing = {
   sources: [{ id: 'thread:abc123', kind: 'thread', title: 'Pricing', gmailThreadId: 'abc123', accountId }],
   coverageNote: 'One connected fixture mailbox.',
 };
+/** The fixture's Ask Pigeon answer, one-shot or at the end of the stream. */
+function fixtureAskAnswer(sources: unknown[], at: string) {
+  return {
+    answer: 'Maya needs pricing.\n\nShe asked in the **Pricing** thread. [1]',
+    claims: [{ text: 'Maya needs pricing.', sourceIds: ['thread:abc123'] }],
+    sources,
+    coverage: { complete: false, note: 'Only fixture mail was checked.', since: at },
+    unverified: [],
+    actions: [],
+    drafts: [],
+    retrieval: { strategies: ['lexical'], candidates: 1, used: 1, window: { from: null, to: null } },
+  };
+}
+
 export type FixtureApi = {
+  /** Answer the streaming Ask route with 404, like an older Cloud. */
+  noStream?: boolean;
   partial: boolean;
   disconnected: boolean;
   delay: number;
@@ -248,19 +264,31 @@ export const test = base.extend<{ app: App }>({
           synced: true,
           accountId,
         };
-      else if (def === 'askPigeon') {
+      else if (def === 'askPigeonStream') {
+        // Like a Cloud that predates streaming, so the extension falls back to askPigeon.
+        if (api.noStream) {
+          response.statusCode = 404;
+          response.end(JSON.stringify({ error: { code: 'not_found', message: 'Not found.' } }));
+          return;
+        }
+        response.setHeader('Content-Type', 'application/x-ndjson');
+        const write = (event: unknown) => response.write(`${JSON.stringify(event)}\n`);
+        const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+        write({ type: 'status', text: 'Searching Gmail: pricing' });
+        await pause(150 + (api.askDelay ?? 0));
+        write({ type: 'status', text: 'Reading "Pricing"' });
+        await pause(400);
+        write({ type: 'delta', text: 'Maya needs ' });
+        await pause(400);
+        write({ type: 'delta', text: 'pricing. [S' });
+        await pause(100);
+        write({ type: 'done', response: fixtureAskAnswer(briefing.sources, at) });
+        response.end();
+        return;
+      } else if (def === 'askPigeon') {
         if (api.askDelay) await new Promise((resolve) => setTimeout(resolve, api.askDelay));
         await new Promise((resolve) => setTimeout(resolve, 300));
-        data = {
-          answer: 'Maya needs pricing.',
-          claims: [{ text: 'Maya needs pricing.', sourceIds: ['thread:abc123'] }],
-          sources: briefing.sources,
-          coverage: { complete: false, note: 'Only fixture mail was checked.', since: at },
-          unverified: [],
-          actions: [],
-          drafts: [],
-          retrieval: { strategies: ['lexical'], candidates: 1, used: 1, window: { from: null, to: null } },
-        };
+        data = fixtureAskAnswer(briefing.sources, at);
       } else if (def === 'tasks') data = { tasks };
       else if (def === 'taskCreate') { tasks.push({ id: String(body.id), title: String(body.title), threadId: body.threadId ? String(body.threadId) : null, accountId: body.threadId ? accountId : null, dueAt: null, status: 'open', createdAt: at }); data = { tasks }; }
       else if (def === 'taskUpdate') { tasks = tasks.map((task) => task.id === body.id ? { ...task, status: body.status as SavedTask['status'] } : task); data = { tasks }; }
