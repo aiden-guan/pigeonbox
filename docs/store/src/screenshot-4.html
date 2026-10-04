@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PigeonBox screenshot 4 · Ask Pigeon</title>
+<link rel="stylesheet" href="store.css">
+<style>
+  .canvas { width: 1280px; height: 800px; }
+  .top { position: absolute; left: 640px; top: 44px; z-index: 5; }
+  .copy { position: absolute; left: 640px; top: 150px; width: 560px; z-index: 5; }
+  .display { font-size: 62px; }
+  .lede { margin-top: 24px; }
+  .asks { position: absolute; left: 640px; top: 470px; width: 520px; z-index: 5; }
+  .asks .label { display: block; margin-bottom: 16px; }
+  .asks p { margin: 0; padding: 13px 0; border-top: 1px solid var(--rule); font: 400 22px/1.25 var(--serif); letter-spacing: -.01em; display: flex; gap: 14px; align-items: baseline; }
+  .asks p:last-child { border-bottom: 1px solid var(--rule); }
+  .asks p i { font: 500 12px/1 var(--mono); color: var(--copper); font-style: normal; }
+  .perch { position: absolute; left: 470px; top: 30px; z-index: 6; }
+</style>
+</head>
+<body>
+<div class="canvas" id="c">
+  <canvas class="layer" id="dots"></canvas>
+  <div class="top lockup"><span class="pidgy" style="--u:40px"></span><span class="word" style="font-size:26px">PigeonBox</span><span class="sep"></span><span class="label"><b>04</b>&nbsp; Ask Pigeon</span></div>
+  <div class="copy">
+    <h1 class="display">Answers,<span class="l2">with sources.</span></h1>
+    <p class="lede">Ask about your mail. Answers come from mail already indexed on this computer, and <strong>cite the thread they came from.</strong></p>
+  </div>
+  <div class="asks">
+    <span class="label">Try asking</span>
+    <p><i>01</i>What needs a reply?</p>
+    <p><i>02</i>What did I send Sam last week?</p>
+    <p><i>03</i>Draft an email to Maya saying I’ll be late.</p>
+  </div>
+  <div class="perch"><span class="pidgy flip" style="--u:96px; --row:3; --col:3"></span></div>
+</div>
+<script type="module">
+  import { paint, shot } from './scenes.js';
+  const c = document.getElementById('c');
+  await shot(c, { src: 'ui/answer-panel.png', w: 360, sw: 360, sh: 722, s: 1.26, x: 92, y: 118 });
+  await paint(document.getElementById('dots'), (p, W, H) => {
+    p.postmark(70, 110, 120, { waves: false });
+    p.skyline(W, H, { seed: 41, ground: H, x0: 560, x1: W + 10, span: 130, bridge: false, pyramid: 0.7, tone: 0.36 });
+    p.flightPath([200, 104], [300, 40], [420, 30], [500, 112], 13);
+  });
+  window.__ready = true;
+</script>
+</body>
+</html>

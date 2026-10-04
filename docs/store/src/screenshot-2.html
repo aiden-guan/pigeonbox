@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PigeonBox screenshot 2 · Catch up</title>
+<link rel="stylesheet" href="store.css">
+<style>
+  .canvas { width: 1280px; height: 800px; }
+  .top { position: absolute; left: 64px; top: 44px; z-index: 5; }
+  .copy { position: absolute; left: 64px; top: 150px; width: 380px; z-index: 5; }
+  .display { font-size: 62px; }
+  .lede { margin-top: 24px; }
+  .perch { position: absolute; left: 236px; top: 598px; z-index: 6; }
+</style>
+</head>
+<body>
+<div class="canvas" id="c">
+  <canvas class="layer" id="dots"></canvas>
+  <div class="top lockup"><span class="pidgy" style="--u:40px"></span><span class="word" style="font-size:26px">PigeonBox</span><span class="sep"></span><span class="label"><b>02</b>&nbsp; Catch up</span></div>
+  <div class="copy">
+    <h1 class="display">Six messages,<span class="l2">three lines.</span></h1>
+    <p class="lede">Open a thread and PigeonBox keeps the <strong>summary, key dates, details and to-dos</strong> right beside it.</p>
+  </div>
+  <div class="perch"><span class="pidgy world" style="--u:96px; --row:11"></span></div>
+</div>
+<script type="module">
+  import { paint, shot } from './scenes.js';
+  const c = document.getElementById('c');
+  // Gmail thread behind, the PigeonBox side panel in front (same moment).
+  await shot(c, { src: 'ui/summary-full.png', w: 1100, sx: 0, sy: 0, sw: 740, sh: 760, s: 0.86, x: 470, y: 150, z: 2 });
+  await shot(c, { src: 'ui/summary-panel.png', w: 360, sw: 360, sh: 722, s: 1.24, x: 806, y: 92, z: 3 });
+  await paint(document.getElementById('dots'), (p, W, H) => {
+    p.skyline(W, H, { seed: 21, ground: H, x0: -10, x1: 520, span: 150, pyramid: 0.78, tone: 0.34 });
+    p.ctx.fillStyle = 'rgb(0,0,0)'; p.ctx.fillRect(214, 686, 140, 120);
+    p.dither(214, 686, 140, 120, 0.8);
+    p.ctx.fillStyle = 'rgb(230,0,0)'; p.ctx.fillRect(208, 686, 152, 5);
+    p.postmark(1130, 40, 118, { waves: 'left', wavesLength: 330 });
+    p.flightPath([330, 610], [400, 520], [380, 470], [470, 430], 13);
+  });
+  window.__ready = true;
+</script>
+</body>
+</html>

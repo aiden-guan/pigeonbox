@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PigeonBox screenshot 5 · Local</title>
+<link rel="stylesheet" href="store.css">
+<style>
+  .canvas { width: 1280px; height: 800px; }
+  .top { position: absolute; left: 64px; top: 44px; z-index: 5; }
+  .copy { position: absolute; left: 64px; top: 140px; width: 600px; z-index: 5; }
+  .display { font-size: 62px; }
+  .lede { margin-top: 22px; max-width: 540px; }
+  .ai { position: absolute; left: 64px; top: 452px; width: 560px; z-index: 5; }
+  .ai .label { display: block; margin-bottom: 14px; }
+  .ai div { display: grid; grid-template-columns: 30px 1fr auto; align-items: baseline; padding: 11px 0; border-top: 1px solid var(--rule); }
+  .ai div:last-child { border-bottom: 1px solid var(--rule); }
+  .ai i { font: 500 12px/1 var(--mono); color: var(--copper); font-style: normal; }
+  .ai b { font-weight: 500; font-size: 18px; }
+  .ai span { font-size: 15px; color: var(--muted); }
+  .src { position: absolute; left: 64px; bottom: 34px; z-index: 5; }
+  .perch { position: absolute; left: 1166px; top: 466px; z-index: 6; }
+</style>
+</head>
+<body>
+<div class="canvas" id="c">
+  <canvas class="layer" id="dots"></canvas>
+  <div class="top lockup"><span class="pidgy" style="--u:40px"></span><span class="word" style="font-size:26px">PigeonBox</span><span class="sep"></span><span class="label"><b>05</b>&nbsp; Local by default</span></div>
+  <div class="copy">
+    <h1 class="display">Runs on your computer.</h1>
+    <p class="lede">PigeonBox reads the Gmail tab you already have open. <strong>No Gmail API. No Google account access. No PigeonBox account.</strong></p>
+  </div>
+  <div class="ai">
+    <span class="label"><b>Choose your AI</b>&nbsp; or none</span>
+    <div><i>01</i><b>In your browser</b><span>WebGPU model, downloaded once</span></div>
+    <div><i>02</i><b>Gemini Nano</b><span>Built into Chrome</span></div>
+    <div><i>03</i><b>Ollama</b><span>On your computer</span></div>
+    <div><i>04</i><b>Your own API key</b><span>OpenAI-compatible provider</span></div>
+    <div><i>05</i><b>No AI</b><span>Sorting and search still work</span></div>
+  </div>
+  <div class="src label">Free <span style="color:var(--rule-strong)">·</span> MIT licensed <span style="color:var(--rule-strong)">·</span> github.com/aiden-guan/pigeonbox</div>
+  <div class="perch"><span class="pidgy world flip" style="--u:96px; --row:12"></span></div>
+</div>
+<script type="module">
+  import { paint } from './scenes.js';
+  await paint(document.getElementById('dots'), (p, W, H) => {
+    const { ctx } = p;
+    const lx = 704, ly = 222, lw = 456, lh = 296, desk = ly + lh + 36;
+    // A quiet skyline behind, cut off at the desk.
+    p.skyline(W, H, { seed: 9, ground: desk, x0: 640, x1: W + 10, span: 150, bridge: false, pyramid: 0.12, tone: 0.24, max: 0.9 });
+    ctx.fillStyle = 'rgb(0,0,0)'; ctx.fillRect(0, desk, W, H);
+    // A laptop, printed in dots, holding a sealed envelope.
+    ctx.fillRect(lx - 6, ly - 6, lw + 12, lh + 12);
+    ctx.strokeStyle = 'rgb(240,0,0)'; ctx.lineWidth = 12; ctx.strokeRect(lx, ly, lw, lh);
+    p.dither(lx + 14, ly + 14, lw - 28, lh - 28, 0.22, 0, 3);
+    p.postmark(lx + lw / 2, ly + lh / 2, 112, { text: 'LOCAL FIRST · NO GMAIL API · NO ACCOUNT · ', waves: false });
+    ctx.fillStyle = 'rgb(0,255,0)'; ctx.beginPath(); ctx.arc(lx + lw / 2, ly + lh / 2 + 7, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgb(240,0,0)';
+    ctx.beginPath(); ctx.moveTo(lx - 40, ly + lh + 8); ctx.lineTo(lx + lw + 40, ly + lh + 8); ctx.lineTo(lx + lw + 80, desk); ctx.lineTo(lx - 80, desk); ctx.fill();
+    ctx.fillStyle = 'rgb(0,0,0)'; ctx.fillRect(lx + lw / 2 - 46, ly + lh + 12, 92, 7);
+    // The desk, with a soft shadow below.
+    ctx.fillStyle = 'rgb(140,0,0)'; ctx.fillRect(620, desk + 4, W - 620, 5);
+    for (let k = 0; k < 5; k++) p.dither(lx - 60 + k * 14, desk + 14 + k * 10, lw + 120 - k * 28, 10, 0.2 - k * 0.025, k, 2);
+    // Nothing leaves: the dotted route arcs over and comes back home.
+    p.flightPath([lx + 40, ly - 30], [lx + 120, ly - 150], [lx + 340, ly - 150], [lx + lw - 30, ly - 24], 13);
+  });
+  window.__ready = true;
+</script>
+</body>
+</html>

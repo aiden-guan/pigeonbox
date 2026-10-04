@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PigeonBox small tile</title>
+<link rel="stylesheet" href="store.css">
+<style>
+  .canvas { width: 440px; height: 280px; }
+  .copy { position: absolute; left: 26px; top: 26px; z-index: 5; }
+  .word { font: 400 44px/1 var(--serif); letter-spacing: -.025em; }
+  .tag { margin-top: 10px; font: 500 10px/1 var(--mono); letter-spacing: .22em; color: var(--muted); }
+  .display { margin-top: 26px; font-size: 27px; line-height: 1.04; }
+  .perch { position: absolute; left: 304px; top: 136px; z-index: 6; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <canvas class="layer" id="dots"></canvas>
+  <div class="copy">
+    <div class="word">PigeonBox</div>
+    <div class="tag">GMAIL INTELLIGENCE</div>
+    <h1 class="display">Know what needs you.<span class="l2">Then get it done.</span></h1>
+  </div>
+  <div class="perch"><span class="pidgy" style="--u:96px"></span></div>
+</div>
+<script type="module">
+  import { paint } from './scenes.js';
+  await paint(document.getElementById('dots'), (p, W, H) => {
+    p.postmark(392, 34, 70, { waves: false });
+    p.skyline(W, H, { seed: 13, ground: H, x0: -10, x1: W + 10, span: 46, pyramid: 0.5, tone: 0.3 });
+    p.ctx.fillStyle = 'rgb(0,0,0)'; p.ctx.fillRect(292, 226, 120, 60);
+    p.dither(292, 226, 120, 60, 0.85);
+    p.ctx.fillStyle = 'rgb(230,0,0)'; p.ctx.fillRect(286, 226, 132, 4);
+  }, { cell: 4, dot: 0.44 });
+  window.__ready = true;
+</script>
+</body>
+</html>

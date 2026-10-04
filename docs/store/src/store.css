@@ -1,0 +1,67 @@
+/* Chrome Web Store graphics. Tokens mirror the site's dispatch.css. */
+:root {
+  --paper: #f3f0e8; --paper-2: #ebe7dd; --sheet: #faf8f3;
+  --rule: #d5cfc2; --rule-strong: #bdb6a7;
+  --text: #18191b; --muted: #565a61; --faint: #7a7e85;
+  --pigeon-deep: #4b5664; --copper: #a8502c; --copper-bright: #e07a52; --copper-wash: #f1ded2;
+  --signal: #2f7d4c;
+  --serif: ui-serif, "New York", "Iowan Old Style", Charter, Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--text); font: 400 16px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+.canvas { position: relative; overflow: hidden; background: var(--paper); }
+.canvas::after { /* fine paper grain */
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 50;
+  background: url('/control/assets/grain.png'); opacity: .35; mix-blend-mode: multiply;
+}
+.layer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* Type */
+.label { font: 500 13px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.label b { color: var(--copper); font-weight: 500; }
+.display { font-family: var(--serif); font-weight: 400; letter-spacing: -.028em; line-height: .96; margin: 0; text-wrap: balance; }
+.display .l2 { display: block; color: var(--pigeon-deep); }
+.lede { font-size: 21px; line-height: 1.45; color: var(--muted); margin: 0; text-wrap: pretty; }
+.lede strong { color: var(--text); font-weight: 500; }
+
+/* Brand lockup, as in the site header and the reference banner */
+.lockup { display: flex; align-items: center; gap: 14px; }
+.lockup .word { font: 400 30px/1 var(--serif); letter-spacing: -.02em; }
+.lockup .sep { width: 1px; align-self: stretch; background: var(--rule-strong); margin: 0 4px; }
+.lockup .tag { font: 500 11px/1.35 var(--mono); letter-spacing: .2em; color: var(--muted); }
+
+/* Pidgy from the approved atlases. --u is the cell size in px. */
+.pidgy {
+  --u: 96px; --col: 0; --row: 0; --rows: 5;
+  width: var(--u); height: var(--u); display: block; flex: none;
+  background: url('/brand/pidgy.webp') calc(var(--u) * var(--col) * -1) calc(var(--u) * var(--row) * -1) / calc(var(--u) * 4) calc(var(--u) * var(--rows)) no-repeat;
+  image-rendering: pixelated;
+}
+.pidgy.world { background-image: url('/brand/pidgy-world.webp'); --rows: 13; }
+.pidgy.flip { transform: scaleX(-1); }
+
+/* Browser window around real UI captures */
+.window {
+  position: absolute; background: #fff; border-radius: 12px; overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(24, 25, 27, .14), 0 2px 4px rgba(24, 25, 27, .05), 0 24px 60px -18px rgba(40, 32, 20, .34), 0 60px 120px -40px rgba(40, 32, 20, .22);
+}
+.window img { display: block; width: 100%; height: auto; }
+.crop { position: absolute; overflow: hidden; }
+.crop > img { position: absolute; display: block; }
+
+/* Small UI-free pieces */
+.pill { display: inline-flex; align-items: center; gap: 8px; font: 500 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.pill i { font-style: normal; color: var(--copper); }
+.rule { height: 1px; background: var(--rule); }
+.stepper { display: flex; gap: 6px; align-items: center; }
+.stepper span { width: 22px; height: 3px; background: var(--rule); border-radius: 2px; }
+.stepper span.on { background: var(--copper); }
+.foot { position: absolute; display: flex; align-items: center; gap: 14px; }
+.foot .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--rule-strong); }
+
+/* Crisp copper envelope riding the dotted flight path, as in the reference */
+.env { position: absolute; width: 40px; height: 28px; z-index: 6; color: var(--copper); }
+.env svg { display: block; width: 100%; height: 100%; overflow: visible; }

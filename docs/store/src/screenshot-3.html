@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PigeonBox screenshot 3 · Drafting</title>
+<link rel="stylesheet" href="store.css">
+<style>
+  .canvas { width: 1280px; height: 800px; }
+  .top { position: absolute; left: 64px; top: 44px; z-index: 5; }
+  .copy { position: absolute; left: 64px; top: 150px; width: 340px; z-index: 5; }
+  .display { font-size: 58px; }
+  .lede { margin-top: 24px; font-size: 20px; }
+  .note { position: absolute; left: 64px; bottom: 56px; z-index: 5; }
+  .perch { position: absolute; left: 1086px; top: 66px; z-index: 6; }
+</style>
+</head>
+<body>
+<div class="canvas" id="c">
+  <canvas class="layer" id="dots"></canvas>
+  <div class="top lockup"><span class="pidgy" style="--u:40px"></span><span class="word" style="font-size:26px">PigeonBox</span><span class="sep"></span><span class="label"><b>03</b>&nbsp; Drafting</span></div>
+  <div class="copy">
+    <h1 class="display">Drafts in your voice.<span class="l2">You send.</span></h1>
+    <p class="lede">Replies match your tone and signature, then open in Gmail’s reply box for review. <strong>PigeonBox never sends mail.</strong></p>
+  </div>
+  <div class="perch"><span class="pidgy" style="--u:96px; --row:2; --col:1"></span></div>
+</div>
+<script type="module">
+  import { paint, shot } from './scenes.js';
+  const c = document.getElementById('c');
+  await shot(c, { src: 'ui/compose-full.png', w: 1100, sx: 188, sy: 0, sw: 912, sh: 760, s: 0.9, x: 438, y: 152 });
+  await paint(document.getElementById('dots'), (p, W, H) => {
+    p.postmark(200, 760, 150, { waves: 'right', wavesLength: 90 });
+    p.flightPath([620, 132], [760, 60], [930, 70], [1080, 140], 13);
+  });
+  window.__ready = true;
+</script>
+</body>
+</html>

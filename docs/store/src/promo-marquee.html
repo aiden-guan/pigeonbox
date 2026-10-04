@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PigeonBox marquee</title>
+<link rel="stylesheet" href="store.css">
+<style>
+  .canvas { width: 1400px; height: 560px; }
+  .copy { position: absolute; left: 64px; top: 46px; width: 680px; z-index: 5; }
+  .copy .rule { margin: 22px 0 34px; width: 560px; }
+  .display { font-size: 68px; white-space: nowrap; }
+  .lede { margin-top: 22px; font-size: 21px; }
+  .foot { left: 66px; top: 384px; z-index: 5; }
+  .win { left: 772px; top: 104px; width: 1100px; transform-origin: 0 0; transform: scale(.575); }
+  .perch { position: absolute; left: 650px; top: 402px; z-index: 6; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <canvas class="layer" id="dots"></canvas>
+  <div class="copy">
+    <div class="lockup"><span class="pidgy" style="--u:48px"></span><span class="word">PigeonBox</span><span class="sep"></span><span class="tag">GMAIL<br>INTELLIGENCE</span></div>
+    <div class="rule"></div>
+    <h1 class="display">Know what needs you.<span class="l2">Then get it done.</span></h1>
+    <p class="lede">Triage, catch-up, drafts, search and follow-ups. All inside Gmail.</p>
+  </div>
+  <div class="foot label"><span>Free</span><span class="dot"></span><span>Open source</span><span class="dot"></span><span>Chrome</span></div>
+  <div class="window win"><img src="ui/summary-full.png" alt=""></div>
+  <div class="env" style="left:704px; top:300px; transform:rotate(-28deg)"><svg viewBox="0 0 40 28" fill="#f3f0e8" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><rect x="1.5" y="1.5" width="37" height="25" rx="1.5"/><path d="M2 3l18 13L38 3" fill="none"/></svg></div>
+  <div class="perch"><span class="pidgy" style="--u:96px"></span></div>
+</div>
+<script type="module">
+  import { paint } from './scenes.js';
+  await paint(document.getElementById('dots'), (p, W, H) => {
+    p.skyline(W, H, { seed: 11, ground: H, x0: -10, x1: 800, span: 150, pyramid: 0.5, tone: 0.34 });
+    // Pidgy's rooftop, in front of the skyline.
+    p.ctx.fillStyle = 'rgb(0,0,0)'; p.ctx.fillRect(632, 490, 136, 80);
+    p.dither(632, 490, 136, 80, 0.8);
+    p.ctx.fillStyle = 'rgb(230,0,0)'; p.ctx.fillRect(626, 490, 148, 5);
+    p.postmark(1050, 18, 132, { waves: 'left', wavesLength: 210 });
+    p.flightPath([742, 468], [700, 360], [770, 210], [880, 92], 13);
+    for (const [x, y, s, f, v, r] of [[1236, 52, 46, .9, .95, -.1], [1296, 30, 34, .6, .85, .12], [1340, 66, 28, 1, .75, -.2], [1190, 80, 24, .7, .6, .1]]) p.gull(x, y, s, f, v, r);
+  });
+  window.__ready = true;
+</script>
+</body>
+</html>

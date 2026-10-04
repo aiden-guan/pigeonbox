@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PigeonBox screenshot 1 · Triage</title>
+<link rel="stylesheet" href="store.css">
+<style>
+  .canvas { width: 1280px; height: 800px; }
+  .top { position: absolute; left: 64px; right: 64px; top: 44px; display: flex; justify-content: space-between; align-items: center; z-index: 5; }
+  .copy { position: absolute; left: 64px; top: 116px; z-index: 5; }
+  .display { font-size: 64px; white-space: nowrap; }
+  .lede { margin-top: 18px; max-width: 640px; }
+  .perch { position: absolute; left: 1004px; top: 172px; z-index: 6; }
+</style>
+</head>
+<body>
+<div class="canvas" id="c">
+  <canvas class="layer" id="dots"></canvas>
+  <div class="top">
+    <div class="lockup"><span class="pidgy" style="--u:40px"></span><span class="word" style="font-size:26px">PigeonBox</span><span class="sep"></span><span class="label"><b>01</b>&nbsp; Triage</span></div>
+  </div>
+  <div class="copy">
+    <h1 class="display">Know what needs you.</h1>
+    <p class="lede">Respond, Waiting, FYI and Notifications, sorted in a workspace beside Gmail. <strong>Works with AI off.</strong></p>
+  </div>
+  <div class="env" style="left:792px; top:166px; transform:rotate(-12deg)"><svg viewBox="0 0 40 28" fill="#f3f0e8" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><rect x="1.5" y="1.5" width="37" height="25" rx="1.5"/><path d="M2 3l18 13L38 3" fill="none"/></svg></div>
+  <div class="perch"><span class="pidgy" style="--u:96px; --row:4"></span></div>
+</div>
+<script type="module">
+  import { paint, shot } from './scenes.js';
+  const c = document.getElementById('c');
+  await shot(c, { src: 'ui/inbox-full.png', w: 1100, sw: 1100, sh: 760, s: 1, x: 90, y: 262 });
+  await paint(document.getElementById('dots'), (p, W, H) => {
+    p.postmark(1150, 118, 104, { waves: 'left', wavesLength: 150 });
+    p.flightPath([700, 228], [800, 160], [900, 170], [990, 238], 13);
+  });
+  window.__ready = true;
+</script>
+</body>
+</html>
