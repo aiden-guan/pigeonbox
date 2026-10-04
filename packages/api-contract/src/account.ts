@@ -50,6 +50,8 @@ export const LimitsSchema = z.object({
 export const UsageSummarySchema = z.object({
   aiRequestsToday: z.number().int().nonnegative(),
   aiTokensThisMonth: z.number().int().nonnegative(),
+  /** Share of this month's Cloud AI allowance used, 0 to 1. Shown as a usage bar; the allowance itself is not exposed. */
+  aiMonthlyUsed: z.number().min(0).max(1).default(0),
 });
 
 export const MeResponseSchema = z.object({
