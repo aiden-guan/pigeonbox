@@ -1,12 +1,5 @@
 # Changelog
 
-## 0.5.0 — 2026-10-02
-
-- Ship Local with explicitly empty Cloud endpoints. Configured development and beta builds remain available separately.
-- Open the Cloud waitlist from onboarding, Settings and unavailable Cloud actions without changing mode or starting authentication.
-- Update privacy disclosures for Cloud intelligence and the optional waitlist. Organize documentation and preserve historical reports in an archive.
-
-
 All notable changes to PigeonBox (formerly Gmail Intelligence) are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -16,15 +9,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Changed
+- **Narrower permissions.** Settings asks Chrome for tracker and AI host access only when that feature is on and Cloud mode is off.
+- **Compose tracking badge** sits in its own bar below Send without covering Gmail's tools, shows the thinking orb while preparing, and no longer stays on Preparing. Sent-status marks have their own slot.
+- **Drafts** may not claim you reviewed, sent or completed something unless your own text says so. Replies that open with "Here's my reply" or a subject line are cleaned or rejected.
+- **Packaging** builds in an isolated staging directory and never replaces `apps/extension/dist`, the folder Chrome loads. `--skip-build` now requires `--from <dir>`.
+- Cloud dashboard links open on usepigeonbox.com.
+- Workspace navigation is aligned and matches the dashboard's dark palette. Pidgy sprite assets and Orb motion are refreshed.
 - **Settings is one click away.** The Gmail workspace has a Settings gear next to appearance and dock, in floating and docked layouts. Settings navigation now matches the page, never links to a hidden section, and explains what stays on this computer and what goes to an AI provider, Cloud or your tracker. Configured Cloud builds add one **Manage Cloud account ↗** action.
 - **Tracking wording.** Sent marks, the detail card and alerts report detections ("Open detected", "Link clicked") and never name a reader, since one pixel is shared by every recipient. Alerts are grouped per email and open the Gmail conversation when clicked.
 - **Tracking detail card** lists Sent and each counted open and click, and says when an email went to several people.
 
 ### Fixed
+- Tracker recipients and subject follow compose edits made after the tracker is created, so they are right even if Gmail never fires sent.
+- A thread summary no longer drops out when its job finishes before it is looked up.
 - Click tracking: a link is rewritten only after the tracker confirms its click ID, so a failed update can no longer send recipients to an error page. Destinations with `&amp;` in the HTML now redirect to the decoded URL.
 - Tracked-email updates, self-view claims and activity go only to the tracker that issued the ID, after a switch between Local and Cloud.
 - PigeonBox Cloud tracking refreshes an expired access token and retries once.
 - Tracker: counters are recomputed from the full event history instead of the newest 200 events; one claims query per pixel; bounded request bodies; schema errors return 400; store errors no longer echo database messages; a sent email cannot be marked cancelled; a send time ahead of the tracker clock is clamped; unknown links show a plain page instead of JSON. Links whose path only resembles a tracker route (such as `youtube.com/c/…`) are tracked.
+
+---
+
+## [0.5.0] — 2026-10-02
+
+### Changed
+- Local packages ship with explicitly empty Cloud endpoints. Configured development and beta builds remain available separately.
+- Onboarding, Settings and unavailable Cloud actions open the Cloud waitlist without changing mode or starting authentication.
+- Privacy disclosures cover Cloud intelligence and the optional waitlist. Documentation is indexed and historical reports are archived.
 
 ---
 

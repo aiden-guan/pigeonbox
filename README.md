@@ -59,7 +59,7 @@ git clone https://github.com/aiden-guan/pigeonbox.git && cd pigeonbox && npm run
 
 ### Option C — Download a prebuilt release
 
-No Node needed: grab `PigeonBox-vX.Y.Z.zip` from the [latest release](https://github.com/aiden-guan/pigeonbox/releases/latest) and unzip it into its own folder.
+No Node needed: grab `PigeonBox-vX.Y.Z.zip` from the [latest release](https://github.com/aiden-guan/pigeonbox/releases/latest) and unzip it into its own folder. The newest GitHub release is 0.4.0; 0.5.0 is available by building from source (Options A and B) and is going to the Chrome Web Store as a manual upload.
 
 ### Then, in Chrome (all options)
 
@@ -79,7 +79,7 @@ Open the PigeonBox workspace in Gmail and click the **Settings** gear, then go t
 
 ## Overview
 
-PigeonBox is a Chrome extension (Manifest V3) that provides on-device email organization, thread summarization, draft generation, and open tracking directly inside Gmail. Local mode needs no cloud backend or Gmail API OAuth scopes, and by default keeps email contents on your computer. Cloud is optional and requires explicit consent; connecting Google separately grants the permissions used for continuous sync.
+PigeonBox is a Chrome extension (Manifest V3) that provides on-device email organization, thread summarization, draft generation, and open tracking directly inside Gmail. Local mode needs no cloud backend or Gmail API OAuth scopes, and by default keeps email contents on your computer. Chrome asks for access to a tracker or AI host only when you turn that feature on. Cloud is optional and requires explicit consent; connecting Google separately grants the permissions used for continuous sync.
 
 All indexing, search, rule evaluation, and model inferences execute locally through browser primitives: IndexedDB, WebGPU (via Transformers.js and ONNX Runtime Web), Chrome's built-in Gemini Nano (`window.ai`), or a local Ollama instance. For teams seeking hosted convenience, PigeonBox also offers an optional Cloud mode backed by typed API contracts and strict zero-fallback privacy boundaries.
 
@@ -87,12 +87,12 @@ All indexing, search, rule evaluation, and model inferences execute locally thro
 
 ## Local vs. Cloud
 
-PigeonBox provides two execution environments within a single extension package, selectable under **Settings → PigeonBox** (the gear in the Gmail workspace):
+PigeonBox has two execution environments in one extension, selectable under **Settings → PigeonBox** (the gear in the Gmail workspace). Public builds ship Local only: they contain no Cloud endpoints, and Cloud entry points open the [Cloud waitlist](https://usepigeonbox.com/waitlist) without signing in or changing mode. Cloud runs only in configured development and beta builds.
 
 | Feature / Dimension | On This Computer (Local) | PigeonBox Cloud |
 | :--- | :--- | :--- |
 | **Account Requirement** | No PigeonBox account; a tracker provider account is needed only if you enable tracking | PigeonBox account (OAuth + PKCE) |
-| **Pricing** | Free, open-source (MIT) | Hosted subscription |
+| **Availability** | Free, open-source (MIT); the default build | Not in public builds yet; join the [waitlist](https://usepigeonbox.com/waitlist) |
 | **Inference Engine** | WebGPU (Transformers.js), Gemini Nano, Ollama, or BYOK | Hosted cloud inference cluster |
 | **Email Content Boundary** | Stays on this computer unless you explicitly choose a remote BYOK provider | Explicit consent and Google permissions; synced mail and derived intelligence are encrypted at rest. AI payloads are not logged |
 | **Search & Mailbox Index** | Local IndexedDB (`gi_mailbox_v1`) | Separate account-scoped synced Cloud index; Local data stays separate |
@@ -219,7 +219,7 @@ flowchart TD
 
 ### Client & Browser Runtime
 - **Runtime**: Chrome Extension Manifest V3 (Service Worker, Content Script, Offscreen Document)
-- **UI Framework**: React 18, Tailwind CSS, Lucide Icons, Vite
+- **UI Framework**: React 19, Tailwind CSS, Lucide Icons, Vite
 - **Gmail Surface Integration**: `@pigeonbox/gmail` (InboxSDK 2.2 + custom DOM Fallback Adapter)
 - **Local Model Execution**: WebGPU via `@huggingface/transformers` and ONNX Runtime Web
 
@@ -251,8 +251,11 @@ npm run dev
 # Or: use Settings → Developer → Reload extension to rebuild before reloading
 npm run dev:reload
 
-# Run Vitest test suite across all packages (35 test files)
+# Run the Vitest suite across all packages
 npm test
+
+# Run the Playwright browser tests against a built fixture
+npm run test:browser
 
 # Run full CI verification pipeline (hygiene, typecheck, lint, tests, build, release packaging)
 npm run verify
@@ -279,7 +282,7 @@ Configure tracking endpoints in the extension under **Settings → Email trackin
 ```text
 .
 ├── apps/
-│   └── extension/             # Manifest V3 Chrome Extension (Vite, React 18, Tailwind)
+│   └── extension/             # Manifest V3 Chrome Extension (Vite, React 19, Tailwind)
 │       ├── src/background/    # Service worker (messaging gateway, intelligence routing)
 │       ├── src/content/       # Gmail content script and companion card UI
 │       ├── src/offscreen/     # WebGPU and on-device model inference environment
