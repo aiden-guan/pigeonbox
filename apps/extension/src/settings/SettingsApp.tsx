@@ -212,8 +212,8 @@ export function SettingsApp() {
   }, []);
 
   function save() {
-    const trackerOrigin = trackerPermissionOrigin(settings.trackerBaseUrl);
-    const aiOrigin = getProviderRequiredOrigin(settings.aiProvider, settings.aiEndpoint);
+    const trackerOrigin = !cloudMode && settings.trackingEnabled ? trackerPermissionOrigin(settings.trackerBaseUrl) : null;
+    const aiOrigin = !cloudMode && settings.aiMode !== 'disabled' ? getProviderRequiredOrigin(settings.aiProvider, settings.aiEndpoint) : null;
     const origins = [trackerOrigin, aiOrigin].filter((o): o is string => Boolean(o));
     const persist = () => {
       chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings }, (res?: { settings?: ExtensionSettings }) => {

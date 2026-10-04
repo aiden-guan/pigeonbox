@@ -6,7 +6,7 @@ Keep this in step with the product. The store rejects listings that describe fea
 
 ## Package
 
-For the manual 0.5.0 release, upload `release/PigeonBox-v0.5.0.zip` and verify it against the adjacent `.sha256` file. Do not push a release tag: the tag workflow may submit to the store automatically. The store takes the name, summary and icons from `manifest.json`.
+For the manual 0.5.0 release, use the frozen submission kit at `release/chrome-web-store-20261003/`: upload only `PigeonBox-v0.5.0.zip` and verify it against the adjacent `.sha256` file. The earlier `release/launch-audit-20261003/` ZIP is superseded. Update the existing item `hmoiiokfmacghpddabpgaajolbeljhcp` (0.4.0 was published to testers); do not create another item. Do not push a release tag: the tag workflow may submit to the store automatically. The store takes the name, summary and icons from `manifest.json`.
 
 ## Store listing tab
 
@@ -67,7 +67,7 @@ PigeonBox is MIT-licensed. The code, the privacy model and reproducible release 
 ## Privacy practices tab
 
 **Single purpose:**
-PigeonBox helps people manage their Gmail inbox: it sorts and summarizes mail, drafts replies for review, answers questions about their mail, and optionally tracks whether sent emails were opened.
+PigeonBox helps people manage their Gmail inbox: it sorts and summarizes mail, drafts replies for review, answers questions about their mail, and optionally tracks opens and clicks on sent emails.
 
 **Permission justifications:**
 
@@ -115,12 +115,12 @@ No PigeonBox account or API key is needed.
 
 1. Install PigeonBox and open https://mail.google.com with any Google account that has a few emails.
 2. On first run, PigeonBox asks how it should run. Choose "On this computer".
-3. Click the PigeonBox toolbar icon, then "Inbox insights". The side panel sorts the visible threads into Respond, Waiting, FYI and Notifications. This uses rules and needs no AI.
-4. Open any email thread. The thread companion appears beside it with its category and the message details.
-5. In the side panel choose "Ask" and type "What needs a reply?" to see threads waiting on the user, answered from the local index.
-6. Optional AI: Settings (the gear in the PigeonBox workspace) → AI → Change AI, then "Use this model" or "Download" on Chrome's built-in Gemini Nano, or download one of the on-device models. Summaries and "Draft reply" then work. Drafts open in Gmail's reply box and are never sent automatically.
+3. Click the PigeonBox toolbar icon to open its workspace. Choose "Inbox" and a category: Respond, Waiting, FYI or Notifications. Sorting works without AI. Only mail observed on this computer is available in the local index.
+4. Open an email thread, then choose "Home" in the workspace. "Current conversation" follows the thread and shows its category and available details.
+5. Optional AI: Settings (the gear in the workspace) → AI → Change AI. On a WebGPU-capable computer, download LFM2-700m and allow the model-download host when Chrome asks. Other on-device options are listed with their availability; an API key is not required for on-device AI.
+6. With AI connected, open an incoming thread with a simple request and click "Draft reply". Review the generated text in Gmail's reply box. It is never sent automatically; discard it after reviewing. Summaries appear in Current conversation. Choose "Ask" to ask about locally indexed mail.
 
-Open tracking needs a tracker the user hosts, so it is off by default and not required to review the extension.
+Open and click tracking require a tracker the user hosts and permission for that specific origin. Tracking is unavailable until configured and is not required to review the extension.
 ```
 
 ## When Cloud launches

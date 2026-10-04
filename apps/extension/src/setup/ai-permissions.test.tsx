@@ -184,7 +184,7 @@ describe('ai permissions', () => {
     expect(hasOllama).toBe(false);
   });
 
-  it('requests host permissions for both tracker and AI origins when saving in SettingsApp', async () => {
+  it('requests host permissions for both active tracker and AI origins when saving in SettingsApp', async () => {
     requestMock.mockImplementation((_opts, cb) => {
       if (typeof cb === 'function') cb(true);
       return Promise.resolve(true);
@@ -196,6 +196,7 @@ describe('ai permissions', () => {
             settings: {
               ...DEFAULT_SETTINGS,
               trackerBaseUrl: 'https://custom-tracker.com',
+              aiMode: 'remote',
               aiProvider: 'ollama',
               aiEndpoint: 'http://127.0.0.1:11434',
             },

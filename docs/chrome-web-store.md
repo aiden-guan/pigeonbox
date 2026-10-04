@@ -1,6 +1,6 @@
 # Chrome Web Store readiness
 
-Status: the package, listing text, images and privacy policy are ready. It has not been submitted yet; there is no public listing.
+Status checked in the owner dashboard on 2026-10-03: existing item `hmoiiokfmacghpddabpgaajolbeljhcp` has v0.4.0 **Published to testers**. The v0.5.0 Local update has not been uploaded or submitted. The prepared submission kit is `release/chrome-web-store-20261003/`; its README identifies the final ZIP and each dashboard asset.
 
 Listing text, dashboard answers and images: [store/listing.md](store/listing.md). Privacy policy: [PRIVACY.md](../PRIVACY.md).
 
@@ -67,12 +67,15 @@ Prepared in this repository:
 - [x] Screenshots (1280×800), small promo tile (440×280) and marquee (1400×560) in `docs/store/`, generated from real UI with fictional mail by `apps/extension/scripts/make-store-assets.py`
 - [x] Store installs hide the GitHub update check and the developer Reload button; Chrome updates them
 
-Only the account owner can do:
+Remaining dashboard actions:
 
-- [ ] Register a developer account ($5 one-time) and verify the publisher email
-- [ ] Create the item: upload the latest release ZIP, fill in the listing from [store/listing.md](store/listing.md), submit for review
-- [ ] Test the uploaded ZIP on a clean Chrome profile before publishing (or publish as Unlisted first)
-- [ ] Set up release automation (below)
+- [x] Existing publisher account and item confirmed in the dashboard
+- [ ] Update the existing item with the final kit ZIP and listing from [store/listing.md](store/listing.md)
+- [ ] Replace the five older screenshots; upload the small and marquee promo tiles (currently empty)
+- [ ] Replace the older description and homepage; add the support URL and current reviewer instructions
+- [ ] Check Privacy practices against the prepared answers, then change visibility from testers to Public for the public Local launch
+- [ ] Submit for review and confirm the dashboard status. Store approval timing is external.
+- [ ] Optional: set up release automation (below), after the manual release
 
 ## Release automation
 

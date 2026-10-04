@@ -7,6 +7,7 @@ test('floating workspace preserves bounds, geometry, navigation and keyboard con
   const workspace = gmail.frameLocator('iframe[title="PigeonBox"]');
   await expect(shell).toBeVisible(); await expect(workspace.getByRole('navigation', { name: 'Workspace' })).toBeVisible();
   const header = host.locator('header'); await header.focus(); await header.press('ArrowLeft'); await header.press('Shift+ArrowLeft');
+  await expect.poll(() => shell.evaluate(element => element.getAnimations().every(animation => animation.playState !== 'running' && !animation.pending))).toBe(true);
   const first = await shell.boundingBox();
   await workspace.getByRole('button', { name: 'Ask', exact: true }).click();
   await workspace.getByRole('textbox', { name: 'Ask about mail on this computer' }).fill('Unfinished question');
@@ -15,7 +16,10 @@ test('floating workspace preserves bounds, geometry, navigation and keyboard con
   await host.getByRole('button', { name: 'Reopen PigeonBox' }).click();
   await expect(workspace.getByRole('textbox', { name: 'Ask about mail on this computer' })).toHaveValue('Unfinished question');
   await gmail.evaluate(() => { location.hash = '#sent'; }); await gmail.evaluate(() => { location.hash = '#inbox/abc123'; });
-  await expect(host).toHaveCount(1); const next = await shell.boundingBox();
+  await expect(host).toHaveCount(1);
+  // Compare settled geometry, rather than sampling the collapsed-to-open morph.
+  await expect.poll(() => shell.evaluate(element => element.getAnimations().every(animation => animation.playState !== 'running' && !animation.pending))).toBe(true);
+  const next = await shell.boundingBox();
   expect(Math.abs(first!.width - next!.width)).toBeLessThan(2); expect(Math.abs(first!.x - next!.x)).toBeLessThan(2);
   await gmail.setViewportSize({ width: 340, height: 500 });
   await expect.poll(async () => { const box = await shell.boundingBox(); return box!.x >= 0 && box!.y >= 0 && box!.x + box!.width <= 341 && box!.y + box!.height <= 501; }).toBe(true);

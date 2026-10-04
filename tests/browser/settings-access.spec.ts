@@ -117,7 +117,7 @@ test('a public Local build keeps Settings one click away and shows Cloud only as
   const panel = await app.page('sidepanel');
   await panel.evaluate(() => chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { runMode: 'local', cloudApiUrl: '' } }));
   const state = await panel.evaluate(() => chrome.runtime.sendMessage({ type: 'GET_PRODUCT_STATE' }));
-  test.skip(state.cloudAvailable, 'Requires an unconfigured Local build (PIGEONBOX_BROWSER_EXTENSION_PATH=apps/extension/dist-release).');
+  test.skip(state.cloudAvailable, 'Requires an unconfigured Local build (PIGEONBOX_BROWSER_EXTENSION_PATH=/path/to/unzipped-release).');
   await panel.reload();
   await expect(panel.locator('.pb-mode-label')).toHaveText('Local');
   const settings = await opensSettings(app.context, () => panel.getByRole('button', { name: 'Open PigeonBox Settings' }).click());
