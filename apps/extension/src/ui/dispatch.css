@@ -146,15 +146,20 @@ body { font-family:var(--pb-sans); }
 .pb-citation-ref { display:inline-block; vertical-align:super; margin-left:var(--pb-space-1); color:var(--pb-copper-bright); font:var(--pb-size-meta) var(--pb-mono); }
 button.pb-citation-ref { padding:0; background:none; border:0; cursor:pointer; }
 button.pb-citation-ref:hover { text-decoration:underline; }
-.pb-answer-text { font:var(--pb-size-title)/1.5 var(--pb-serif); overflow-wrap:anywhere; margin:var(--pb-space-2) 0 var(--pb-space-4); }
-.pb-answer-text p { margin:0 0 var(--pb-space-3); }
-.pb-answer-text ul, .pb-answer-text ol { margin:0 0 var(--pb-space-3); padding-left:1.2em; }
+.pb-answer-text { font:var(--pb-size-body)/1.6 var(--pb-sans); letter-spacing:var(--pb-tracking-body); color:var(--pb-fg); max-width:var(--pb-reading-width); overflow-wrap:anywhere; margin:var(--pb-space-2) 0 var(--pb-space-4); }
+.pb-answer-text p { margin:0 0 var(--pb-space-2); }
+.pb-answer-text > :last-child { margin-bottom:0; }
+/* The direct answer, before the details. */
+.pb-answer-text .pb-answer-lead { font-weight:var(--pb-weight-medium, 500); margin-bottom:var(--pb-space-3); }
+.pb-answer-text ul, .pb-answer-text ol { margin:0 0 var(--pb-space-3); padding-left:1.1em; }
 .pb-answer-text ul { list-style:disc; }
 .pb-answer-text ol { list-style:decimal; }
-.pb-answer-text li { margin:var(--pb-space-1) 0; }
+.pb-answer-text li { margin:0 0 var(--pb-space-1); padding-left:.15em; }
+.pb-answer-text li::marker { color:var(--pb-fg-muted); }
 .pb-answer-text strong { font-weight:var(--pb-weight-medium, 600); }
 .pb-answer-text code { font:0.9em var(--pb-mono); }
-.pb-answer-heading { font-weight:var(--pb-weight-medium, 600); }
+.pb-answer-text .pb-answer-heading { margin:var(--pb-space-3) 0 var(--pb-space-1); color:var(--pb-fg-muted); font:var(--pb-size-meta)/1.4 var(--pb-mono); letter-spacing:.08em; text-transform:uppercase; }
+.pb-answer-text .pb-answer-heading:first-child { margin-top:0; }
 .pb-ask-thread-head { display:flex; justify-content:flex-end; }
 .pb-ask-turn + .pb-ask-turn { border-top:1px solid var(--pb-ink-rule); padding-top:var(--pb-space-3); }
 .pb-ask-steps { margin:var(--pb-space-2) 0; padding:0; list-style:none; font:var(--pb-size-meta)/1.5 var(--pb-mono); color:var(--pb-ink-muted, inherit); }

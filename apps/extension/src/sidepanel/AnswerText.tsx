@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 
 /**
  * Renders an Ask Pigeon answer: a small, safe subset of markdown (paragraphs,
- * bullet and numbered lists, **bold**, *italic*, `code`) built as React
+ * bullet and numbered lists, headings as small labels, **bold**, *italic*, `code`) built as React
  * elements, never as HTML, because answers quote email content. Citation
  * markers like [2] become buttons that open the cited source.
  */
@@ -12,7 +12,8 @@ export function AnswerText(props: { text: string; sources: SourceRef[]; onOpenSo
   let list: { ordered: boolean; items: string[] } | null = null;
   let paragraph: string[] = [];
   const flushParagraph = () => {
-    if (paragraph.length) blocks.push(<p key={blocks.length}>{inline(paragraph.join(' '), props)}</p>);
+    // The opening paragraph is the direct answer; it is set slightly heavier than the details.
+    if (paragraph.length) blocks.push(<p key={blocks.length} className={blocks.length ? undefined : 'pb-answer-lead'}>{inline(paragraph.join(' '), props)}</p>);
     paragraph = [];
   };
   const flushList = () => {
