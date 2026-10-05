@@ -29,12 +29,7 @@ const sent = document.createElement('output');
 sent.id = 'sent-state';
 document.body.append(sent);
 let allocations = 0;
-const sessionId = attachSdkComposeTracking({ ...compose.view(), addStatusBar: ({ height }) => {
-  const el = document.createElement('div');
-  el.style.height = `${height}px`;
-  toolbar.insertAdjacentElement('afterend', el);
-  return { el, destroy: () => el.remove() };
-} }, {
+const sessionId = attachSdkComposeTracking(compose.view(), {
   getSettings: () => ({
     ...DEFAULT_SETTINGS,
     trackingEnabled: true,

@@ -55,43 +55,24 @@ function deps(overrides: Partial<ComposeTrackingDeps> = {}): ComposeTrackingDeps
 }
 
 describe('compose tracking sessions', () => {
-  it('uses the SDK reserved status bar and destroys it with its compose view', () => {
-    resetComposeSessionsForTests();
-    const gmail = new GmailComposeSendHarness('reply');
-    const bar = document.createElement('div');
-    gmail.element.append(bar);
-    const destroy = vi.fn(() => bar.remove());
-    const addStatusBar = vi.fn(() => ({ el: bar, destroy }));
-    attachSdkComposeTracking({ ...gmail.view(), addStatusBar }, deps());
-    expect(addStatusBar).toHaveBeenCalledWith({ height: 36, addAboveNativeStatusBar: false });
-    expect(bar.querySelector('[data-gi-ui="track-toggle"]')).not.toBeNull();
-    expect(gmail.element.querySelectorAll('[data-gi-ui="track-toggle"]')).toHaveLength(1);
-    gmail.emit('destroy');
-    expect(destroy).toHaveBeenCalledTimes(1);
-    expect(gmail.element.contains(bar)).toBe(false);
-  });
-
-  it('waits for the Send toolbar and stays inside it when Gmail replaces it', async () => {
+  it('waits for Send, sits immediately before it inside its container, and follows a replaced toolbar', async () => {
     resetComposeSessionsForTests();
     const gmail = new GmailComposeSendHarness('reply');
     const root = gmail.element;
     root.querySelector('[data-tooltip="Send"]')!.remove();
-    const nestedBody = document.createElement('div');
-    nestedBody.className = 'M9';
-    root.append(nestedBody);
     attachSdkComposeTracking(gmail.view(), deps());
     expect(root.querySelector('[data-gi-ui="track-toggle"]')).toBeNull();
     const toolbar = document.createElement('table');
     toolbar.innerHTML = '<tbody><tr><td><div role="group"><button aria-label="Send">Send</button><button>Schedule</button></div></td><td>Attachments</td></tr></tbody>';
     root.append(toolbar);
-    await vi.waitFor(() => expect(toolbar.querySelector('[data-gi-ui="track-toggle"]')).not.toBeNull());
-    expect(toolbar.rows[0]!.cells[0]!.querySelector('[data-gi-ui="track-toggle"]')).not.toBeNull();
-    expect(toolbar.rows[0]!.cells[0]!.colSpan).toBe(2);
-    expect(toolbar.querySelector('[role="group"]')!.children).toHaveLength(2);
+    const send = toolbar.querySelector('[aria-label="Send"]')!;
+    await vi.waitFor(() => expect(send.previousElementSibling?.getAttribute('data-gi-ui')).toBe('track-toggle'));
+    expect(toolbar.rows).toHaveLength(1);
     const replacement = toolbar.cloneNode(true) as HTMLTableElement;
-    replacement.querySelector('[data-gi-ui="track-control-row"]')!.remove();
+    replacement.querySelector('[data-gi-ui="track-toggle"]')!.remove();
     toolbar.replaceWith(replacement);
-    await vi.waitFor(() => expect(replacement.querySelector('[data-gi-ui="track-toggle"]')).not.toBeNull());
+    const replacedSend = replacement.querySelector('[aria-label="Send"]')!;
+    await vi.waitFor(() => expect(replacedSend.previousElementSibling?.getAttribute('data-gi-ui')).toBe('track-toggle'));
     expect(root.querySelectorAll('[data-gi-ui="track-toggle"]')).toHaveLength(1);
     gmail.emit('destroy');
     expect(root.querySelector('[data-gi-ui="track-toggle"]')).toBeNull();

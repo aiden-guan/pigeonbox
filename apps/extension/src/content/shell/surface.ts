@@ -377,8 +377,6 @@ ${orbCss}
   cursor: pointer;
   color: var(--pb-fg) !important;
 }
-.gi-compose-tracking-bar { display: flex; align-items: center; box-sizing: border-box; min-height: 36px; max-width: 100%; padding: 0 8px; }
-.gi-compose-tracking-bar .gi-compose-track { margin: 0 !important; padding: 5px 10px !important; }
 .gi-compose-track {
   display: inline-flex !important;
   align-items: center !important;

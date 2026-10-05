@@ -186,7 +186,7 @@ test('tracking instruments the controlled composer, transforms only outbound HTM
   await page.getByRole('button', { name: 'Inspect self and recipient opens' }).click();
   await expect(page.locator('#timeline')).toHaveText('1 likely open · 1 timeline event · sender suppressed true');
 });
-test('tracking badge stays inside the compose footer without covering native controls at normal and narrow widths', async ({ app }) => {
+test('tracking badge sits inline, immediately left of Send, without covering native controls', async ({ app }) => {
   const page = await app.context.newPage();
   await page.goto(`chrome-extension://${app.id}/browser-fixture.html`);
   const badge = page.locator('#tracking-compose [data-gi-ui="track-toggle"]');
@@ -202,11 +202,17 @@ test('tracking badge stays inside the compose footer without covering native con
         const n = tool.getBoundingClientRect();
         return b.right <= n.left || b.left >= n.right || b.bottom <= n.top || b.top >= n.bottom;
       });
-      return { insideToolbar: root.contains(badge) && Boolean(badge.closest('.gi-compose-tracking-bar')), belowSend: b.top >= s.bottom, left: b.left - c.left, right: c.right - b.right, clearOfNativeTools };
+      return {
+        beforeSend: send.previousElementSibling === badge,
+        sameRowLeftOfSend: b.right <= s.left && Math.abs((b.top + b.bottom) / 2 - (s.top + s.bottom) / 2) <= 4,
+        left: b.left - c.left,
+        right: c.right - b.right,
+        clearOfNativeTools,
+      };
     });
-    expect(bounds.insideToolbar).toBe(true);
+    expect(bounds.beforeSend).toBe(true);
     expect(bounds.clearOfNativeTools).toBe(true);
-    expect(bounds.belowSend).toBe(true);
+    expect(bounds.sameRowLeftOfSend).toBe(true);
     expect(bounds.left).toBeGreaterThanOrEqual(0);
     expect(bounds.right).toBeGreaterThanOrEqual(0);
   }

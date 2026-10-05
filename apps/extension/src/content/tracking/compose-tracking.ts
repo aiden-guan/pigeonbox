@@ -58,7 +58,6 @@ export type SdkComposeView = {
   isReply?: () => boolean;
   isForward?: () => boolean;
   addButton?: (desc: unknown) => void;
-  addStatusBar?: (options: { height: number; addAboveNativeStatusBar: boolean }) => { el: HTMLElement; destroy: () => void };
 };
 
 export type ComposeTrackingDeps = {
@@ -128,7 +127,7 @@ export function attachSdkComposeTracking(view: SdkComposeView, deps: ComposeTrac
   // Keep the final send snapshot in this closure, outside diagnostic session state.
   let sendSnapshot: ReturnType<typeof composeSendSnapshot> | null = null;
 
-  if (element) mountTrackingControl(view, element, composeSessionId, deps);
+  if (element) mountTrackingControl(element, composeSessionId, deps);
 
   const ensure = () => {
     void ensureTrackingAllocation(composeSessionId, view, deps).then(() => {
@@ -734,7 +733,7 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
-function mountTrackingControl(view: SdkComposeView, compose: HTMLElement, composeSessionId: string, deps: ComposeTrackingDeps): void {
+function mountTrackingControl(compose: HTMLElement, composeSessionId: string, deps: ComposeTrackingDeps): void {
   if (controlCleanups.has(composeSessionId)) return;
   ensureSurface();
   const button = document.createElement('button');
@@ -773,53 +772,19 @@ function mountTrackingControl(view: SdkComposeView, compose: HTMLElement, compos
     event.stopPropagation();
     toggleMenu(button, composeSessionId, deps, render);
   });
-  // InboxSDK reserves space inside Gmail's compose card and maintains it across
-  // native toolbar rendering, resizing and reply/forward changes.
-  if (view.addStatusBar) {
-    try {
-      const bar = view.addStatusBar({ height: 36, addAboveNativeStatusBar: false });
-      bar.el.classList.add('gi-compose-tracking-bar');
-      bar.el.append(button);
-      controlCleanups.set(composeSessionId, () => { button.remove(); bar.destroy(); });
-      return;
-    } catch {
-      // Older SDK adapters can use the scoped toolbar-row fallback below.
-    }
-  }
-  let statusRow: HTMLTableRowElement | null = null;
-  const bar = document.createElement('div');
-  bar.className = 'gi-compose-tracking-bar';
-  bar.append(button);
+  // The badge lives inline, immediately left of Send, inside Send's own
+  // container (the same spot it has always had). Do not move it into an
+  // InboxSDK status bar, a row below the toolbar, or a wrapper outside Send's
+  // parent: each of those stacks it above or below Send. Gmail can render Send
+  // late or replace the toolbar, so re-place it whenever the compose changes.
   const place = () => {
-    // The compose view can arrive before Send, or contain a nested body-only
-    // compose root. Wait for its actual toolbar instead of appending an orphan
-    // badge below the reply; move it again if Gmail replaces the toolbar.
     const send = findSendButton(compose) || compose.querySelector<HTMLElement>(SELECTORS.sendButton.join(','));
-    if (!send?.parentElement) {
-      bar.remove();
-      statusRow?.remove();
-      statusRow = null;
+    const parent = send?.parentElement;
+    if (!send || !parent) {
+      button.remove();
       return;
     }
-    const sendCell = send.closest('td');
-    const row = sendCell?.parentElement;
-    if (sendCell && row instanceof HTMLTableRowElement && compose.contains(row)) {
-      if (!statusRow) {
-        statusRow = document.createElement('tr');
-        statusRow.setAttribute('data-gi-ui', 'track-control-row');
-        statusRow.insertCell();
-      }
-      const cell = statusRow.cells[0]!;
-      cell.colSpan = row.cells.length;
-      if (bar.parentElement !== cell) cell.append(bar);
-      if (row.previousElementSibling !== statusRow) row.parentElement!.insertBefore(statusRow, row);
-    } else {
-      statusRow?.remove();
-      statusRow = null;
-      const group = send.closest<HTMLElement>('[role="group"]') || send;
-      const parent = group.parentElement!;
-      if (bar.parentElement !== parent || group.previousElementSibling !== bar) parent.insertBefore(bar, group);
-    }
+    if (button.parentElement !== parent || send.previousElementSibling !== button) parent.insertBefore(button, send);
   };
   const observer = new MutationObserver(place);
   observer.observe(compose, { childList: true, subtree: true });
@@ -827,8 +792,6 @@ function mountTrackingControl(view: SdkComposeView, compose: HTMLElement, compos
   controlCleanups.set(composeSessionId, () => {
     observer.disconnect();
     button.remove();
-    bar.remove();
-    statusRow?.remove();
   });
 }
 
