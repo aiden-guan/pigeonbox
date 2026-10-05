@@ -125,6 +125,35 @@ describe('CloudSessionManager', () => {
     expect(local.data.has('cloudSession')).toBe(false);
   });
 
+  it('keeps the session when the refresh request is rejected as malformed', async () => {
+    const { manager, local } = setup(async (url) => {
+      if (url.endsWith('/v1/auth/token')) return json(session({ expiresAt: 1 }));
+      return json({ error: { code: 'invalid_request', message: 'bad', retryable: false } }, 400);
+    });
+    await manager.signIn(API);
+    await expect(manager.tokenProvider(API).get()).rejects.toMatchObject({ code: 'invalid_request' });
+    expect(local.data.has('cloudSession')).toBe(true);
+  });
+
+  it('retries with a newer refresh token instead of signing out when the old one was already rotated', async () => {
+    let calls = 0;
+    const { manager, local } = setup(async (url, init) => {
+      if (url.endsWith('/v1/auth/token')) return json(session({ expiresAt: 1 }));
+      calls += 1;
+      if (calls === 1) {
+        // Another refresh finished first and stored a rotated token.
+        const stored = local.data.get('cloudSession') as { refreshToken: string };
+        local.data.set('cloudSession', { ...stored, refreshToken: 'refresh_token_rotated' });
+        return json({ error: { code: 'invalid_token', message: 'used', retryable: false } }, 401);
+      }
+      expect(String(init?.body)).toContain('refresh_token_rotated');
+      return json(session({ access: 'access_token_refreshed', refresh: 'refresh_token_next', expiresAt: 1_700_010_000 }));
+    });
+    await manager.signIn(API);
+    expect(await manager.tokenProvider(API).get()).toBe('access_token_refreshed');
+    expect((await manager.readSession())?.refreshToken).toBe('refresh_token_next');
+  });
+
   it('keeps the session when refresh fails because the network is down', async () => {
     const { manager, local } = setup(async (url) => {
       if (url.endsWith('/v1/auth/token')) return json(session({ expiresAt: 1 }));

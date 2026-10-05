@@ -157,24 +157,33 @@ export class CloudSessionManager {
   }
 
   /**
-   * One refresh at a time. A rejected refresh token ends the session; a network
-   * failure keeps it so the user is not signed out by a flaky connection.
+   * One refresh at a time. Only a refresh token the server says is revoked ends
+   * the session; a network failure, a malformed request or a token that another
+   * refresh already rotated keeps it, so routine actions never sign the user out.
    */
   private refreshAccessToken(apiBaseUrl: string): Promise<string | null> {
     this.refreshing ??= (async () => {
-      const session = await this.readSession();
-      if (!session || session.apiBaseUrl !== apiBaseUrl) return null;
-      try {
-        const next = await this.anonymousClient(apiBaseUrl).refreshSession({ refreshToken: session.refreshToken });
-        await this.store(apiBaseUrl, next);
-        return next.accessToken;
-      } catch (error) {
-        if (error instanceof CloudApiError && (error.code === 'invalid_token' || error.code === 'unauthenticated' || error.code === 'invalid_request')) {
-          await this.clear();
+      let session = await this.readSession();
+      // A second attempt covers a refresh token rotated by a refresh that finished meanwhile.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        if (!session || session.apiBaseUrl !== apiBaseUrl) return null;
+        try {
+          const next = await this.anonymousClient(apiBaseUrl).refreshSession({ refreshToken: session.refreshToken });
+          await this.store(apiBaseUrl, next);
+          return next.accessToken;
+        } catch (error) {
+          if (!(error instanceof CloudApiError && (error.code === 'invalid_token' || error.code === 'unauthenticated'))) throw error;
+          const latest = await this.readSession();
+          if (latest && latest.apiBaseUrl === apiBaseUrl && latest.refreshToken !== session.refreshToken) {
+            session = latest;
+            continue;
+          }
+          // Do not clear a session that was replaced (for example by a new sign-in) while we waited.
+          if (latest && latest.refreshToken === session.refreshToken) await this.clear();
           return null;
         }
-        throw error;
       }
+      return null;
     })().finally(() => {
       this.refreshing = null;
     });
