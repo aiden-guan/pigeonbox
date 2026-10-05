@@ -1,6 +1,6 @@
 {
   "name": "@pigeonbox/agent",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "PigeonBox agent: classifies threads, summarizes, drafts and runs permitted actions on top of an AIProvider and the local mailbox.",
   "private": true,
   "type": "module",
