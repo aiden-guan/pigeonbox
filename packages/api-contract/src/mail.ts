@@ -324,7 +324,7 @@ export const PreferencesSchema = z.object({
     approvals: z.boolean(),
     engagement: z.boolean(),
   }),
-  /** Explicit opt-in: allow web research for drafts and Ask Pigeon. */
+  /** Allow web search for drafts and Ask Pigeon (on by default; queries describe public things, never email content). */
   webResearch: z.boolean(),
   /**
    * The voice the extension uses for drafts, so background drafts sound the

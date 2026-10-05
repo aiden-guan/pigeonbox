@@ -18,7 +18,7 @@ export type AskTurn = z.infer<typeof AskTurnSchema>;
 export const AskPigeonRequestSchema = MailboxSelectorSchema.extend({
   query: z.string().min(1).max(2_000),
   threadId: z.string().max(128).optional(),
-  /** Only honoured when the user enabled web research in preferences. */
+  /** False keeps this question off the web. Web search also needs the user's web research preference (on by default). */
   includeWeb: z.boolean().optional(),
   timeZone: z.string().max(64).optional(),
   /** Earlier turns of this conversation, oldest first, so follow-up questions have context. */
@@ -38,6 +38,19 @@ export const AskActionSchema = z.object({
   contactId: IdSchema.optional(),
 });
 
+/**
+ * A new email Pigeon wrote because the user asked for one ("email Jun about…").
+ * The extension opens it in Gmail's composer for the user to review and send;
+ * PigeonBox never sends it. `to` is empty when no address could be found.
+ */
+export const AskComposeSchema = z.object({
+  to: z.array(z.object({ email: z.string().max(320), name: z.string().max(200).optional() })).max(10),
+  cc: z.array(z.object({ email: z.string().max(320), name: z.string().max(200).optional() })).max(10).default([]),
+  subject: z.string().max(300),
+  body: z.string().max(8_000),
+});
+export type AskCompose = z.infer<typeof AskComposeSchema>;
+
 export const AskPigeonResponseSchema = z.object({
   answer: z.string().max(8_000),
   claims: z.array(AskClaimSchema).max(40),
@@ -53,6 +66,8 @@ export const AskPigeonResponseSchema = z.object({
   actions: z.array(AskActionSchema).max(6),
   /** Drafts prepared when the question asked for them ("draft follow-ups for…"). */
   drafts: z.array(DraftSchema).max(10),
+  /** New emails to open in Gmail's composer. Older servers omit it. */
+  compose: z.array(AskComposeSchema).max(3).default([]),
   /** How the answer was produced, for transparency. */
   retrieval: z.object({
     strategies: z.array(z.enum(['filters', 'lexical', 'semantic', 'entities', 'dates', 'relationships', 'calendar', 'tracking', 'web'])).max(9),
