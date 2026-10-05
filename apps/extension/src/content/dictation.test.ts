@@ -60,9 +60,24 @@ describe('Gmail-page dictation', () => {
     expect(emitted.at(-1)).toMatchObject({ event: 'text' });
     send({ type: 'PB_DICTATION_STOP', session: 's1' });
     expect(emitted).toEqual([
+      { type: 'PB_DICTATION_EVENT', session: 's1', event: 'started' },
       { type: 'PB_DICTATION_EVENT', session: 's1', event: 'listening' },
       { type: 'PB_DICTATION_EVENT', session: 's1', event: 'text', final: 'email jun', interim: ' about' },
       { type: 'PB_DICTATION_EVENT', session: 's1', event: 'end' },
+    ]);
+  });
+
+  it('reports why Chrome would not start, as an event rather than only a reply', () => {
+    emitted.length = 0;
+    const original = FakeRecognition.prototype.start;
+    FakeRecognition.prototype.start = () => {
+      throw Object.assign(new Error('nope'), { name: 'NotAllowedError' });
+    };
+    expect(send({ type: 'PB_DICTATION_START', session: 's2' })).toEqual({ ok: true });
+    FakeRecognition.prototype.start = original;
+    expect(emitted).toEqual([
+      { type: 'PB_DICTATION_EVENT', session: 's2', event: 'error', error: 'start-failed:NotAllowedError' },
+      { type: 'PB_DICTATION_EVENT', session: 's2', event: 'end' },
     ]);
   });
 });

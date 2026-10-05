@@ -42,7 +42,7 @@ async function deliver(message: Record<string, unknown>) {
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const { CloudAsk, liveText } = await import('./CloudAsk');
-const { joinSpeech } = await import('./dictation');
+const { joinSpeech, dictationProblem } = await import('./dictation');
 
 const EMAIL = { to: [{ email: 'junoh@berkeley.edu', name: 'Jun Oh' }], cc: [], subject: 'Hi Jun', body: 'Hi Jun,\n\nJust saying hi.\n\nAda' };
 function response(overrides: Partial<AskPigeonResponse> = {}): AskPigeonResponse {
@@ -192,6 +192,27 @@ describe('Cloud Ask', () => {
     await settle();
     expect(host.querySelector('[role="alert"]')!.textContent).toMatch(/Open Gmail/);
     dictationReply = { ok: true };
+  });
+
+  it('names Chrome errors it has no fix for, so they can be reported', () => {
+    expect(dictationProblem('start-failed:NotAllowedError')).toBe('Chrome would not start voice input (NotAllowedError). Reload your Gmail tab and try again.');
+    expect(dictationProblem('bad-grammar')).toMatch(/\(bad-grammar\)/);
+    expect(dictationProblem('not-allowed')).toMatch(/blocked for Gmail/);
+  });
+
+  it('gives up with a clear fix when Gmail never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      reply = response();
+      dictationReply = { ok: true };
+      await render();
+      await act(async () => { (host.querySelector('button[aria-label="Dictate your question"]') as HTMLButtonElement).click(); });
+      await act(async () => { vi.advanceTimersByTime(4_100); });
+      expect(host.querySelector('[role="alert"]')!.textContent).toMatch(/Reload your Gmail tab/);
+      expect(listeners.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('adds dictated words after what was typed', () => {

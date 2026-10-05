@@ -199,9 +199,9 @@ function updateCachedEmails(emails: TrackedEmailSummary[]): void {
 }
 
 async function boot(): Promise<void> {
-  installDictation();
   if (booted) return;
   booted = true;
+  installDictation();
   const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
   const isReload = nav?.type === 'reload';
   const navigationStartedAt = performance.timeOrigin;

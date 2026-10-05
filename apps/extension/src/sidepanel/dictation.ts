@@ -7,7 +7,7 @@ export function joinSpeech(before: string, spoken: string): string {
   return before && !/\s$/.test(before) ? `${before} ${text}` : `${before}${text}`;
 }
 
-type DictationMessage = { type?: string; session?: string; event?: 'listening' | 'text' | 'error' | 'end'; final?: string; interim?: string; error?: string };
+type DictationMessage = { type?: string; session?: string; event?: 'started' | 'listening' | 'text' | 'error' | 'end'; final?: string; interim?: string; error?: string };
 
 export type DictationState = 'idle' | 'starting' | 'listening';
 
@@ -19,7 +19,19 @@ const PROBLEMS: Record<string, string> = {
   'no-speech': "Didn't catch that. Tap the mic and try again.",
   unsupported: "This browser can't turn speech into text.",
   no_gmail: 'Open Gmail in this window to use voice input.',
+  no_reply: 'Voice input did not respond. Reload your Gmail tab, then tap the mic again.',
 };
+
+/** The message for an error code; unknown failures name Chrome's error so it can be reported. */
+export function dictationProblem(code: string): string {
+  if (PROBLEMS[code]) return PROBLEMS[code]!;
+  const failed = code.match(/^start-failed:(\w+)/);
+  if (failed) return `Chrome would not start voice input (${failed[1]}). Reload your Gmail tab and try again.`;
+  return `Voice input stopped (${code || 'unknown error'}). Tap the mic to try again.`;
+}
+
+/** How long to wait for Gmail's page to say it started before giving up. */
+const START_TIMEOUT_MS = 4_000;
 
 /**
  * Dictation into the Ask box. Chrome's speech recognition runs in the Gmail
@@ -64,8 +76,15 @@ export function useDictation(onText: (text: string) => void) {
     let committed = current;
     // Chrome's prompt can take a moment to answer; after a beat, say where it is.
     const hint = setTimeout(() => setWaitingForPermission(true), 1_200);
+    let started = false;
+    const noReply = setTimeout(() => {
+      if (started) return;
+      setProblem(PROBLEMS.no_reply!);
+      finish();
+    }, START_TIMEOUT_MS);
     const finish = () => {
       clearTimeout(hint);
+      clearTimeout(noReply);
       setWaitingForPermission(false);
       chrome.runtime.onMessage.removeListener(listener);
       cleanup.current = null;
@@ -74,7 +93,10 @@ export function useDictation(onText: (text: string) => void) {
     };
     const listener = (message: DictationMessage) => {
       if (message?.type !== 'PB_DICTATION_EVENT' || message.session !== id) return;
-      if (message.event === 'listening') {
+      if (message.event === 'started') {
+        started = true;
+      } else if (message.event === 'listening') {
+        started = true;
         clearTimeout(hint);
         setWaitingForPermission(false);
         setState('listening');
@@ -82,7 +104,8 @@ export function useDictation(onText: (text: string) => void) {
         committed = joinSpeech(committed, message.final ?? '');
         textRef.current(joinSpeech(committed, message.interim ?? ''));
       } else if (message.event === 'error') {
-        if (message.error !== 'aborted') setProblem(PROBLEMS[message.error ?? ''] ?? 'Voice input stopped. Tap the mic to try again.');
+        started = true;
+        if (message.error !== 'aborted') setProblem(dictationProblem(message.error ?? ''));
       } else if (message.event === 'end') {
         textRef.current(committed);
         finish();
@@ -90,9 +113,10 @@ export function useDictation(onText: (text: string) => void) {
     };
     chrome.runtime.onMessage.addListener(listener);
     cleanup.current = finish;
-    const started = await send('start', id);
-    if (!started.ok) {
-      setProblem(PROBLEMS[started.reason ?? ''] ?? 'Voice input could not start. Try again.');
+    // Only "no Gmail tab" is read from the reply; everything else arrives as events.
+    const reply = await send('start', id);
+    if (reply.reason === 'no_gmail' && !started) {
+      setProblem(PROBLEMS.no_gmail!);
       finish();
     }
   }, []);
