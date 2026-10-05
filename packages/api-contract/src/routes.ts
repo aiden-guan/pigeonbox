@@ -135,7 +135,7 @@ import {
   ThreadSignalsRequestSchema,
   ThreadSignalsResponseSchema,
 } from './relationships.js';
-import { AskPigeonRequestSchema, AskPigeonResponseSchema, AskStreamEventSchema } from './research.js';
+import { AskFeedbackRequestSchema, AskPigeonRequestSchema, AskPigeonResponseSchema, AskStreamEventSchema } from './research.js';
 import {
   AssignRequestSchema,
   AssignmentUpdateRequestSchema,
@@ -239,6 +239,7 @@ export const ROUTES = {
   taskUpdate: { method: 'POST', path: '/v1/tasks/update', auth: 'user', request: TaskUpdateSchema, response: TasksSchema, capability: 'cloud_mail_sync' },
   askPigeon: { method: 'POST', path: '/v1/ask', auth: 'user', request: AskPigeonRequestSchema, response: AskPigeonResponseSchema, capability: 'cloud_semantic_search' },
   askPigeonStream: { method: 'POST', path: '/v1/ask/stream', auth: 'user', request: AskPigeonRequestSchema, response: AskStreamEventSchema, capability: 'cloud_semantic_search', stream: 'ndjson' },
+  askFeedback: { method: 'POST', path: '/v1/ask/feedback', auth: 'user', request: AskFeedbackRequestSchema, response: OkResponseSchema, capability: 'cloud_semantic_search' },
 
   // Calendar Copilot and briefings.
   calendarAvailability: { method: 'POST', path: '/v1/calendar/availability', auth: 'user', request: AvailabilityRequestSchema, response: AvailabilityResponseSchema, capability: 'cloud_calendar' },

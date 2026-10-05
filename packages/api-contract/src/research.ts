@@ -68,6 +68,10 @@ export const AskPigeonResponseSchema = z.object({
   drafts: z.array(DraftSchema).max(10),
   /** New emails to open in Gmail's composer. Older servers omit it. */
   compose: z.array(AskComposeSchema).max(3).default([]),
+  /** Questions the user might ask next, written as they would type them. */
+  followUps: z.array(z.string().max(200)).max(3).default([]),
+  /** Identifies this answer for feedback (`askFeedback`). */
+  requestId: z.string().max(128).optional(),
   /** How the answer was produced, for transparency. */
   retrieval: z.object({
     strategies: z.array(z.enum(['filters', 'lexical', 'semantic', 'entities', 'dates', 'relationships', 'calendar', 'tracking', 'web'])).max(9),
@@ -94,5 +98,15 @@ export const AskStreamEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('error'), code: z.string().max(64), message: z.string().max(500) }),
 ]);
 export type AskStreamEvent = z.infer<typeof AskStreamEventSchema>;
+
+/** Thumbs up or down on an answer. The question and note are stored encrypted; the answer is not stored. */
+export const AskFeedbackRequestSchema = z.object({
+  requestId: z.string().min(1).max(128),
+  rating: z.enum(['up', 'down']),
+  question: z.string().max(2_000).optional(),
+  /** What went wrong, in the user's words. */
+  note: z.string().max(1_000).optional(),
+});
+export type AskFeedbackRequest = z.infer<typeof AskFeedbackRequestSchema>;
 
 export const ParsedWindowSchema = z.object({ from: InstantSchema.nullable(), to: InstantSchema.nullable() });
