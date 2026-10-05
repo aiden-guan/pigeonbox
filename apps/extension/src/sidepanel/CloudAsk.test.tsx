@@ -8,10 +8,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const asked: Array<Record<string, unknown>> = [];
 const feedback: Array<Record<string, unknown>> = [];
+const connectStarts: Array<Record<string, unknown>> = [];
+const openedTabs: string[] = [];
+let connectedAccounts: Array<{ email: string; status: string; features: string[] }> = [];
 let reply: AskPigeonResponse;
 vi.mock('./cloud-api', () => ({
   cloudCall: async (route: string, body: Record<string, unknown>) => {
     if (route === 'askFeedback') feedback.push(body);
+    if (route === 'connections') return { ok: true, data: { accounts: connectedAccounts } };
+    if (route === 'connectStart') {
+      connectStarts.push(body);
+      return { ok: true, data: { url: 'https://accounts.google.test/consent' } };
+    }
     return { ok: false, code: 'not_found', reason: 'Not configured.' };
   },
   cloudAskStream: async (body: Record<string, unknown>) => {
@@ -26,11 +34,13 @@ const sent: Array<{ type: string; draft?: unknown; action?: string; session?: st
 const listeners = new Set<(message: unknown) => void>();
 let dictationReply: { ok: boolean; reason?: string } = { ok: true };
 (globalThis as unknown as { chrome: unknown }).chrome = {
+  tabs: { create: async ({ url }: { url: string }) => { openedTabs.push(url); } },
   runtime: {
     lastError: undefined,
     getURL: (path: string) => `chrome-extension://test/${path}`,
     onMessage: { addListener: (fn: (message: unknown) => void) => listeners.add(fn), removeListener: (fn: (message: unknown) => void) => listeners.delete(fn) },
     sendMessage: (message: { type: string; draft?: unknown }, callback?: (response: unknown) => void) => {
+      if (!callback) return Promise.resolve();
       sent.push(message);
       callback?.(message.type === 'PB_DICTATION' ? dictationReply : { opened: true });
     },
@@ -72,11 +82,12 @@ afterEach(() => {
 async function settle() {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 }
-async function render() {
+async function render(mailbox?: string, wait = true) {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => { root.render(<CloudAsk capabilities={[]} onOpenThread={() => undefined} />); });
+  await act(async () => { root.render(<CloudAsk capabilities={[]} onOpenThread={() => undefined} mailbox={mailbox} />); });
+  if (wait) await settle();
 }
 const field = () => host.querySelector('textarea[aria-label="Ask Pigeon"]') as HTMLTextAreaElement;
 async function type(value: string) {
@@ -218,7 +229,7 @@ describe('Cloud Ask', () => {
     try {
       reply = response();
       dictationReply = { ok: true };
-      await render();
+      await render(undefined, false);
       await act(async () => { (host.querySelector('button[aria-label="Dictate your question"]') as HTMLButtonElement).click(); });
       await act(async () => { vi.advanceTimersByTime(4_100); });
       expect(host.querySelector('[role="alert"]')!.textContent).toMatch(/Reload your Gmail tab/);
@@ -226,6 +237,31 @@ describe('Cloud Ask', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('focuses on the inbox the user is in, and sends it with each question', async () => {
+    connectedAccounts = [{ email: 'ada@gmail.com', status: 'active', features: ['mail_read'] }, { email: 'aidenguan@berkeley.edu', status: 'active', features: ['mail_read'] }];
+    reply = response();
+    await render('aidenguan@berkeley.edu');
+    expect(host.textContent).toContain('Focused on aidenguan@berkeley.edu, plus your other inbox');
+    expect(host.querySelector('.pb-connect-inbox')).toBeNull();
+    await type('what is due this week?');
+    await key({ key: 'Enter' });
+    expect(asked[0]).toMatchObject({ mailbox: 'aidenguan@berkeley.edu' });
+    connectedAccounts = [];
+  });
+
+  it('offers to connect the Gmail the user is in when it is not connected', async () => {
+    connectedAccounts = [{ email: 'ada@gmail.com', status: 'active', features: ['mail_read'] }];
+    await render('aidenguan@berkeley.edu');
+    const banner = host.querySelector('.pb-connect-inbox')!;
+    expect(banner.textContent).toContain('aidenguan@berkeley.edu isn’t connected to PigeonBox yet');
+    expect(banner.textContent).toContain('Answers come from ada@gmail.com.');
+    await act(async () => { (banner.querySelector('button') as HTMLButtonElement).click(); });
+    await settle();
+    expect(connectStarts).toEqual([{ features: ['mail_read', 'drafts'], loginHint: 'aidenguan@berkeley.edu', returnTo: 'extension' }]);
+    expect(openedTabs).toEqual(['https://accounts.google.test/consent']);
+    connectedAccounts = [];
   });
 
   it('adds dictated words after what was typed', () => {

@@ -451,7 +451,8 @@ export function mountSdkUi(
 function publishWorkspaceContext() {
   const thread = currentNormalizedThread;
   const note = thread ? summaryNotes.get(thread.threadId) : undefined;
-  void send({ type: 'SET_WORKSPACE_CONTEXT', context: thread ? { threadId: thread.threadId, subject: thread.subject, sender: thread.messages[thread.messages.length - 1]?.sender?.name || thread.messages[thread.messages.length - 1]?.sender?.email || '', owner: mailboxOwner(), pending: note?.pending ? note.reason || 'Analyzing…' : note?.reason || null, drafting: draftJobs.has(thread.threadId) } : null });
+  // `mailbox` goes along even with no thread open, so the panel knows which Gmail account this tab is.
+  void send({ type: 'SET_WORKSPACE_CONTEXT', mailbox: mailboxOwner(), context: thread ? { threadId: thread.threadId, subject: thread.subject, sender: thread.messages[thread.messages.length - 1]?.sender?.name || thread.messages[thread.messages.length - 1]?.sender?.email || '', owner: mailboxOwner(), pending: note?.pending ? note.reason || 'Analyzing…' : note?.reason || null, drafting: draftJobs.has(thread.threadId) } : null });
 }
 
 async function refreshThread(threadId: string): Promise<void> {

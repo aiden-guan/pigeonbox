@@ -17,7 +17,7 @@ import { CommandLauncher, CommandPalette, WorkspaceIcon, type WorkspaceCommand }
 import { availableCloudFeatures } from '../ui/cloud-features';
 import './workspace.css';
 import { CurrentThread } from './CurrentThread';
-import { useWorkspaceContext } from './context';
+import { useWorkspaceContext, useWorkspaceMailbox } from './context';
 import { Tasks } from './Tasks';
 import { requestWorkspaceDisplay } from './display';
 import { answerThreadQuestion } from './thread-question';
@@ -118,6 +118,7 @@ function WorkspaceContent() {
   const [pendingAsk, setPendingAsk] = useState<{ id: string; query: string } | null>(null);
   const consumedAskId = useRef<string | null>(null);
   const context = useWorkspaceContext();
+  const mailbox = useWorkspaceMailbox();
   useEffect(() => { if (window.parent !== window) window.parent.postMessage({ type:'PB_VISUAL_STATE', state:loading ? 'thinking' : context?.drafting ? 'drafting' : result?.draft ? 'ready' : 'idle' }, '*'); }, [loading, context?.drafting, result?.draft]);
   const navigation = useRef({ mode: 'home', category: 'RESPOND', section: 'overview' });
 
@@ -291,7 +292,7 @@ function WorkspaceContent() {
             )}
           </main>
         </div>
-      ) : cloudMode ? (product.has('cloud_semantic_search') ? <CloudAsk key={`${product.state.cloudOrigins.join('|')}:${product.state.cloud.email}`} context={context} pendingQuery={pendingAsk} onQueryConsumed={() => setPendingAsk(null)} capabilities={product.state.capabilities} onContextQuestion={(question) => answerThreadQuestion(question, context, product.has('cloud_mail_sync'))} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} /> : <div className="px-4"><p className="gi-warn">Cloud Ask is unavailable for this connection. Sign in or check your capabilities in Settings.</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.openOptionsPage()}>Open Settings</button></div>) : (
+      ) : cloudMode ? (product.has('cloud_semantic_search') ? <CloudAsk key={`${product.state.cloudOrigins.join('|')}:${product.state.cloud.email}`} context={context} mailbox={mailbox?.email} pendingQuery={pendingAsk} onQueryConsumed={() => setPendingAsk(null)} capabilities={product.state.capabilities} onContextQuestion={(question) => answerThreadQuestion(question, context, product.has('cloud_mail_sync'))} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} /> : <div className="px-4"><p className="gi-warn">Cloud Ask is unavailable for this connection. Sign in or check your capabilities in Settings.</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.openOptionsPage()}>Open Settings</button></div>) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="pb-ask-content min-h-0 flex-1 overflow-auto">
             {context ? <ContextCard subject={context.subject} sender={context.sender} motionKey={`context:${context.threadId}`} /> : null}

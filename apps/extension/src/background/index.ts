@@ -1082,15 +1082,23 @@ chrome.tabs.onActivated?.addListener(({ tabId }) => { void chrome.storage.sessio
 chrome.tabs.onRemoved?.addListener((tabId) => {
   mailboxIdentities.forgetTab(tabId);
   void navigationAttribution.then(() => claimAttribution).then(async () => { attribution.inspected(tabId); await persistAttribution(); });
-  void chrome.storage.session.get('workspaceContexts').then((stored) => { const contexts = { ...stored.workspaceContexts }; delete contexts[tabId]; return chrome.storage.session.set({ workspaceContexts: contexts }); });
+  void chrome.storage.session.get(['workspaceContexts', 'workspaceMailboxes']).then((stored) => {
+    const contexts = { ...stored.workspaceContexts };
+    const mailboxes = { ...stored.workspaceMailboxes };
+    delete contexts[tabId];
+    delete mailboxes[tabId];
+    return chrome.storage.session.set({ workspaceContexts: contexts, workspaceMailboxes: mailboxes });
+  });
 });
 let contextWrites: Promise<unknown> = Promise.resolve();
 let commandWrites: Promise<unknown> = Promise.resolve();
-async function workspaceContext(senderTab?: chrome.tabs.Tab): Promise<{ context: WorkspaceContext | null; tabId?: number; windowId?: number }> {
+/** The open thread (if any) and the signed-in Gmail account of the panel's Gmail tab. */
+async function workspaceContext(senderTab?: chrome.tabs.Tab): Promise<{ context: WorkspaceContext | null; mailbox?: { email: string; name?: string } | null; tabId?: number; windowId?: number }> {
   const tab = senderTab?.url?.startsWith('https://mail.google.com/') ? senderTab : (await chrome.tabs.query({ active: true, currentWindow: true })).find((item) => item.url?.startsWith('https://mail.google.com/'));
   if (tab?.id == null) return { context: null };
-  const stored = await chrome.storage.session.get('workspaceContexts');
-  return { context: stored.workspaceContexts?.[tab.id] || null, tabId: tab.id, windowId: tab.windowId };
+  const stored = await chrome.storage.session.get(['workspaceContexts', 'workspaceMailboxes']);
+  const context = stored.workspaceContexts?.[tab.id] || null;
+  return { context, mailbox: stored.workspaceMailboxes?.[tab.id] ?? context?.owner ?? null, tabId: tab.id, windowId: tab.windowId };
 }
 
 // Streamed Ask Pigeon from extension pages (the side panel).
@@ -1156,9 +1164,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const tabId = sender.tab.id;
       const row = message.context;
       const context = row?.threadId ? { tabId, threadId: String(row.threadId).slice(0, 128), subject: String(row.subject || '').slice(0, 998), sender: String(row.sender || '').slice(0, 320), owner: mailboxOwnerFrom(row.owner), pending: row.pending ? String(row.pending).slice(0, 200) : null, drafting: Boolean(row.drafting) } : null;
+      const mailbox = mailboxOwnerFrom(message.mailbox) ?? context?.owner ?? null;
       contextWrites = contextWrites.then(async () => {
-        const current = await chrome.storage.session.get('workspaceContexts');
+        const current = await chrome.storage.session.get(['workspaceContexts', 'workspaceMailboxes']);
         if (JSON.stringify(current.workspaceContexts?.[tabId]) !== JSON.stringify(context)) await chrome.storage.session.set({ workspaceContexts: { ...current.workspaceContexts, [tabId]: context } });
+        if (mailbox && JSON.stringify(current.workspaceMailboxes?.[tabId]) !== JSON.stringify(mailbox)) await chrome.storage.session.set({ workspaceMailboxes: { ...current.workspaceMailboxes, [tabId]: mailbox } });
       });
       await contextWrites;
       sendResponse({ ok: true }); return;

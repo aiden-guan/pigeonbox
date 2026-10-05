@@ -152,6 +152,8 @@ export function CloudAsk(props: {
   onContextQuestion?: (question: string) => Promise<string | null>;
   pendingQuery?: { id: string; query: string } | null;
   onQueryConsumed?: () => void;
+  /** The Gmail account this panel's Gmail tab is signed in to. Ask focuses on it. */
+  mailbox?: string;
 }) {
   const { pendingQuery, onQueryConsumed, onContextQuestion } = props;
   const [query, setQuery] = useWorkspaceInput(`cloud:ask:${props.context?.owner?.email || 'mailbox'}`, '');
@@ -161,7 +163,13 @@ export function CloudAsk(props: {
   turnsRef.current = turns;
   const nextId = useRef(1);
   const endRef = useRef<HTMLDivElement | null>(null);
-  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [accounts, setAccounts] = useState<{ email: string; status: string; features: string[] }[] | null>(null);
+  const [connecting, setConnecting] = useState('');
+  const calendarConnected = Boolean(accounts?.some((account) => account.features.includes('calendar_read')));
+  const current = props.mailbox?.toLowerCase();
+  const connected = (accounts ?? []).filter((account) => account.status !== 'disconnected');
+  /** The Gmail in this tab is signed in but not connected to PigeonBox Cloud, so Ask cannot search it. */
+  const unconnected = Boolean(current && accounts && !connected.some((account) => account.email.toLowerCase() === current));
   const consumed = useRef('');
   const inFlight = useRef(false);
   const field = useRef<HTMLTextAreaElement | null>(null);
@@ -175,19 +183,30 @@ export function CloudAsk(props: {
     // No scrollbar until the text is taller than the cap.
     element.style.overflowY = element.scrollHeight > 160 ? 'auto' : 'hidden';
   }, [query]);
+  // Connected Gmail accounts: which inbox Ask focuses on, whether this one is connected, and calendar.
   useEffect(() => {
     let mounted = true;
-    if (props.capabilities.includes('cloud_calendar'))
-      void cloudCall<{ accounts: { features: string[] }[] }>('connections').then((result) => {
-        if (mounted)
-          setCalendarConnected(
-            result.ok && result.data.accounts.some((account) => account.features.includes('calendar_read')),
-          );
+    const load = () =>
+      void cloudCall<{ accounts: { email: string; status: string; features: string[] }[] }>('connections').then((result) => {
+        if (mounted && result.ok) setAccounts(result.data.accounts);
       });
+    load();
+    // Coming back from connecting an account in another tab.
+    window.addEventListener('focus', load);
     return () => {
       mounted = false;
+      window.removeEventListener('focus', load);
     };
-  }, [props.capabilities]);
+  }, []);
+  const connectMailbox = async () => {
+    if (!props.mailbox) return;
+    setConnecting('Opening Google…');
+    trackProductEvent('google_connection_started', { surface: 'workspace', mode: 'cloud' });
+    const result = await cloudCall<{ url: string }>('connectStart', { features: ['mail_read', 'drafts'], loginHint: props.mailbox, returnTo: 'extension' });
+    if (!result.ok) return setConnecting(result.reason);
+    setConnecting('');
+    await chrome.tabs.create({ url: result.data.url });
+  };
   const runQuestion = useCallback(async (input: string) => {
     const question = input.trim();
     if (!question || inFlight.current) return;
@@ -208,7 +227,8 @@ export function CloudAsk(props: {
       const result = await cloudAskStream(
         {
           query: question,
-          ...(props.context?.owner ? { threadId: props.context.threadId, mailbox: props.context.owner.email } : {}),
+          // The inbox the user is in: Ask searches it first. A thread is looked up in its own mailbox.
+          ...(props.context?.owner ? { threadId: props.context.threadId, mailbox: props.context.owner.email } : props.mailbox ? { mailbox: props.mailbox } : {}),
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           features: ['compose'],
           ...(history.length ? { history } : {}),
@@ -239,7 +259,7 @@ export function CloudAsk(props: {
       inFlight.current = false;
       setBusy(false);
     }
-  }, [props.context, onContextQuestion, setQuery]);
+  }, [props.context, props.mailbox, onContextQuestion, setQuery]);
   useEffect(() => {
     const pending = pendingQuery;
     if (!pending || consumed.current === pending.id || inFlight.current) return;
@@ -280,6 +300,18 @@ export function CloudAsk(props: {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="pb-ask-content min-h-0 flex-1 overflow-auto">
+        {unconnected ? (
+          <section className="pb-connect-inbox" aria-label="Connect this inbox">
+            <p>
+              <strong>{props.mailbox}</strong> isn&rsquo;t connected to PigeonBox yet, so Pigeon can&rsquo;t search it.
+              {connected.length ? ` Answers come from ${connected.map((account) => account.email).join(', ')}.` : ''}
+            </p>
+            <button type="button" className="gi-btn gi-btn-ghost" disabled={connecting === 'Opening Google…'} onClick={() => void connectMailbox()}>
+              Connect this Gmail
+            </button>
+            {connecting && connecting !== 'Opening Google…' ? <p className="gi-danger" role="alert">{connecting}</p> : null}
+          </section>
+        ) : null}
         {props.context ? <ContextCard subject={props.context.subject} sender={props.context.sender} motionKey={`context:${props.context.threadId}`} /> : null}
         {turns.length ? (
           <div className="pb-ask-thread-head">
@@ -290,7 +322,13 @@ export function CloudAsk(props: {
         ) : (
           <div className="gi-ask-start">
             <h2>Ask Pigeon</h2>
-            <p>{props.context ? `This thread · ${props.context.subject || 'Current conversation'}` : 'Your whole mailbox'}</p>
+            <p>
+              {props.context
+                ? `This thread · ${props.context.subject || 'Current conversation'}`
+                : connected.length > 1 && current && !unconnected
+                  ? `Focused on ${props.mailbox}, plus your ${connected.length - 1 === 1 ? 'other inbox' : `${connected.length - 1} other inboxes`}`
+                  : 'Your whole mailbox'}
+            </p>
             <div className="gi-scope-chips">
               <span>Mail</span>
               {calendarConnected ? <span>Calendar</span> : null}
