@@ -23,6 +23,8 @@ export const AskPigeonRequestSchema = MailboxSelectorSchema.extend({
   timeZone: z.string().max(64).optional(),
   /** Earlier turns of this conversation, oldest first, so follow-up questions have context. */
   history: z.array(AskTurnSchema).max(20).optional(),
+  /** What this client can show. `compose`: it opens `compose` emails in Gmail, so Pigeon may write new emails. */
+  features: z.array(z.string().max(32)).max(8).optional(),
 });
 
 export const AskClaimSchema = z.object({
