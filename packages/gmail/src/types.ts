@@ -67,6 +67,7 @@ export type ComposeHandle = {
 /** A new email to open in Gmail's compose window. */
 export type NewDraft = {
   to: Contact[];
+  cc?: Contact[];
   subject: string;
   body: string;
 };

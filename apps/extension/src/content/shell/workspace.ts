@@ -103,6 +103,8 @@ export function ensureWorkspace() {
   const label = document.createElement('span'); label.textContent = 'PigeonBox'; header.append(label);
   const collapse = document.createElement('button'); collapse.type = 'button'; collapse.textContent = '−'; collapse.setAttribute('aria-label', 'Collapse PigeonBox'); collapse.onclick = () => showFloatingWorkspace(false); header.append(collapse);
   const frame = document.createElement('iframe'); frame.src = chrome.runtime.getURL('workspace.html'); frame.title = 'PigeonBox';
+  // Dictation in Ask Pigeon. The extension holds the permission (granted once on microphone.html), not Gmail.
+  frame.allow = 'microphone';
   shell.append(header, frame);
   window.addEventListener('message', (event) => {
     if (event.source !== frame.contentWindow || event.origin !== new URL(frame.src).origin || event.data?.type !== 'PB_VISUAL_STATE') return;

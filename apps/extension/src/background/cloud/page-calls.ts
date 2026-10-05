@@ -33,6 +33,7 @@ export const PAGE_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>([
   'followUps',
   'followUpUpdate',
   'askPigeon',
+  'askFeedback',
   'tasks',
   'taskCreate',
   'taskUpdate',

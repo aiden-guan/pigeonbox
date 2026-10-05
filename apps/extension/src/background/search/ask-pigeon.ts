@@ -23,6 +23,7 @@ export type AskItem = {
 /** A new email for the user to review in Gmail. PigeonBox never sends it. */
 export type AskDraft = {
   to: Array<{ email: string; name?: string }>;
+  cc?: Array<{ email: string; name?: string }>;
   subject: string;
   body: string;
 };

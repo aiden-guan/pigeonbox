@@ -533,6 +533,7 @@ export class InboxSdkAdapter implements GmailAdapter {
       const view = await compose.openNewComposeView();
       if (!view) return fail('openNewDraft', 'Gmail did not open a compose window');
       if (draft.to.length) view.setToRecipients?.(draft.to.map((contact) => contact.email));
+      if (draft.cc?.length) view.setCcRecipients?.(draft.cc.map((contact) => contact.email));
       if (draft.subject) view.setSubject?.(draft.subject);
       if (draft.body) {
         // setBodyText assigns textContent, which collapses every line break.
@@ -783,6 +784,7 @@ export type ComposeViewLike = ThreadIdView & {
   on?: (event: string, cb: () => void) => void;
   insertTextIntoBodyAtCursor?: (text: string) => void;
   setToRecipients?: (emails: string[]) => void;
+  setCcRecipients?: (emails: string[]) => void;
   setSubject?: (subject: string) => void;
   setBodyHTML?: (html: string) => void;
 };

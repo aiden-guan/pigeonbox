@@ -380,6 +380,7 @@ async function openComposeDraft(draft: AskDraft): Promise<{ opened: boolean; rea
   const res = (await sendToTab(tab.id, { type: 'OPEN_COMPOSE_DRAFT', draft }, fresh ? 40 : 8)) as { success?: boolean; reason?: string };
   if (res?.success) return { opened: true };
   const params = new URLSearchParams({ view: 'cm', fs: '1', tf: '1', to: draft.to.map((contact) => contact.email).join(','), su: draft.subject, body: draft.body });
+  if (draft.cc?.length) params.set('cc', draft.cc.map((contact) => contact.email).join(','));
   await chrome.tabs.create({ url: `https://mail.google.com/mail/?${params.toString()}`, active: true, windowId: tab.windowId });
   return { opened: true, reason: res?.reason };
 }
