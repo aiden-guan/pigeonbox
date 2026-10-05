@@ -52,6 +52,9 @@ test('Cloud Ask shows loading, a cited answer, account-bound sources and keeps t
   await expect(page.locator('.pb-ask-steps')).toHaveCount(0);
   expect(app.api.calls.filter((call) => call.route === '/v1/ask/stream')).toHaveLength(1);
   await expect(page.locator('.pb-answer-text button.pb-citation-ref')).toHaveText('[01]');
+  // Sources start collapsed behind a toggle with a count.
+  await expect(page.locator('.pb-answer-sources')).not.toHaveAttribute('open', '');
+  await page.locator('.pb-answer-sources summary').click();
   await expect(page.getByRole('button', { name: /^Pricing/ })).toBeVisible();
   await expect(page.getByText('Only fixture mail was checked.')).toBeVisible();
   await page.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('And what else?');
