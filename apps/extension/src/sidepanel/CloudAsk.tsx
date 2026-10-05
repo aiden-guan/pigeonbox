@@ -172,6 +172,8 @@ export function CloudAsk(props: {
     if (!element) return;
     element.style.height = 'auto';
     element.style.height = `${Math.min(element.scrollHeight, 160)}px`;
+    // No scrollbar until the text is taller than the cap.
+    element.style.overflowY = element.scrollHeight > 160 ? 'auto' : 'hidden';
   }, [query]);
   useEffect(() => {
     let mounted = true;
@@ -386,43 +388,58 @@ export function CloudAsk(props: {
           submit();
         }}
       >
-        <textarea
-          ref={field}
-          rows={1}
-          className="gi-field pb-ask-field min-w-0 flex-1"
-          aria-label="Ask Pigeon"
-          placeholder={dictation.listening ? 'Listening…' : turns.length ? 'Ask a follow-up…' : 'Ask anything, or have Pigeon write an email'}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            // Enter asks; Shift+Enter adds a line. Leave Enter alone while an IME is composing.
-            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-              event.preventDefault();
-              if (!busy && query.trim()) submit();
-            }
-          }}
-        />
-        {dictation.supported ? (
+        {dictation.problem ? (
+          <p className="pb-mic-problem" role="alert">
+            <span>{dictation.problem}</span>
+            <button type="button" aria-label="Dismiss" onClick={dictation.clearProblem}>×</button>
+          </p>
+        ) : dictation.waitingForPermission ? (
+          <p className="pb-mic-problem" role="status">
+            <span>Choose Allow in Chrome&rsquo;s microphone prompt at the top of the window.</span>
+          </p>
+        ) : null}
+        <div className="pb-ask-box" data-listening={dictation.state === 'listening' || undefined}>
+          <textarea
+            ref={field}
+            rows={1}
+            className="pb-ask-field"
+            aria-label="Ask Pigeon"
+            placeholder={dictation.state === 'listening' ? 'Listening…' : dictation.state === 'starting' ? 'Starting the microphone…' : turns.length ? 'Ask a follow-up' : 'Ask Pigeon anything'}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              // Enter asks; Shift+Enter adds a line. Leave Enter alone while an IME is composing.
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                if (!busy && query.trim()) submit();
+              }
+            }}
+          />
           <button
             type="button"
-            className="gi-btn gi-btn-ghost pb-mic shrink-0"
-            data-listening={dictation.listening || undefined}
+            className="pb-ask-icon pb-mic"
+            data-state={dictation.state}
             aria-pressed={dictation.listening}
             aria-label={dictation.listening ? 'Stop dictating' : 'Dictate your question'}
             title={dictation.listening ? 'Stop dictating' : 'Dictate'}
-            onClick={() => (dictation.listening ? dictation.stop() : dictation.start(query))}
+            onClick={() => (dictation.listening ? dictation.stop() : void dictation.start(query))}
           >
-            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="3" width="6" height="11" rx="3" />
-              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+            {dictation.state === 'listening' ? (
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="3" width="6" height="11" rx="3" />
+                <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+              </svg>
+            )}
+          </button>
+          <button type="submit" className="pb-ask-icon pb-ask-send" aria-label="Ask" title="Ask (Enter)" disabled={busy || !query.trim()}>
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7" />
             </svg>
           </button>
-        ) : null}
-        <button type="submit" className="gi-btn shrink-0" disabled={busy || !query.trim()}>
-          Ask
-        </button>
+        </div>
       </form>
-      {dictation.problem ? <p className="gi-muted pb-mic-problem" role="alert">{dictation.problem}</p> : null}
     </div>
   );
 }

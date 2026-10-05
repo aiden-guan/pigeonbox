@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
 import { DEFAULT_SETTINGS } from "@pigeonbox/shared";
 import { PigeonBoxWorkspace } from "../workspace/PigeonBoxWorkspace";
+import { CloudAsk } from "../sidepanel/CloudAsk";
 import { SettingsApp } from "../settings/SettingsApp";
 import { OnboardingApp } from "../onboarding/OnboardingApp";
 import { ThreadPanel } from "../content/thread/ThreadPanel";
@@ -105,5 +106,7 @@ function FloatPreview(){
  useEffect(()=>{ensureWorkspace();},[]);
  return <div className="preview-gmail"><header>Gmail fixture <span>Fictional conversation · shell and iframe use the production components</span></header><aside>Inbox<br/><br/>Sent<br/><br/>Drafts</aside><main><h1>A few thoughts on the new direction</h1><p>Maya Chen</p><p>Love where this is going. Can we make two small changes before Friday?</p><label>Reply<textarea aria-label="Fixture reply body" placeholder="Your reply…" /></label></main></div>;
 }
-previewRoot.render(previewParams.get('surface')==='motion' ? <MotionPreview/> : previewParams.get('surface')==='workspace' ? <PigeonBoxWorkspace/> : previewParams.get('surface')==='float' ? <FloatPreview/> : <Preview/>);
+/** The Cloud Ask panel on its own, at side-panel width (?surface=ask). */
+function AskPreview(){return <div style={{width:380,height:520,margin:24,border:"1px solid var(--pb-ink-rule)",borderRadius:12,overflow:"hidden"}}><div className="gi-app pb-panel" style={{display:"flex",flexDirection:"column",height:"100%"}}><CloudAsk capabilities={[]} onOpenThread={()=>undefined}/></div></div>;}
+previewRoot.render(previewParams.get('surface')==='ask' ? <AskPreview/> : previewParams.get('surface')==='motion' ? <MotionPreview/> : previewParams.get('surface')==='workspace' ? <PigeonBoxWorkspace/> : previewParams.get('surface')==='float' ? <FloatPreview/> : <Preview/>);
 if (import.meta.hot) import.meta.hot.dispose(() => previewRoot.unmount());

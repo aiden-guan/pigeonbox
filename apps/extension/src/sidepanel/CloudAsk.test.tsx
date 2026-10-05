@@ -22,17 +22,23 @@ vi.mock('./cloud-api', () => ({
 vi.mock('../ui/analytics', () => ({ trackProductEvent: () => undefined }));
 vi.mock('../workspace/session', () => ({ useWorkspaceInput: (_key: string, initial: string) => useState(initial) }));
 
-const sent: Array<{ type: string; draft?: unknown }> = [];
+const sent: Array<{ type: string; draft?: unknown; action?: string; session?: string }> = [];
+const listeners = new Set<(message: unknown) => void>();
+let dictationReply: { ok: boolean; reason?: string } = { ok: true };
 (globalThis as unknown as { chrome: unknown }).chrome = {
   runtime: {
     lastError: undefined,
     getURL: (path: string) => `chrome-extension://test/${path}`,
+    onMessage: { addListener: (fn: (message: unknown) => void) => listeners.add(fn), removeListener: (fn: (message: unknown) => void) => listeners.delete(fn) },
     sendMessage: (message: { type: string; draft?: unknown }, callback?: (response: unknown) => void) => {
       sent.push(message);
-      callback?.({ opened: true });
+      callback?.(message.type === 'PB_DICTATION' ? dictationReply : { opened: true });
     },
   },
 };
+async function deliver(message: Record<string, unknown>) {
+  await act(async () => { for (const listener of [...listeners]) listener({ type: 'PB_DICTATION_EVENT', ...message }); });
+}
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const { CloudAsk, liveText } = await import('./CloudAsk');
@@ -142,6 +148,50 @@ describe('Cloud Ask', () => {
     expect(liveText('Allen wants Monday.\n**Next:** a | b')).toBe('Allen wants Monday.');
     expect(liveText('One thing.\nNo meetings today')).toBe('One thing.\nNo meetings today');
     expect(liveText('Done [S1')).toBe('Done');
+  });
+
+  it('dictates into the box through the Gmail page, without opening any tab', async () => {
+    reply = response();
+    await render();
+    await type('Email Jun');
+    const mic = () => host.querySelector('button[aria-label="Dictate your question"], button[aria-label="Stop dictating"]') as HTMLButtonElement;
+    await act(async () => { mic().click(); });
+    await settle();
+    const start = sent.find((message) => message.type === 'PB_DICTATION')!;
+    expect(start).toMatchObject({ action: 'start' });
+    expect(field().placeholder).toBe('Starting the microphone…');
+    await deliver({ session: start.session, event: 'listening' });
+    expect(mic().getAttribute('aria-label')).toBe('Stop dictating');
+    await deliver({ session: start.session, event: 'text', final: '', interim: 'about fri' });
+    expect(field().value).toBe('Email Jun about fri');
+    await deliver({ session: 'someone-else', event: 'text', final: 'ignored', interim: '' });
+    await deliver({ session: start.session, event: 'text', final: 'about Friday', interim: '' });
+    await deliver({ session: start.session, event: 'end' });
+    expect(field().value).toBe('Email Jun about Friday');
+    expect(mic().getAttribute('aria-label')).toBe('Dictate your question');
+    expect(listeners.size).toBe(0);
+  });
+
+  it('says how to allow the microphone when Chrome blocks it', async () => {
+    reply = response();
+    await render();
+    await act(async () => { (host.querySelector('button[aria-label="Dictate your question"]') as HTMLButtonElement).click(); });
+    await settle();
+    const start = sent.find((message) => message.type === 'PB_DICTATION')!;
+    await deliver({ session: start.session, event: 'error', error: 'not-allowed' });
+    await deliver({ session: start.session, event: 'end' });
+    expect(host.querySelector('[role="alert"]')!.textContent).toMatch(/blocked for Gmail.*address bar/);
+    expect(sent.filter((message) => message.type !== 'PB_DICTATION')).toEqual([]);
+  });
+
+  it('asks for Gmail when there is no Gmail tab to listen in', async () => {
+    reply = response();
+    dictationReply = { ok: false, reason: 'no_gmail' };
+    await render();
+    await act(async () => { (host.querySelector('button[aria-label="Dictate your question"]') as HTMLButtonElement).click(); });
+    await settle();
+    expect(host.querySelector('[role="alert"]')!.textContent).toMatch(/Open Gmail/);
+    dictationReply = { ok: true };
   });
 
   it('adds dictated words after what was typed', () => {

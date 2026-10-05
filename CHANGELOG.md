@@ -14,12 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 - **Ask Pigeon writes emails for you.** Ask it to email someone and it finds their address in your contacts or mail, then opens the email in Gmail's composer, addressed and ready to review. It is never sent automatically.
-- **Voice input in Ask.** Tap the mic to dictate. Chrome turns speech into text; the first use opens a tab to allow the microphone.
+- **Voice input in Ask.** Tap the mic to dictate; words appear as you speak. Chrome asks once to use the microphone in Gmail and turns speech into text; PigeonBox never receives audio.
 - **Suggested follow-ups** after each answer, one tap to ask.
 - **Thumbs up or down on answers**, with an optional note on what went wrong.
 
 ### Changed
-- **The Ask box wraps and grows** as you type. Enter asks; Shift+Enter adds a line.
+- **A cleaner Ask box** that wraps and grows as you type, with the mic and send buttons inside it. Enter asks; Shift+Enter adds a line.
 - **Faster Cloud answers.** People named in a question and their latest mail are looked up before Pigeon starts thinking, so many questions are answered in one step.
 
 ---

@@ -51,6 +51,8 @@ const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   // Read-only PigeonBox Cloud thread state for the thread card and chips. Decisions stay in extension pages.
   'CLOUD_THREAD_INTEL',
   'CLOUD_THREAD_CONTEXT',
+  // Dictated words for Ask Pigeon, addressed to the panel that asked (the worker ignores them).
+  'PB_DICTATION_EVENT',
   // InboxSDK's own content-script loader asks the worker to inject its page-world file.
   'inboxsdk__injectPageWorld',
 ]);

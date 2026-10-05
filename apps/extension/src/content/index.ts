@@ -52,6 +52,7 @@ import { ensureSurface } from './shell/surface';
 import { type LocalThreadIntel } from './thread/ThreadPanel';
 import { showBusyToast, showToast } from './shell/toasts';
 import { SelfViewDeduplicator } from './tracking/self-view-dedupe';
+import { installDictation } from './dictation';
 
 export const adapter = new CompositeGmailAdapter();
 let settings: PublicExtensionSettings = toPublicSettings(DEFAULT_SETTINGS);
@@ -198,6 +199,7 @@ function updateCachedEmails(emails: TrackedEmailSummary[]): void {
 }
 
 async function boot(): Promise<void> {
+  installDictation();
   if (booted) return;
   booted = true;
   const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;

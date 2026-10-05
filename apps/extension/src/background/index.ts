@@ -1104,7 +1104,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     message?.type === 'ON_DEVICE_STATUS' ||
     message?.type === 'ON_DEVICE_PROMPT' ||
     message?.type === 'ON_DEVICE_WARM' ||
-    message?.type === 'ON_DEVICE_DOWNLOAD'
+    message?.type === 'ON_DEVICE_DOWNLOAD' ||
+    message?.type === 'PB_DICTATION_EVENT'
   ) return false;
   if (!senderMaySend(sender, message?.type)) {
     sendResponse({ ok: false, error: 'forbidden', reason: 'This request is only accepted from PigeonBox pages.' });
@@ -1161,6 +1162,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       await contextWrites;
       sendResponse({ ok: true }); return;
+    }
+    if (message?.type === 'PB_DICTATION' && isExtensionPageSender(sender)) {
+      // Voice input runs in the Gmail page the panel belongs to (the side panel: the active Gmail tab).
+      const { tabId } = await workspaceContext(sender.tab);
+      if (tabId == null) { sendResponse({ ok: false, reason: 'no_gmail' }); return; }
+      const forward = message.action === 'stop' ? { type: 'PB_DICTATION_STOP', session: message.session } : { type: 'PB_DICTATION_START', session: message.session, lang: message.lang };
+      try {
+        sendResponse((await chrome.tabs.sendMessage(tabId, forward, { frameId: 0 })) ?? { ok: false, reason: 'no_gmail' });
+      } catch {
+        sendResponse({ ok: false, reason: 'no_gmail' });
+      }
+      return;
     }
     if (message?.type === 'GET_WORKSPACE_CONTEXT') {
       const context = await workspaceContext(sender.tab);
