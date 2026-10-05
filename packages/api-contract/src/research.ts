@@ -18,7 +18,7 @@ export type AskTurn = z.infer<typeof AskTurnSchema>;
 export const AskPigeonRequestSchema = MailboxSelectorSchema.extend({
   query: z.string().min(1).max(2_000),
   threadId: z.string().max(128).optional(),
-  /** False keeps this question off the web. Web search also needs the user's web research preference (on by default). */
+  /** False keeps this question off the web. Web search also needs the user's web research preference. */
   includeWeb: z.boolean().optional(),
   timeZone: z.string().max(64).optional(),
   /** Earlier turns of this conversation, oldest first, so follow-up questions have context. */
