@@ -337,8 +337,14 @@ export function CloudAsk(props: {
                   <ComposeCard key={index} compose={compose} state={turn.opened?.[index]} onOpen={() => void openCompose(turn.id, index, compose)} />
                 ))}
                 {turn.answer.sources.length ? (
-                  <section className="pb-answer-sources" aria-label="Sources">
-                    <h2 className="gi-kicker">Sources</h2>
+                  // Collapsed by default: the numbered citations in the answer already point here.
+                  <details className="pb-answer-sources" aria-label="Sources">
+                    <summary className="gi-kicker">
+                      Sources <span className="pb-sources-count">{turn.answer.sources.length}</span>
+                      <svg className="pb-sources-chevron" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </summary>
                     <ol className="pb-source-list">
                       {turn.answer.sources.map((source, index) => (
                         <li key={source.id}>
@@ -355,7 +361,7 @@ export function CloudAsk(props: {
                         </li>
                       ))}
                     </ol>
-                  </section>
+                  </details>
                 ) : null}
                 {turn.answer.coverage.note ? <p className="gi-muted mt-3 text-[11px] leading-relaxed">{turn.answer.coverage.note}</p> : null}
                 {turn.answer.requestId ? <AnswerFeedback turn={turn} onRate={(rating, note) => rate(turn, rating, note)} /> : null}

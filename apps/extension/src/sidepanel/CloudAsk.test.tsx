@@ -107,6 +107,19 @@ describe('Cloud Ask', () => {
     expect(field().value).toBe('');
   });
 
+  it('keeps sources collapsed until the user opens them', async () => {
+    reply = response();
+    await render();
+    await type('who is on the EECS directory?');
+    await key({ key: 'Enter' });
+    const sources = host.querySelector('details.pb-answer-sources') as HTMLDetailsElement;
+    expect(sources.open).toBe(false);
+    expect(sources.querySelector('summary')!.textContent).toBe('Sources 1');
+    await act(async () => { sources.querySelector('summary')!.click(); });
+    expect(sources.open).toBe(true);
+    expect(sources.querySelector('.pb-source-list')!.textContent).toContain('EECS People');
+  });
+
   it('sends the composed email with the next question so it can be revised', async () => {
     reply = response({ compose: [EMAIL] });
     await render();
