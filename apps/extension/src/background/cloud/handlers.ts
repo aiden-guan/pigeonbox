@@ -5,6 +5,7 @@ import { cloudErrorMessage } from '@pigeonbox/cloud-client';
 import { isExtensionPageSender, senderMaySend } from '../messaging';
 import { cloudThreadStateAvailable, threadIntel } from './thread-state';
 import { pageCall } from './page-calls';
+import { forgetComposeCheckPreference, handleComposeCheck } from './compose-check';
 import { cloudSection } from '../../ui/cloud-features';
 import { CLOUD_WAITLIST_URL, cloudApiUrl } from '../../config';
 
@@ -27,6 +28,7 @@ export async function handleCloudRequest(
     [
       'CLOUD_THREAD_INTEL',
       'CLOUD_THREAD_CONTEXT',
+      'CLOUD_COMPOSE_CHECK',
       'CLOUD_INTEL_STATE',
       'CLOUD_CALL',
       'CLOUD_OPEN',
@@ -107,6 +109,10 @@ export async function handleCloudRequest(
       return { ok: false, reason: cloudErrorMessage(error).message };
     }
   }
+  if (message.type === 'CLOUD_COMPOSE_CHECK') {
+    // Mode, preference and shape are decided here, in the trusted worker, before anything is sent.
+    return handleComposeCheck(message.check, { state: await deps.readState(), runMode: deps.settings().runMode, client: deps.client });
+  }
   if (message.type === 'CLOUD_INTEL_STATE') {
     const state = await deps.readState();
     return {
@@ -127,7 +133,10 @@ export async function handleCloudRequest(
   }
   const client = await deps.client();
   if (!client) return { ok: false, code: 'not_configured', reason: 'Turn on Cloud and sign in to use this.' };
-  if (message.type === 'CLOUD_CALL') return pageCall(client, message.route, message.body);
+  if (message.type === 'CLOUD_CALL') {
+    if (message.route === 'preferencesUpdate') forgetComposeCheckPreference();
+    return pageCall(client, message.route, message.body);
+  }
   if (!(await deps.readState()).capabilities.includes('cloud_documents'))
     return { ok: false, reason: 'Tracked documents are not available for this Cloud connection.' };
   if (message.type === 'CLOUD_DOCUMENT_UPLOAD') {

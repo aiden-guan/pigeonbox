@@ -53,6 +53,23 @@ describe('PigeonBoxCloudClient', () => {
     await expect(client.forgetMemory({memoryId: 'not-a-uuid'})).rejects.toMatchObject({code: 'invalid_request'});
     expect(request).toHaveBeenCalledTimes(5);
   });
+  it('checks one bounded compose clause through the canonical route and validates both directions', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const request = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      expect(new URL(String(url)).pathname).toBe('/v1/compose/check');
+      bodies.push(JSON.parse(String(init!.body)) as Record<string, unknown>);
+      return bodies.length === 1
+        ? json({ status: 'notice', kind: 'calendar_conflict', severity: 'warning', message: 'You have Math 52 from 2–4 PM tomorrow.', confidence: 0.98, sources: [] })
+        : json({ status: 'notice', kind: 'calendar_conflict', severity: 'warning', message: 'x', confidence: 7, sources: [] });
+    });
+    const client = new PigeonBoxCloudClient({ baseUrl: 'https://cloud.test', fetch: request, tokens: { get: async () => 'fixture', refresh: async () => null } });
+    const body = { recipientEmails: ['alex@example.test'], subject: 'Coffee', claim: "I'm free tomorrow at 3", hint: 'availability' as const };
+    expect(await client.composeCheck(body)).toMatchObject({ status: 'notice', message: 'You have Math 52 from 2–4 PM tomorrow.' });
+    expect(bodies[0]).toEqual(body);
+    await expect(client.composeCheck(body)).rejects.toBeInstanceOf(CloudApiError);
+    await expect(client.composeCheck({ ...body, claim: 'x'.repeat(701) })).rejects.toMatchObject({ code: 'invalid_request' });
+    expect(request).toHaveBeenCalledTimes(2);
+  });
   it('sends the protocol header and bearer token and validates the response', async () => {
     const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
       const headers = init!.headers as Record<string, string>;

@@ -21,6 +21,7 @@ describe('memory wire contracts', () => {
       learnFromReceivedMail: true,
       learnFromSentMail: true,
       learnFromDraftEdits: true,
+      realtimeComposeChecks: false,
     });
     expect(PersonalMemorySchema.safeParse({ text_key_id: 'private' }).success).toBe(false);
   });

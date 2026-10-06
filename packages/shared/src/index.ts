@@ -561,6 +561,7 @@ export type {
 } from './thread-snapshot.js';
 
 export * from './thread-state.js';
+export * from './compose-claims.js';
 export * from './business-time.js';
 export { createOwnerMatcher, isPlaceholderAddress, contactFromSender, normalizeOwnerAddress, ownerPerspectiveKey, tagAuthors, summaryPerspectiveIssue } from './owner.js';
 export type { MailboxIdentity, AuthorRole, OwnerMatcher, ContactLike } from './owner.js';

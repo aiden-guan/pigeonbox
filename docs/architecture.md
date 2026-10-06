@@ -88,6 +88,7 @@ apps/extension/src/
 │   ├── commands.ts          command palette
 │   ├── thread/              ThreadPanel.tsx, CloudCompanion.tsx, chips.ts
 │   ├── tracking/            compose tracking, tracking session, sent status, self-view detection
+│   ├── compose/             per-compose add-ons: document action, real-time Pidgy checks (brain-checks.ts, brain-notice.ts)
 │   └── shell/               shadow-DOM surface, floating drag, toasts, placeholder send guard
 ├── local-model/             WebGPU / Gemini Nano runtime (offscreen)
 ├── main-world/  offscreen/  onboarding/  workspace/  settings/  setup/  sidepanel/  ui/  preview/

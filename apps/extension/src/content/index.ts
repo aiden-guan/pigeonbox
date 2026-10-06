@@ -36,6 +36,7 @@ import {
 } from '@pigeonbox/tracking';
 import { applyCategoryChip, rowsForThread } from './thread/chips';
 import { attachDocumentAction, insertDocumentLink } from './compose/documents';
+import { attachComposeBrainChecks, type BrainCheckReply, type ComposeBrainDeps } from './compose/brain-checks';
 import { isVisibleCommand, type CommandId } from './commands';
 import { attachSdkComposeTracking, type ComposeTrackingSession } from './tracking/compose-tracking';
 import { attachPlaceholderGuard } from './shell/placeholder-guard';
@@ -332,6 +333,14 @@ function trackingDeps() {
   };
 }
 
+function brainDeps(): ComposeBrainDeps {
+  return {
+    available: () => cloudAvailable,
+    check: (request) => send<BrainCheckReply>({ type: 'CLOUD_COMPOSE_CHECK', check: request }, 9_000),
+    mailbox: () => mailboxOwner()?.email ?? null,
+  };
+}
+
 function reportTracking(session: ComposeTrackingSession | null): void {
   const head = document.head;
   void send({
@@ -438,6 +447,11 @@ export function mountSdkUi(
       attachSdkComposeTracking(composeView as any, trackingDeps());
       attachPlaceholderGuard(composeView as any);
       void cloudBoot.then(() => { if (cloudCapabilities.includes('cloud_documents')) attachDocumentAction(composeView as any, () => cloudAvailable && cloudCapabilities.includes('cloud_documents')); });
+      // Real-time Pidgy checks: Cloud mode only. Local mode never hands draft text to the worker for this.
+      void cloudBoot.then(() => {
+        const element = (composeView as { getElement?: () => HTMLElement | null }).getElement?.();
+        if (cloudAvailable && element?.isConnected !== false) attachComposeBrainChecks(composeView as any, brainDeps());
+      });
     },
   };
 

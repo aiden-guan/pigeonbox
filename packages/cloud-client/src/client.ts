@@ -158,6 +158,11 @@ export class PigeonBoxCloudClient {
   forgetMemory(body: RouteRequest<'memoryForget'>) { return this.call('memoryForget', body); }
   correctMemory(body: RouteRequest<'memoryUpdate'>) { return this.call('memoryUpdate', body); }
   purgeMemories(body: RouteRequest<'memoryPurge'>) { return this.call('memoryPurge', body); }
+  /**
+   * Real-time Pidgy check of one short clause of an unsent draft. Callers decide
+   * first that the user turned the preference on; the route is validated both ways.
+   */
+  composeCheck(body: RouteRequest<'composeCheck'>, options: CallOptions = {}) { return this.call('composeCheck', body, options); }
 
   /** Upload only to the issuing Cloud origin, with the same refresh and privacy policy as JSON calls. */
   async uploadDocument(id: string, bytes: Uint8Array<ArrayBuffer>, options: CallOptions = {}) {

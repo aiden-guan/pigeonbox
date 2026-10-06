@@ -151,6 +151,23 @@ function fixtureAskAnswer(sources: unknown[], at: string) {
   };
 }
 
+function fixturePreferences(realtimeComposeChecks: boolean) {
+  return {
+    timeZone: 'America/Los_Angeles',
+    workdays: [1, 2, 3, 4, 5],
+    workingHours: { start: '09:00', end: '17:30' },
+    followUp: { defaultBusinessDays: 3, remindIfOpenedNoReply: false, remindWhenRevived: true, prepareDraftMorningOf: true, morningAt: '08:30' },
+    autoDrafts: { enabled: true, placeInGmail: false, kinds: ['reply'], learnFromEdits: true },
+    calendar: { bufferMinutes: 10, avoidBackToBack: true, preferMornings: false, defaultDurationMinutes: 30, focusBlocks: [] },
+    memory: { enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true, realtimeComposeChecks },
+    fastRecall: { enabled: false, retentionDays: 90 },
+    briefings: { morning: { enabled: true, at: '08:00' }, endOfDay: { enabled: false, at: '17:30' }, meeting: { enabled: true, minutesBefore: 30, externalOnly: true } },
+    notifications: { extension: true, web: true, followUpsDue: true, approvals: true, engagement: false },
+    webResearch: false,
+    voice: null,
+  };
+}
+
 export type FixtureApi = {
   /** Answer the streaming Ask route with 404, like an older Cloud. */
   noStream?: boolean;
@@ -162,6 +179,8 @@ export type FixtureApi = {
   /** Zero "while away" activity, as right after reopening the panel. */
   quiet: boolean;
   syncMode: 'idle' | 'analyzing' | 'reauth';
+  /** Serve Cloud preferences with Real-time Pidgy checks on or off. Unset: no preferences route, as before. */
+  composeChecks?: boolean;
   calls: { route: string; body: Record<string, unknown> }[];
   baseUrl: string;
   tracker?: { email: TrackedEmail; events: TrackingEvent[]; holdClaims: boolean; release: () => void };
@@ -199,6 +218,12 @@ export const test = base.extend<{ app: App }>({
         /* synthetic PDF bytes */
       }
       api.calls.push({ route, body });
+      if (route === '/dashboard') {
+        // A stand-in for the dashboard (Settings): like the real page, it says HELLO so the extension knows its tab.
+        response.setHeader('Content-Type', 'text/html');
+        response.end('<!doctype html><title>PigeonBox</title><h1>PigeonBox dashboard</h1><script>const id = new URLSearchParams(location.search).get("ext"); chrome.runtime.sendMessage(id, { type: "HELLO" }, () => { document.body.dataset.hello = "1"; });</script>');
+        return;
+      }
       if (api.tracker && (route.startsWith('/api/') || route.startsWith('/open/'))) {
         const tracker = api.tracker;
         tracker.release = () => { tracker.holdClaims = false; heldClaims.splice(0).forEach((resolve) => resolve()); };
@@ -289,7 +314,21 @@ export const test = base.extend<{ app: App }>({
         if (api.askDelay) await new Promise((resolve) => setTimeout(resolve, api.askDelay));
         await new Promise((resolve) => setTimeout(resolve, 300));
         data = fixtureAskAnswer(briefing.sources, at);
-      } else if (def === 'tasks') data = { tasks };
+      } else if (def === 'preferences' && api.composeChecks !== undefined) data = { preferences: fixturePreferences(api.composeChecks) };
+      else if (def === 'composeCheck')
+        // A calendar-backed answer: busy tomorrow 2–4 PM, free otherwise.
+        data = /\bfree tomorrow at 3\b/i.test(String(body.claim))
+          ? {
+              status: 'notice',
+              kind: 'calendar_conflict',
+              severity: 'warning',
+              message: 'You have Math 52 from 2–4 PM tomorrow.',
+              confidence: 0.98,
+              suggestedText: "I'm free tomorrow at 4:30.",
+              sources: [{ id: 'event:math52', kind: 'calendar_event', title: 'Math 52', url: 'https://calendar.google.com/calendar/event?eid=math52' }],
+            }
+          : { status: 'none' };
+      else if (def === 'tasks') data = { tasks };
       else if (def === 'taskCreate') { tasks.push({ id: String(body.id), title: String(body.title), threadId: body.threadId ? String(body.threadId) : null, accountId: body.threadId ? accountId : null, dueAt: null, status: 'open', createdAt: at }); data = { tasks }; }
       else if (def === 'taskUpdate') { tasks = tasks.map((task) => task.id === body.id ? { ...task, status: body.status as SavedTask['status'] } : task); data = { tasks }; }
       else if (def === 'approvals') data = { approvals: [], pending: 0 };
@@ -434,7 +473,7 @@ export const test = base.extend<{ app: App }>({
       api,
       page: async (name, cloud = false) => {
         const setup = await context.newPage();
-        await setup.goto(`chrome-extension://${id}/settings.html`);
+        await setup.goto(`chrome-extension://${id}/settings.html?here`);
         await setup.evaluate(
           async ({ defaults, baseUrl, cloud, name }) => {
             await chrome.runtime.sendMessage({
@@ -471,7 +510,8 @@ export const test = base.extend<{ app: App }>({
           { defaults: DEFAULT_SETTINGS, baseUrl: api.baseUrl, cloud, name },
         );
         if (name === 'sidepanel') await setup.setViewportSize({ width: 420, height: 900 });
-        await setup.goto(`chrome-extension://${id}/${name}.html`);
+        // settings.html forwards to the dashboard; `?here` keeps the in-extension page.
+        await setup.goto(`chrome-extension://${id}/${name}.html${name === 'settings' ? '?here' : ''}`);
         return setup;
       },
       gmail: async () => {

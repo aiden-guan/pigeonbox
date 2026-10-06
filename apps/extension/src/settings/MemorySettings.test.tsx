@@ -23,7 +23,7 @@ const memory = {
   sources: [{ id: 'source-1', kind: 'message', title: 'Midterm 2 Logistics', at: '2026-10-01T10:00:00Z' }],
 };
 const preferences = {
-  memory: { enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true },
+  memory: { enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true, realtimeComposeChecks: false },
   fastRecall: { enabled: false, retentionDays: 30 },
 };
 
@@ -59,6 +59,16 @@ describe('Cloud memory transparency controls', () => {
     expect(call).toHaveBeenLastCalledWith('preferencesUpdate', { preferences: { memory: { enabled: false } } });
     expect(container.querySelector('[role="switch"]')?.getAttribute('aria-checked')).toBe('false');
     expect(container.textContent).toContain(memory.text);
+  });
+  it('offers Real-time Pidgy checks off by default, as its own switch separate from learning', async () => {
+    const realtime = container.querySelector('[role="switch"][aria-label="Real-time Pidgy checks"]') as HTMLButtonElement;
+    expect(realtime.getAttribute('aria-checked')).toBe('false');
+    expect(container.textContent).toContain('processed ephemerally and is not saved as a memory');
+    call.mockResolvedValueOnce({ ok: true, data: { preferences: { ...preferences, memory: { ...preferences.memory, realtimeComposeChecks: true } } } });
+    await act(async () => realtime.click());
+    expect(call).toHaveBeenLastCalledWith('preferencesUpdate', { preferences: { memory: { realtimeComposeChecks: true } } });
+    expect(realtime.getAttribute('aria-checked')).toBe('true');
+    expect((container.querySelector('[role="switch"][aria-label="Learn useful personal context"]') as HTMLElement).getAttribute('aria-checked')).toBe('true');
   });
   it('forgets through Cloud and removes the displayed fact without local persistence', async () => {
     call.mockResolvedValueOnce({ ok: true, data: { ok: true } });

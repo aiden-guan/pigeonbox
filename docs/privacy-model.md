@@ -42,6 +42,19 @@ The extension only shows this state. In Cloud mode with a connection, the backgr
 
 Everything synced can be deleted from the web app (Privacy & data), per account by disconnecting, or entirely by deleting the Cloud account.
 
+## Real-time Pidgy checks (optional, Cloud)
+
+Off by default, and separate from memory learning. With **Real-time Pidgy checks** turned on in Memory settings, Pidgy can point out that something you are writing conflicts with your calendar or what PigeonBox Cloud already knows ("You have Math 52 from 2–4 PM tomorrow"). This is the one Cloud feature that looks at text before you send it, so its limits are deliberate:
+
+- **Most typing sends nothing.** After you pause, on-device rules look only at the sentence you just changed. Only a sentence that states availability, a promise, a deadline or a checkable fact qualifies; ordinary prose, quoted replies and signatures never do.
+- **Only a short phrase leaves the page.** A check carries at most 700 characters of that sentence, plus the subject, recipient addresses and thread ID. Never the whole draft.
+- **The worker decides.** Gmail's content script hands the phrase to the extension's background worker, which sends it to PigeonBox Cloud only in Cloud mode and only after confirming the setting is on. In Local mode it is never sent anywhere. No credentials reach the Gmail page.
+- **Processed ephemerally.** Cloud compares the phrase with your Google Calendar free/busy and your Brain (memories, commitments, conversation summaries), returns at most one short advisory, and discards the phrase. It is not written to any table or job queue, not included in logs, usage or audit records, and never becomes a memory. Some factual phrases are turned into a temporary search vector to look up existing memories; that vector is not stored. When the rules cannot decide, the phrase and a few pieces of supporting context may go to PigeonBox Cloud's AI provider for one small comparison, under the same terms as other Cloud AI.
+- **Kept briefly in the browser's memory only.** The extension remembers recent answers for the open compose window (about five minutes) so it does not ask twice; nothing is written to browser storage, and closing the compose clears it. Dismissals stay in that window only.
+- **Never in the way.** Checks never delay or block typing or sending, and any failure is silent.
+
+Mail you actually send is handled as before: sent-mail learning applies only to sent mail, and only when its own setting is on. Turning Real-time Pidgy checks off stops all checks immediately.
+
 ## Tracking
 
 Tracking is separate from AI. A tracker (yours, or PigeonBox Cloud's in Cloud mode) stores per tracked email: subject, sender, recipients, Gmail IDs, sent time, and open/click events with user agent, a salted IP hash and a classification. It never receives message bodies. Tracking IDs in pixels and links are random and reveal nothing about the mailbox. See [tracking.md](tracking.md).

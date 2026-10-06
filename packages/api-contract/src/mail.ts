@@ -306,7 +306,14 @@ export const PreferencesSchema = z.object({
     learnFromReceivedMail: z.boolean(),
     learnFromSentMail: z.boolean(),
     learnFromDraftEdits: z.boolean(),
-  }).default({ enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true }),
+    /**
+     * Real-time Pidgy checks: while writing, a short changed phrase of the unsent
+     * draft may be checked against calendar and Brain. Separate from learning
+     * (`enabled`); the phrase is processed ephemerally and never becomes a memory.
+     * Off unless the user turns it on.
+     */
+    realtimeComposeChecks: z.boolean().default(false),
+  }).default({ enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true, realtimeComposeChecks: false }),
   fastRecall: z.object({
     /** Opt-in: keep encrypted excerpts of synced mail for deep search. Off by default. */
     enabled: z.boolean(),

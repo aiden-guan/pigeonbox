@@ -122,6 +122,12 @@ export function MemorySettings() {
             checked={prefs.memory.learnFromDraftEdits}
             onChange={(learnFromDraftEdits) => void settings({ learnFromDraftEdits })}
           />
+          <Toggle
+            label="Real-time Pidgy checks"
+            description="While you write, Pidgy can privately check a short relevant phrase against your calendar and Brain. Draft text used for a check is processed ephemerally and is not saved as a memory."
+            checked={prefs.memory.realtimeComposeChecks}
+            onChange={(realtimeComposeChecks) => void settings({ realtimeComposeChecks })}
+          />
           <p className="gi-muted text-xs">
             Fast Recall is {prefs.fastRecall.enabled ? 'on' : 'off'}. Its optional encrypted mail excerpts are managed separately in Privacy &amp; data.
           </p>

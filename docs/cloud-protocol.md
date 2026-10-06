@@ -57,14 +57,17 @@ Available when the account has the matching capability (for example `cloud_mail_
 | Approvals and audit | `/v1/approvals/list|decide`, `/v1/audit/list|undo` |
 | Team, snippets, documents | `/v1/workspaces`, `/v1/team/…`, `/v1/snippets…`, `/v1/documents…` |
 | Notifications | `/v1/notifications/list|ack` |
+| Real-time Pidgy checks | `/v1/compose/check` (one clause of an unsent draft, ≤700 characters; answers `none`, `disabled` or one sourced notice; opt-in `memory.realtimeComposeChecks`) |
 
 Writes that change Gmail or the calendar take an `idempotencyKey`. Sending and invitations are never executed directly: they create an approval, and only the signed-in person can decide it (API tokens cannot).
+
+Gmail's content script never calls these routes. For real-time checks it sends `CLOUD_COMPOSE_CHECK` (one bounded clause) to the worker, which confirms Cloud mode and the user's opt-in before calling `/v1/compose/check`, and returns only the advisory text, Gmail thread IDs and Google Calendar links.
 
 In the extension, extension pages reach these routes through the worker's `CLOUD_CALL` message, which accepts only an allowlist (no billing, account deletion or token management). The worker polls `/v1/notifications/list` every two minutes in Cloud mode and shows approvals, due follow-ups, mentions, assignments and sync problems as desktop notifications if the person enabled them.
 
 AI responses share one envelope: `{ result, usage: { inputTokens?, outputTokens?, totalTokens? }, model?, requestId? }`. Size limits are in `AI_LIMITS`.
 
-The hosted tracker speaks the self-host tracker protocol (see [tracking.md](tracking.md)) at its own origin. Its management routes (`/api/emails…`, `/api/events/recent`) take the Cloud access token as the Bearer credential, require the `cloud_tracking` capability (otherwise `402 entitlement_required`) and only ever see the caller's own records; `/open/:id` and `/c/:id` stay public and keep working for mail that was already sent after a plan ends. Only the service worker calls the management routes, through the Cloud session's token provider. The tracker origin is a build setting (`VITE_PIGEONBOX_CLOUD_TRACKER_URL`) and is requested as an optional host permission at sign-in; if it changes, Settings → Email tracking offers to grant the new origin.
+The hosted tracker speaks the self-host tracker protocol (see [tracking.md](tracking.md)) at its own origin. Its management routes (`/api/emails…`, `/api/events/recent`) take the Cloud access token as the Bearer credential, require the `cloud_tracking` capability (otherwise `402 entitlement_required`) and only ever see the caller's own records; `/open/:id` and `/c/:id` stay public and keep working for mail that was already sent after a plan ends. Only the service worker calls the management routes, through the Cloud session's token provider. The tracker origin is a build setting (`VITE_PIGEONBOX_CLOUD_TRACKER_URL`) and is requested as an optional host permission when switching to Cloud (the extension's `grant.html` window); if it changes, the dashboard's Email tracking page offers to grant the new origin.
 
 ## Sign-in
 
@@ -110,4 +113,4 @@ VITE_PIGEONBOX_CLOUD_TRACKER_PREVIOUS_URLS=https://tracker.example.workers.dev
 
 Mail keeps the pixel and link URLs it was sent with, so moving the hosted tracker to a new hostname must keep the old one serving. List the old hostname in `VITE_PIGEONBOX_CLOUD_TRACKER_PREVIOUS_URLS` so the extension still recognizes those pixels when you view your own sent mail (self-view suppression). Tracked emails are keyed to Cloud by API (`cloud:<API origin>`), not by tracker hostname, so their status, claims and activity keep working after the move.
 
-For development, **Settings → Advanced → PigeonBox Cloud API URL** can point at `http://127.0.0.1:8788`; the tracker is then assumed at `:8789`. These values are not secrets and no secret may ever be added to extension configuration.
+For development, the in-extension page `settings.html?here` → **Advanced → PigeonBox Cloud API URL** can point at `http://127.0.0.1:8788`; the tracker is then assumed at `:8789`. These values are not secrets and no secret may ever be added to extension configuration.
