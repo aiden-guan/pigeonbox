@@ -33,7 +33,17 @@ vi.mock('../workspace/session', () => ({ useWorkspaceInput: (_key: string, initi
 const sent: Array<{ type: string; draft?: unknown; action?: string; session?: string }> = [];
 const listeners = new Set<(message: unknown) => void>();
 let dictationReply: { ok: boolean; reason?: string } = { ok: true };
+/** chrome.storage.local, for chat history. */
+const stored = new Map<string, unknown>();
+const pick = (keys: string | string[]) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((name) => stored.has(name)).map((name) => [name, structuredClone(stored.get(name))]));
 (globalThis as unknown as { chrome: unknown }).chrome = {
+  storage: {
+    local: {
+      get: async (keys: string | string[]) => pick(keys),
+      set: async (items: Record<string, unknown>) => { for (const [name, value] of Object.entries(items)) stored.set(name, structuredClone(value)); },
+      remove: async (keys: string | string[]) => { for (const name of Array.isArray(keys) ? keys : [keys]) stored.delete(name); },
+    },
+  },
   tabs: { create: async ({ url }: { url: string }) => { openedTabs.push(url); } },
   runtime: {
     lastError: undefined,
@@ -78,6 +88,7 @@ afterEach(() => {
   asked.length = 0;
   sent.length = 0;
   feedback.length = 0;
+  stored.clear();
 });
 async function settle() {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
@@ -101,6 +112,67 @@ async function key(init: KeyboardEventInit) {
   await act(async () => { field().dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })); });
   await settle();
 }
+
+describe('Cloud Ask history', () => {
+  async function reopen(mailbox?: string) {
+    act(() => root.unmount());
+    host.remove();
+    await render(mailbox);
+  }
+  const select = () => host.querySelector('select[aria-label="Keep chat history for"]') as HTMLSelectElement;
+
+  it('shows earlier chats after the panel reopens, continues a recent one, and starts fresh on New chat', async () => {
+    reply = response({ answer: 'Allen sent the redlines.' });
+    await render('ada@work.test');
+    expect(select().value).toBe('7');
+    await type('what did allen send?');
+    await key({ key: 'Enter' });
+    await settle();
+    expect((stored.get('askHistory') as Record<string, unknown[]>)['ada@work.test']).toHaveLength(1);
+
+    await reopen('ada@work.test');
+    expect(host.querySelector('.gi-asked')!.textContent).toBe('what did allen send?');
+    expect(host.textContent).toContain('Allen sent the redlines.');
+    expect(host.querySelector('.pb-chat-divider')!.textContent).toMatch(/^Today, /);
+    // Still the same conversation: it goes along as context.
+    await type('and when?');
+    await key({ key: 'Enter' });
+    expect(asked[1]!.history).toEqual([{ role: 'user', content: 'what did allen send?' }, { role: 'assistant', content: 'Allen sent the redlines.' }]);
+
+    await act(async () => { (Array.from(host.querySelectorAll('button')).find((button) => button.textContent === 'New chat') as HTMLButtonElement).click(); });
+    await type('something else');
+    await key({ key: 'Enter' });
+    expect(asked[2]!.history).toBeUndefined();
+    expect(host.querySelectorAll('.pb-chat-divider')).toHaveLength(2);
+    expect(host.querySelectorAll('.pb-ask-turn[data-earlier]')).toHaveLength(2);
+
+    // Another inbox has its own history.
+    await reopen('other@work.test');
+    expect(host.querySelector('.gi-asked')).toBeNull();
+  });
+
+  it('keeps nothing when history is off, and drops chats older than the chosen days', async () => {
+    const old = Date.now() - 4 * 86_400_000;
+    stored.set('askHistory', { mailbox: [{ id: 1, chatId: 1, at: old, question: 'old question', action: 'old' }, { id: 2, chatId: 2, at: Date.now() - 3_600_000, question: 'recent question', action: 'recent' }] });
+    stored.set('askHistoryRetentionDays', 3);
+    reply = response();
+    await render();
+    expect(select().value).toBe('3');
+    expect(Array.from(host.querySelectorAll('.gi-asked')).map((item) => item.textContent)).toEqual(['recent question']);
+
+    await act(async () => {
+      select().value = '0';
+      select().dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await settle();
+    expect(stored.has('askHistory')).toBe(false);
+    expect(stored.get('askHistoryRetentionDays')).toBe(0);
+    await type('not kept');
+    await key({ key: 'Enter' });
+    await settle();
+    expect(stored.has('askHistory')).toBe(false);
+  });
+});
 
 describe('Cloud Ask', () => {
   it('asks on Enter, keeps Shift+Enter for a new line, and opens a composed email in Gmail', async () => {

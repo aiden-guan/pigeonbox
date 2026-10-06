@@ -1,5 +1,6 @@
 /** PigeonBox Cloud sign-in (Authorization Code + PKCE) and token storage for the service worker. */
 import { PROTOCOL_HEADER, PROTOCOL_VERSION, type CloudSession } from '@pigeonbox/api-contract';
+import { ASK_HISTORY_KEY } from '../../sidepanel/ask-history';
 import {
   CloudApiError,
   PigeonBoxCloudClient,
@@ -179,6 +180,8 @@ export class CloudSessionManager {
     this.access = null;
     await this.deps.local.remove(SESSION_KEY);
     await this.deps.session.remove(ACCESS_KEY);
+    // Ask Pigeon chat history (sidepanel/ask-history.ts) belongs to the signed-in account.
+    await this.deps.local.remove(ASK_HISTORY_KEY);
   }
 
   private async store(apiBaseUrl: string, session: CloudSession): Promise<void> {

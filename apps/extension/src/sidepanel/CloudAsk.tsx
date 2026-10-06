@@ -9,9 +9,13 @@ import { useWorkspaceInput } from '../workspace/session';
 import { AnswerText } from './AnswerText';
 import { safeSourceUrl, SourceChips } from './SourceChips';
 import { useDictation } from './dictation';
+import { clearAskHistory, loadAskHistory, RETENTION_CHOICES, saveAskHistory, setAskHistoryRetention, type RetentionDays, type StoredTurn } from './ask-history';
 
 type Turn = {
   id: number;
+  /** The conversation this turn belongs to. Earlier conversations stay on screen; only the current one is sent as context. */
+  chatId: number;
+  at: number;
   question: string;
   answer?: AskPigeonResponse;
   error?: string;
@@ -130,6 +134,38 @@ function AnswerFeedback(props: { turn: Turn; onRate: (rating: 'up' | 'down', not
   );
 }
 
+/** A reopened panel continues the last conversation if it was this recent. */
+const CONTINUE_CHAT_MS = 30 * 60_000;
+
+/** "Today, 3:42 PM", "Yesterday, 9:10 AM", "Mon, 4:05 PM". */
+export function chatStamp(at: number, now = Date.now()): string {
+  const date = new Date(at);
+  const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  if (at >= startOfToday.getTime()) return `Today, ${time}`;
+  if (at >= startOfToday.getTime() - 86_400_000) return `Yesterday, ${time}`;
+  return `${date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`;
+}
+
+/** What is kept of a finished turn: no in-progress text, and no half-written feedback note. */
+function toStored(turn: Turn): StoredTurn | null {
+  if (!turn.answer && !turn.error && !turn.action) return null;
+  return {
+    id: turn.id,
+    chatId: turn.chatId,
+    at: turn.at,
+    question: turn.question,
+    ...(turn.answer ? { answer: turn.answer } : {}),
+    ...(turn.error ? { error: turn.error } : {}),
+    ...(turn.action ? { action: turn.action } : {}),
+    ...(turn.rating ? { rating: turn.rating } : {}),
+    ...(turn.feedback === 'sent' ? { feedback: 'sent' as const } : {}),
+  };
+}
+
+const RETENTION_LABEL: Record<RetentionDays, string> = { 0: 'Off', 1: '1 day', 3: '3 days', 7: '7 days' };
+
 /** Earlier turns as model context: the question, and the answer without citation markers. */
 function historyOf(turns: Turn[]): AskTurn[] {
   return turns.slice(-6).flatMap((turn) => {
@@ -161,7 +197,55 @@ export function CloudAsk(props: {
   const [busy, setBusy] = useState(false);
   const turnsRef = useRef<Turn[]>([]);
   turnsRef.current = turns;
-  const nextId = useRef(1);
+  // Time-based, so new turns and chats never collide with ones restored from history.
+  const nextId = useRef(Date.now());
+  const [chatId, setChatId] = useState(() => Date.now());
+  const chatRef = useRef(chatId);
+  chatRef.current = chatId;
+  // Chat history: kept in this browser for the chosen number of days (at most 7).
+  const historyScope = (props.mailbox || props.context?.owner?.email || 'mailbox').toLowerCase();
+  const [retention, setRetention] = useState<RetentionDays | null>(null);
+  const savedSignature = useRef('');
+  useEffect(() => {
+    let active = true;
+    setRetention(null);
+    void loadAskHistory(historyScope).then(({ retentionDays, turns: stored }) => {
+      if (!active) return;
+      const current = turnsRef.current;
+      const restored: Turn[] = stored.filter((turn) => !current.some((item) => item.id === turn.id));
+      const last = restored[restored.length - 1];
+      // Pick up where the user left off if it was recent; otherwise a fresh conversation below the old ones.
+      if (!current.length && last && Date.now() - last.at < CONTINUE_CHAT_MS) setChatId(last.chatId);
+      savedSignature.current = restored.map((turn) => `${turn.id}:${turn.rating ?? ''}:${turn.feedback ?? ''}`).join('|');
+      setTurns((now) => [...restored, ...now.filter((turn) => !restored.some((item) => item.id === turn.id))]);
+      setRetention(retentionDays);
+    });
+    return () => {
+      active = false;
+    };
+  }, [historyScope]);
+  useEffect(() => {
+    if (retention === null) return;
+    const finished = turns.map(toStored).filter((turn): turn is StoredTurn => Boolean(turn));
+    const signature = finished.map((turn) => `${turn.id}:${turn.rating ?? ''}:${turn.feedback ?? ''}`).join('|');
+    if (signature === savedSignature.current) return;
+    savedSignature.current = signature;
+    void saveAskHistory(historyScope, finished, retention);
+  }, [turns, retention, historyScope]);
+  const changeRetention = (days: RetentionDays) => {
+    setRetention(days);
+    savedSignature.current = '';
+    void setAskHistoryRetention(days);
+    if (!days) void clearAskHistory();
+  };
+  const startNewChat = () => setChatId(Math.max(Date.now(), chatRef.current + 1));
+  const clearHistory = () => {
+    void clearAskHistory();
+    savedSignature.current = '';
+    setTurns([]);
+    startNewChat();
+  };
+  const chatTurns = turns.filter((turn) => turn.chatId === chatId);
   const endRef = useRef<HTMLDivElement | null>(null);
   const [accounts, setAccounts] = useState<{ email: string; status: string; features: string[] }[] | null>(null);
   const [connecting, setConnecting] = useState('');
@@ -213,10 +297,10 @@ export function CloudAsk(props: {
     inFlight.current = true;
     trackProductEvent('ask_pigeon_used', { surface: 'sidepanel', mode: 'cloud' });
     const id = nextId.current++;
-    const history = historyOf(turnsRef.current);
+    const history = historyOf(turnsRef.current.filter((turn) => turn.chatId === chatRef.current));
     const update = (patch: Partial<Turn> | ((turn: Turn) => Partial<Turn>)) =>
       setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, ...(typeof patch === 'function' ? patch(turn) : patch) } : turn)));
-    setTurns((current) => [...current, { id, question }]);
+    setTurns((current) => [...current, { id, chatId: chatRef.current, at: Date.now(), question }]);
     setQuery('');
     setBusy(true);
     try {
@@ -269,7 +353,7 @@ export function CloudAsk(props: {
   }, [pendingQuery, onQueryConsumed, runQuestion, busy]);
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: 'end', behavior: 'smooth' });
-  }, [turns, busy]);
+  }, [turns, busy, chatId]);
 
   const openCompose = async (turnId: number, index: number, compose: AskCompose) => {
     const mark = (state: 'opening' | 'opened' | 'failed') =>
@@ -313,44 +397,42 @@ export function CloudAsk(props: {
           </section>
         ) : null}
         {props.context ? <ContextCard subject={props.context.subject} sender={props.context.sender} motionKey={`context:${props.context.threadId}`} /> : null}
-        {turns.length ? (
-          <div className="pb-ask-thread-head">
-            <button type="button" className="gi-link" disabled={busy} onClick={() => setTurns([])}>
-              New chat
-            </button>
-          </div>
-        ) : (
-          <div className="gi-ask-start">
-            <h2>Ask Pigeon</h2>
-            <p>
-              {props.context
-                ? `This thread · ${props.context.subject || 'Current conversation'}`
-                : connected.length > 1 && current && !unconnected
-                  ? `Focused on ${props.mailbox}, plus your ${connected.length - 1 === 1 ? 'other inbox' : `${connected.length - 1} other inboxes`}`
-                  : 'Your whole mailbox'}
-            </p>
-            <div className="gi-scope-chips">
-              <span>Mail</span>
-              {calendarConnected ? <span>Calendar</span> : null}
-              {props.capabilities.includes('cloud_relationships') ? <span>Contacts</span> : null}
-            </div>
-            <div className="gi-suggestions">
-              {[
-                'What am I waiting on?',
-                'What needs a reply today?',
-                ...(calendarConnected ? ['When am I free to meet?'] : []),
-                'What commitments have I made this week?',
-              ].map((prompt) => (
-                <button type="button" key={prompt} onClick={() => setQuery(prompt)}>
-                  {prompt}
-                  <span aria-hidden="true">↗</span>
-                </button>
+        <div className="pb-ask-thread-head">
+          <label className="pb-history-keep">
+            <span>Keep chats</span>
+            <select
+              aria-label="Keep chat history for"
+              value={retention ?? ''}
+              disabled={retention === null}
+              onChange={(event) => changeRetention(Number(event.target.value) as RetentionDays)}
+            >
+              {RETENTION_CHOICES.map((days) => (
+                <option key={days} value={days}>
+                  {RETENTION_LABEL[days]}
+                </option>
               ))}
-            </div>
-          </div>
-        )}
-        {turns.map((turn) => (
-          <div key={turn.id} className="pb-ask-turn">
+            </select>
+          </label>
+          {turns.length ? (
+            <span className="pb-history-actions">
+              <button type="button" className="gi-link" disabled={busy} onClick={clearHistory}>
+                Clear
+              </button>
+              {chatTurns.length ? (
+                <button type="button" className="gi-link" disabled={busy} onClick={startNewChat}>
+                  New chat
+                </button>
+              ) : null}
+            </span>
+          ) : null}
+        </div>
+        {turns.map((turn, index) => (
+          <div key={turn.id} className="pb-ask-turn" data-earlier={turn.chatId !== chatId || undefined}>
+            {index === 0 || turns[index - 1]!.chatId !== turn.chatId ? (
+              <p className="pb-chat-divider" role="separator">
+                <span>{chatStamp(turn.at)}</span>
+              </p>
+            ) : null}
             <p className="gi-asked">{turn.question}</p>
             {turn.steps?.length && !turn.answer && !turn.error ? (
               <ol className="pb-ask-steps" aria-label="What Pigeon is doing">
@@ -403,7 +485,7 @@ export function CloudAsk(props: {
                 ) : null}
                 {turn.answer.coverage.note ? <p className="gi-muted mt-3 text-[11px] leading-relaxed">{turn.answer.coverage.note}</p> : null}
                 {turn.answer.requestId ? <AnswerFeedback turn={turn} onRate={(rating, note) => rate(turn, rating, note)} /> : null}
-                {turn.id === turns[turns.length - 1]?.id && turn.answer.followUps?.length ? (
+                {turn.id === turns[turns.length - 1]?.id && turn.chatId === chatId && turn.answer.followUps?.length ? (
                   <div className="gi-suggestions pb-follow-ups" aria-label="Suggested follow-ups">
                     {turn.answer.followUps.map((prompt) => (
                       <button type="button" key={prompt} disabled={busy} onClick={() => void runQuestion(prompt)}>
@@ -417,6 +499,36 @@ export function CloudAsk(props: {
             ) : null}
           </div>
         ))}
+        {!chatTurns.length ? (
+          <div className="gi-ask-start" data-after-history={turns.length ? true : undefined}>
+            <h2>Ask Pigeon</h2>
+            <p>
+              {props.context
+                ? `This thread · ${props.context.subject || 'Current conversation'}`
+                : connected.length > 1 && current && !unconnected
+                  ? `Focused on ${props.mailbox}, plus your ${connected.length - 1 === 1 ? 'other inbox' : `${connected.length - 1} other inboxes`}`
+                  : 'Your whole mailbox'}
+            </p>
+            <div className="gi-scope-chips">
+              <span>Mail</span>
+              {calendarConnected ? <span>Calendar</span> : null}
+              {props.capabilities.includes('cloud_relationships') ? <span>Contacts</span> : null}
+            </div>
+            <div className="gi-suggestions">
+              {[
+                'What am I waiting on?',
+                'What needs a reply today?',
+                ...(calendarConnected ? ['When am I free to meet?'] : []),
+                'What commitments have I made this week?',
+              ].map((prompt) => (
+                <button type="button" key={prompt} onClick={() => setQuery(prompt)}>
+                  {prompt}
+                  <span aria-hidden="true">↗</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {busy && !turns[turns.length - 1]?.live ? (
           <p className="gi-muted gi-orb-line" role="status">
             <Orb size={18} />
@@ -448,7 +560,7 @@ export function CloudAsk(props: {
             rows={1}
             className="pb-ask-field"
             aria-label="Ask Pigeon"
-            placeholder={dictation.state === 'listening' ? 'Listening…' : dictation.state === 'starting' ? 'Starting the microphone…' : turns.length ? 'Ask a follow-up' : 'Ask Pigeon anything'}
+            placeholder={dictation.state === 'listening' ? 'Listening…' : dictation.state === 'starting' ? 'Starting the microphone…' : chatTurns.length ? 'Ask a follow-up' : 'Ask Pigeon anything'}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {

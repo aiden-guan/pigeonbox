@@ -160,8 +160,18 @@ button.pb-citation-ref:hover { text-decoration:underline; }
 .pb-answer-text code { font:0.9em var(--pb-mono); }
 .pb-answer-text .pb-answer-heading { margin:var(--pb-space-3) 0 var(--pb-space-1); color:var(--pb-fg-muted); font:var(--pb-size-meta)/1.4 var(--pb-mono); letter-spacing:.08em; text-transform:uppercase; }
 .pb-answer-text .pb-answer-heading:first-child { margin-top:0; }
-.pb-ask-thread-head { display:flex; justify-content:flex-end; }
+.pb-ask-thread-head { display:flex; align-items:center; justify-content:space-between; gap:var(--pb-space-3); padding-top:var(--pb-space-3); }
+.pb-history-keep { display:inline-flex; align-items:center; gap:6px; color:var(--pb-ink-muted); font:var(--pb-size-meta)/1.4 var(--pb-mono); text-transform:uppercase; letter-spacing:.06em; }
+.pb-history-keep select { padding:2px 4px; border:1px solid var(--pb-ink-rule); border-radius:var(--pb-radius-xs); background:transparent; color:inherit; font:inherit; text-transform:none; letter-spacing:0; cursor:pointer; }
+.pb-history-keep select:focus-visible { outline:2px solid var(--pb-copper-bright); outline-offset:1px; }
+.pb-history-actions { display:inline-flex; gap:var(--pb-space-3); }
 .pb-ask-turn + .pb-ask-turn { border-top:1px solid var(--pb-ink-rule); padding-top:var(--pb-space-3); }
+/* Each conversation starts under a dated rule; earlier ones are dimmed a little. */
+.pb-chat-divider { display:flex; align-items:center; gap:var(--pb-space-2); margin:var(--pb-space-3) 0 var(--pb-space-2); color:var(--pb-ink-muted); font:var(--pb-size-meta)/1.4 var(--pb-mono); text-transform:uppercase; letter-spacing:.06em; }
+.pb-chat-divider::before, .pb-chat-divider::after { content:''; flex:1; height:1px; background:var(--pb-ink-rule); }
+.pb-ask-turn:has(> .pb-chat-divider) { border-top:0; padding-top:0; }
+.pb-ask-turn[data-earlier] > :not(.pb-chat-divider) { opacity:.82; }
+.gi-ask-start[data-after-history] { border-top:1px solid var(--pb-ink-rule); margin-top:var(--pb-space-3); }
 .pb-ask-steps { margin:var(--pb-space-2) 0; padding:0; list-style:none; font:var(--pb-size-meta)/1.5 var(--pb-mono); color:var(--pb-ink-muted, inherit); }
 .pb-ask-steps li { padding:1px 0; opacity:.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pb-ask-steps li::before { content:'✓ '; color:var(--pb-copper-bright); }
