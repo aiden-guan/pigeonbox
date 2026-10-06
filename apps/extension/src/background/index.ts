@@ -2292,6 +2292,15 @@ const webBridge: WebBridgeDeps = {
     return cloudSession.exchangeLinkedCode(apiBaseUrl, input);
   },
   afterSignIn: () => afterCloudSignIn(),
+  currentAccount: async () => {
+    const api = cloudApiUrl(settings);
+    return api ? cloudSession.currentUser(api) : null;
+  },
+  dashboardCode: async (input) => {
+    const api = cloudApiUrl(settings);
+    if (!api) throw new Error('Cloud is not available in this build.');
+    return cloudSession.dashboardCode(api, input);
+  },
   agentRules: async () => (await db.agent_rules.toArray()).map((rule) => rule.naturalLanguage),
   saveAgentRules: (lines) => saveAgentRules(lines),
   action: async (name) => {

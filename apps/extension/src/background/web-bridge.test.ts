@@ -21,6 +21,8 @@ function deps(overrides: Partial<WebBridgeDeps> = {}) {
     apiBaseUrl: () => 'https://api.example.com',
     exchangeLinkedCode,
     afterSignIn: async () => undefined,
+    currentAccount: async () => null,
+    dashboardCode: vi.fn(async (input) => ({ code: 'one-use-account-code', state: input.state })),
     agentRules: async () => [],
     saveAgentRules: async () => undefined,
     analytics: { get: async () => false, set: async () => undefined },
@@ -48,6 +50,20 @@ describe('dashboard bridge', () => {
     // The Cloud API serves its own copy of the dashboard.
     expect(isDashboardSender({ origin: 'https://api.example.com' }, d)).toBe(true);
     expect(await handleWebMessage({ type: 'HELLO' }, { origin: 'https://evil.example' }, d)).toMatchObject({ ok: false, code: 'forbidden' });
+  });
+
+  it('opens a dashboard account session using only a one-use code', async () => {
+    const dashboardCode = vi.fn(async (input: { state: string }) => ({ code: 'one-use-account-code', state: input.state }));
+    const { deps: d } = deps({ currentAccount: async () => ({ id: 'u1', email: 'a@example.com' }), dashboardCode });
+    expect(await handleWebMessage({ type: 'HELLO' }, DASHBOARD, d)).toMatchObject({ accountLink: true, account: { id: 'u1' } });
+    const message = { type: 'ACCOUNT_LINK', redirectUri: 'https://usepigeonbox.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) };
+    expect(await handleWebMessage(message, DASHBOARD, d)).toEqual({ ok: true, code: 'one-use-account-code', state: message.state });
+    expect(dashboardCode).toHaveBeenCalledTimes(1);
+    for (const patch of [{ redirectUri: 'https://evil.example/dashboard' }, { redirectUri: 'https://usepigeonbox.com/other' }, { redirectUri: 'https://usepigeonbox.com/dashboard?next=evil' }, { codeChallenge: 'bad' }, { state: 'bad' }]) {
+      expect(await handleWebMessage({ ...message, ...patch }, DASHBOARD, d)).toMatchObject({ ok: false });
+    }
+    expect(dashboardCode).toHaveBeenCalledTimes(1);
+    expect(await handleWebMessage(message, { origin: 'https://evil.example' }, d)).toMatchObject({ ok: false });
   });
 
   it('never returns secrets or the developer API override', async () => {

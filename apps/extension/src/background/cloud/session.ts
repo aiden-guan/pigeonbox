@@ -1,5 +1,5 @@
 /** PigeonBox Cloud sign-in (Authorization Code + PKCE) and token storage for the service worker. */
-import type { CloudSession } from '@pigeonbox/api-contract';
+import { PROTOCOL_HEADER, PROTOCOL_VERSION, type CloudSession } from '@pigeonbox/api-contract';
 import {
   CloudApiError,
   PigeonBoxCloudClient,
@@ -127,6 +127,39 @@ export class CloudSessionManager {
     const session = await this.anonymousClient(apiBaseUrl).exchangeCode(input);
     await this.store(apiBaseUrl, session);
     return session.user;
+  }
+
+  /** Open an independent dashboard session without exposing this worker's credentials. */
+  async dashboardCode(apiBaseUrl: string, input: { redirectUri: string; codeChallenge: string; state: string }): Promise<{ code: string; state: string }> {
+    const client = this.client(apiBaseUrl);
+    const tokens = this.tokenProvider(client.baseUrl);
+    const request = async (retried = false): Promise<{ code: string; state: string }> => {
+      const token = await tokens.get();
+      if (!token) throw new CloudApiError({ code: 'signed_out', message: 'Sign in to your PigeonBox account.' });
+      let response: Response;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30_000);
+      try {
+        response = await (this.deps.fetch ?? fetch)(`${client.baseUrl}/v1/auth/link`, {
+          method: 'POST', credentials: 'omit', signal: controller.signal,
+          headers: { Authorization: `Bearer ${token}`, [PROTOCOL_HEADER]: String(PROTOCOL_VERSION), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ redirect_uri: input.redirectUri, code_challenge: input.codeChallenge, code_challenge_method: 'S256', state: input.state }),
+        });
+        if (response.status === 401 && !retried) {
+          clearTimeout(timer);
+          if (!await tokens.refresh()) throw new CloudApiError({ code: 'signed_out', message: 'Sign in to your PigeonBox account.' });
+          return request(true);
+        }
+        const data = await response.json() as { code?: string; state?: string; error?: { message?: string } };
+        if (!response.ok) throw new CloudApiError({ code: response.status === 401 ? 'unauthenticated' : 'network', status: response.status, message: data.error?.message ?? 'Your PigeonBox account could not be connected. Try again.' });
+        if (typeof data.code !== 'string' || data.code.length < 8 || data.code.length > 512 || data.state !== input.state) throw new CloudApiError({ code: 'invalid_response', message: 'Your PigeonBox account connection could not be verified.' });
+        return { code: data.code, state: data.state };
+      } catch (error) {
+        if (error instanceof CloudApiError) throw error;
+        throw new CloudApiError({ code: controller.signal.aborted ? 'timeout' : 'network', message: 'Your PigeonBox account could not be reached. Try again.' });
+      } finally { clearTimeout(timer); }
+    };
+    return request();
   }
 
   async signOut(): Promise<void> {

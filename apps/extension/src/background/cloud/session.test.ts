@@ -84,6 +84,45 @@ describe('CloudSessionManager', () => {
     expect(sessionArea.data.get('cloudAccess')).toMatchObject({ accessToken: 'access_token_aaaaaaaa' });
   });
 
+  it('creates a dashboard code without copying tokens or rotating the extension session', async () => {
+    const input = { redirectUri: 'https://usepigeonbox.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) };
+    const { manager, local } = setup(async (url, init) => {
+      if (url.endsWith('/auth/token')) return json(session());
+      expect(url).toBe(`${API}/v1/auth/link`);
+      expect(init.credentials).toBe('omit');
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer access_token_aaaaaaaa');
+      expect(JSON.parse(String(init.body))).toEqual({ redirect_uri: input.redirectUri, code_challenge: input.codeChallenge, code_challenge_method: 'S256', state: input.state });
+      return json({ code: 'single-use-dashboard-code', state: input.state });
+    });
+    await manager.signIn(API);
+    const saved = structuredClone(local.data.get('cloudSession'));
+    expect(await manager.dashboardCode(API, input)).toEqual({ code: 'single-use-dashboard-code', state: input.state });
+    expect(local.data.get('cloudSession')).toEqual(saved);
+    await expect(manager.dashboardCode('https://other.example', input)).rejects.toMatchObject({ code: 'signed_out' });
+  });
+
+  it('refreshes an expired account once before creating a dashboard code', async () => {
+    const input = { redirectUri: 'https://usepigeonbox.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) };
+    let links = 0;
+    const { manager } = setup(async (url, init) => {
+      if (url.endsWith('/auth/token')) return json(session());
+      if (url.endsWith('/auth/refresh')) return json(session({ access: 'new_access_token_aaaa', refresh: 'new_refresh_token_bbbb' }));
+      if (++links === 1) return json({ error: { message: 'expired' } }, 401);
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer new_access_token_aaaa');
+      return json({ code: 'single-use-dashboard-code', state: input.state });
+    });
+    await manager.signIn(API);
+    expect(await manager.dashboardCode(API, input)).toEqual({ code: 'single-use-dashboard-code', state: input.state });
+    expect(links).toBe(2);
+  });
+
+  it('rejects a mismatched dashboard state without clearing the account', async () => {
+    const { manager } = setup(async (url) => url.endsWith('/auth/token') ? json(session()) : json({ code: 'single-use-dashboard-code', state: 'wrong-state' }));
+    await manager.signIn(API);
+    await expect(manager.dashboardCode(API, { redirectUri: 'https://usepigeonbox.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) })).rejects.toMatchObject({ code: 'invalid_response' });
+    expect(await manager.currentUser(API)).toEqual(session().user);
+  });
+
   it('rejects a sign-in response with the wrong state', async () => {
     const { manager, fetchMock } = setup(async () => json(session()), async () => `${REDIRECT}?code=abc12345&state=forged-state-value`);
     await expect(manager.signIn(API)).rejects.toMatchObject({ code: 'invalid_response' });

@@ -73,6 +73,8 @@ export type WebBridgeDeps = {
   apiBaseUrl: () => string | null;
   exchangeLinkedCode: (apiBaseUrl: string, input: { code: string; codeVerifier: string; redirectUri: string }) => Promise<{ id: string; email: string | null }>;
   afterSignIn: () => Promise<void>;
+  currentAccount: () => Promise<{ id: string; email: string | null } | null>;
+  dashboardCode: (input: { redirectUri: string; codeChallenge: string; state: string }) => Promise<{ code: string; state: string }>;
   agentRules: () => Promise<string[]>;
   saveAgentRules: (lines: string[]) => Promise<void>;
   action: (name: string) => Promise<unknown>;
@@ -158,6 +160,8 @@ export async function handleWebMessage(message: unknown, sender: Sender, deps: W
         storeInstall: await deps.storeInstall(),
         apiBaseUrl: deps.apiBaseUrl(),
         product: await deps.productState(),
+        account: await deps.currentAccount(),
+        accountLink: true,
       };
     }
     case 'BYE':
@@ -214,6 +218,16 @@ export async function handleWebMessage(message: unknown, sender: Sender, deps: W
       return deps.productMessage({ type: 'CLOUD_REFRESH' });
     case 'SIGN_OUT':
       return deps.productMessage({ type: 'CLOUD_SIGN_OUT' });
+    case 'ACCOUNT_LINK': {
+      let redirect: URL;
+      try { redirect = new URL(String(msg.redirectUri)); }
+      catch { return { ok: false, reason: 'The account return address is invalid.' }; }
+      if (redirect.origin !== senderOrigin(sender) || redirect.pathname !== '/dashboard' || redirect.search || redirect.hash || redirect.username || redirect.password
+        || typeof msg.codeChallenge !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(msg.codeChallenge)
+        || typeof msg.state !== 'string' || msg.state.length < 16 || msg.state.length > 200) return { ok: false, reason: 'The account connection could not be verified.' };
+      try { return { ok: true, ...await deps.dashboardCode({ redirectUri: redirect.href, codeChallenge: msg.codeChallenge, state: msg.state }) }; }
+      catch (error) { return { ok: false, code: (error as { code?: string })?.code, reason: error instanceof Error ? error.message : 'Your PigeonBox account could not be connected.' }; }
+    }
     case 'LINK_BEGIN': {
       const apiBaseUrl = deps.apiBaseUrl();
       if (!apiBaseUrl) return { ok: false, code: 'not_configured', reason: 'This version of PigeonBox does not include Cloud. Update PigeonBox to use Cloud.' };
