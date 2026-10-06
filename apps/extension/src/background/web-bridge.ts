@@ -139,8 +139,7 @@ export function editablePatch(input: unknown): Partial<ExtensionSettings> {
 
 /** The settings view for the dashboard: no secrets, no developer override. */
 function dashboardSettings(settings: ExtensionSettings) {
-  const { cloudApiUrl: _api, settingsVersion: _version, ...rest } = toPublicSettings(settings);
-  return rest;
+  return Object.fromEntries(Object.entries(toPublicSettings(settings)).filter(([key]) => key !== 'cloudApiUrl' && key !== 'settingsVersion'));
 }
 
 /** Handle one message from the dashboard. Always resolves to a JSON-safe reply. */

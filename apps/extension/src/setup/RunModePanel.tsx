@@ -2,7 +2,6 @@ import { openCloudWaitlist } from '../config';
 import { useDispatchLayout } from '../ui/dispatch-motion';
 import { useState } from 'react';
 import type { ProductControls } from '../ui/product-state';
-import { Orb } from '../ui/Orb';
 import { CloudConnections } from './CloudConnections';
 import { openCloud, openDashboard } from '../ui/cloud-features';
 
