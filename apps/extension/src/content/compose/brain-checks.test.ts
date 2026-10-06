@@ -9,6 +9,8 @@ import {
   BRAIN_IDLE_MS,
   activeBrainChecks,
   attachComposeBrainChecks,
+  claimDiff,
+  claimRange,
   readComposeText,
   replaceClaim,
   resetBrainChecksForTests,
@@ -52,7 +54,7 @@ function compose(recipients = ['alex@example.test'], initial = ''): Compose {
       body.innerHTML = html;
       body.dispatchEvent(new Event('input', { bubbles: true }));
     },
-    notice: () => (harness.element.querySelector('[data-gi-ui="brain-notice"]') as HTMLElement | null)?.shadowRoot ?? null,
+    notice: () => (document.querySelector(`[data-gi-ui="brain-notice"][data-gi-compose="${harness.element.getAttribute('data-gi-compose-id')}"]`) as HTMLElement | null)?.shadowRoot ?? null,
     emit: (event) => harness.emit(event),
   };
 }
@@ -257,8 +259,12 @@ describe('real-time Pidgy checks in compose', () => {
     c.type("I'm free tomorrow at 3.");
     await settle();
     const root = c.notice()!;
-    expect(root.querySelector('[role="status"]')?.textContent).toContain('Pidgy noticed something');
-    expect(root.textContent).toContain('You have Math 52 from 2–4 PM tomorrow.');
+    // Inline and quiet: no card, only an on-demand popover labelled by its one-line message.
+    expect(root.textContent).not.toContain('Pidgy noticed something');
+    const dialog = root.querySelector('[role="dialog"]')!;
+    expect(dialog.getAttribute('aria-label')).toBe('Pidgy');
+    expect(root.getElementById(dialog.getAttribute('aria-describedby')!)?.textContent).toBe('You have Math 52 from 2–4 PM tomorrow.');
+    expect(button(root, 'suggest')?.textContent).toContain('Fix');
     expect(button(root, 'source')).not.toBeNull();
     button(root, 'source')!.click();
     expect(deps.openSource).toHaveBeenCalledWith(expect.objectContaining({ title: 'Math 52' }), 'me@example.test');
@@ -342,6 +348,150 @@ describe('real-time Pidgy checks in compose', () => {
     button(a.notice(), 'dismiss')!.click();
     a.emit('destroy');
     expect(activeBrainChecks()).toBe(1);
+  });
+
+  it('marks only the words the fix would change', () => {
+    expect(claimDiff("I'm free tomorrow at 2pm.", "I'm free tomorrow at 3:30pm.")).toEqual({ start: 21, end: 24, text: '3:30pm' });
+    expect(claimDiff("I'm free tomorrow at 3.", "I'm free tomorrow at 4:30.")).toEqual({ start: 21, end: 22, text: '4:30' });
+    expect(claimDiff("I'll send the deck by Friday.", "I'll send the deck by Wednesday.")).toMatchObject({ text: 'Wednesday' });
+    expect(claimDiff('same', 'same')).toBeNull();
+    const body = document.createElement('div');
+    body.innerHTML = "<div>Hi Alex,</div><div>I'm free tomorrow at 2pm.</div>";
+    document.body.append(body);
+    expect(claimRange(body, "I'm free tomorrow at 2pm.", "I'm free tomorrow at 3:30pm.")?.toString()).toBe('2pm');
+    expect(claimRange(body, "I'm free tomorrow at 2pm.", null)?.toString()).toBe("I'm free tomorrow at 2pm.");
+  });
+
+  it('applies the fix in place and keeps the caret where the user had it', () => {
+    const body = document.createElement('div');
+    body.setAttribute('contenteditable', 'true');
+    body.innerHTML = "<div>I'm free tomorrow at 2pm. See you then</div>";
+    document.body.append(body);
+    const text = body.firstElementChild!.firstChild!;
+    const caret = document.createRange();
+    caret.setStart(text, text.nodeValue!.length);
+    caret.collapse(true);
+    document.getSelection()!.removeAllRanges();
+    document.getSelection()!.addRange(caret);
+    expect(replaceClaim(body, "I'm free tomorrow at 2pm.", "I'm free tomorrow at 3:30pm.")).toBe(true);
+    expect(body.textContent).toBe("I'm free tomorrow at 3:30pm. See you then");
+    const selection = document.getSelection()!;
+    expect(selection.focusNode?.nodeValue?.slice(0, selection.focusOffset)).toBe("I'm free tomorrow at 3:30pm. See you then");
+  });
+
+  it('while presented, Tab applies the fix and Escape dismisses; otherwise Tab is left to Gmail', async () => {
+    const rects = Range.prototype.getClientRects;
+    const box = Element.prototype.getBoundingClientRect;
+    Range.prototype.getClientRects = () => [{ left: 40, top: 20, right: 70, bottom: 36, width: 30, height: 16 }] as unknown as DOMRectList;
+    Element.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, right: 560, bottom: 300, width: 560, height: 300, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    try {
+      const c = compose();
+      const { deps } = brain(busy);
+      attachComposeBrainChecks(c.harness.view(), deps);
+      c.setText("<div>I'm free tomorrow at 3.</div>");
+      await settle();
+      const root = c.notice()!;
+      const dialog = root.querySelector<HTMLElement>('[role="dialog"]')!;
+      expect(dialog.hidden).toBe(true);
+      // No CSS highlights here (jsdom): the same underline is drawn beside the text instead, and the editor is untouched.
+      expect(root.querySelectorAll('.pb-line')).toHaveLength(1);
+      expect(c.body.querySelector('[data-gi-ui]')).toBeNull();
+      // Closed: Tab is ordinary Gmail behaviour.
+      const quiet = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      c.body.dispatchEvent(quiet);
+      expect(quiet.defaultPrevented).toBe(false);
+      expect(c.body.textContent).toBe("I'm free tomorrow at 3.");
+      // The dot presents it; Tab applies exactly the suggested words.
+      root.querySelector<HTMLButtonElement>('.pb-dot')!.click();
+      expect(dialog.hidden).toBe(false);
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      c.body.dispatchEvent(tab);
+      expect(tab.defaultPrevented).toBe(true);
+      expect(c.body.textContent).toBe("I'm free tomorrow at 4:30.");
+      await vi.advanceTimersByTimeAsync(200);
+      expect(c.notice()).toBeNull();
+
+      // Escape dismisses for good.
+      c.setText("<div>Also, I'm free tomorrow at 3.</div>");
+      await settle();
+      await vi.advanceTimersByTimeAsync(BRAIN_COOLDOWN_MS);
+      c.notice()!.querySelector<HTMLButtonElement>('.pb-dot')!.click();
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+      c.body.dispatchEvent(escape);
+      expect(escape.defaultPrevented).toBe(true);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(c.notice()).toBeNull();
+    } finally {
+      Range.prototype.getClientRects = rects;
+      Element.prototype.getBoundingClientRect = box;
+    }
+  });
+
+  it('shows the ambient Pidgy only when checks are on, and reflects checking, clear and attention', async () => {
+    const c = compose();
+    const send = document.createElement('div');
+    send.setAttribute('role', 'button');
+    send.setAttribute('data-tooltip', 'Send');
+    const row = document.createElement('div');
+    row.append(send);
+    c.harness.element.append(row);
+    const resolvers: Array<(reply: BrainCheckReply) => void> = [];
+    const { deps } = brain(() => new Promise((resolve) => resolvers.push(resolve)));
+    attachComposeBrainChecks(c.harness.view(), { ...deps, statusEnabled: async () => true });
+    await vi.advanceTimersByTimeAsync(0);
+    const status = () => c.harness.element.querySelector('[data-gi-ui="pidgy-status"]')?.shadowRoot?.querySelector<HTMLElement>('.pb-status') ?? null;
+    expect(status()?.dataset.state).toBe('idle');
+    expect(status()?.tagName).toBe('SPAN');
+    c.type("I'm free tomorrow at 5.");
+    await settle();
+    expect(status()?.dataset.state).toBe('checking');
+    resolvers[0]!(none);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(status()?.dataset.state).toBe('clear');
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(status()?.dataset.state).toBe('idle');
+    c.setText("I'm free tomorrow at 3.");
+    await settle();
+    await vi.advanceTimersByTimeAsync(BRAIN_COOLDOWN_MS);
+    resolvers[1]!(busy);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(status()?.dataset.state).toBe('attention');
+    expect(status()?.tagName).toBe('BUTTON');
+    expect(status()?.getAttribute('aria-label')).toContain('Math 52');
+    // A Local-mode compose, or one where checks are off, never shows Pidgy.
+    const off = compose(['sam@example.test']);
+    attachComposeBrainChecks(off.harness.view(), { ...brain(none, false).deps, statusEnabled: async () => true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(off.harness.element.querySelector('[data-gi-ui="pidgy-status"]')).toBeNull();
+    c.emit('destroy');
+    expect(c.harness.element.querySelector('[data-gi-ui="pidgy-status"]')).toBeNull();
+  });
+
+  it('hides Pidgy when the worker reports checks are turned off', async () => {
+    const c = compose();
+    const send = document.createElement('div');
+    send.setAttribute('data-tooltip', 'Send');
+    c.harness.element.append(document.createElement('div').appendChild(send).parentElement!);
+    const { deps } = brain({ ok: true, status: 'disabled' });
+    attachComposeBrainChecks(c.harness.view(), { ...deps, statusEnabled: async () => true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(c.harness.element.querySelector('[data-gi-ui="pidgy-status"]')).not.toBeNull();
+    c.type("I'm free tomorrow at 3.");
+    await settle();
+    expect(c.harness.element.querySelector('[data-gi-ui="pidgy-status"]')).toBeNull();
+  });
+
+  it('drops an answer whose words changed while Cloud was answering', async () => {
+    const c = compose();
+    let resolve: (reply: BrainCheckReply) => void = () => undefined;
+    const { deps } = brain(() => new Promise((done) => { resolve = done; }));
+    attachComposeBrainChecks(c.harness.view(), deps);
+    c.type("I'm free tomorrow at 3.");
+    await settle();
+    c.setText("I'm free tomorrow at 3:15 instead.");
+    resolve(busy);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(c.notice()).toBeNull();
   });
 
   it('only links to Gmail threads and Google Calendar', () => {

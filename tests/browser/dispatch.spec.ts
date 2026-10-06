@@ -166,7 +166,8 @@ test('Workspace hides zero statistics and retains access to a large local index'
   await expect(page.getByText('Needs your reply', { exact: true })).toBeVisible();
   await expect(page.getByText(/threads indexed|threads analyzed/)).toHaveCount(0);
   await seedDispatch(page, 347);
-  await page.getByRole('button', { name: 'Inbox', exact: true }).click();
+  await page.getByRole('button', { name: 'Waiting & follow-ups →' }).click();
+  await page.getByRole('combobox', { name: 'Inbox category' }).selectOption('RESPOND');
   await expect(page.getByRole('button', { name: 'Read brief: Final review on the launch note' })).toBeVisible();
   await page.locator('[data-command-launcher]').click();
   await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Maya launch review');

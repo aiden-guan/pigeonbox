@@ -104,3 +104,26 @@ it('opens the public waitlist when Cloud is unavailable without loading a client
   expect(client).not.toHaveBeenCalled();
   expect(settings.runMode).toBe('local');
 });
+
+it('reports only whether Calendar is connected for the open thread, without reading free/busy', async () => {
+  const threadId = '18c2f0a1b2c3d4e5';
+  const accountId = '00000000-0000-4000-8000-000000000001';
+  const calls: string[] = [];
+  const make = (features: string[]) =>
+    async () =>
+      ({
+        call: vi.fn(async (route: string) => {
+          calls.push(route);
+          if (route === 'threadsIntel') return { threads: { [threadId]: { threadId, accountId, participants: [] } } };
+          if (route === 'connections') return { accounts: [{ id: accountId, email: 'fixture@test.test', features }] };
+          throw new Error(`unexpected ${route}`);
+        }),
+      }) as unknown as PigeonBoxCloudClient;
+  const calendarState: CloudState = { ...state, capabilities: ['cloud_mail_sync', 'cloud_calendar'] };
+  const base = { ...deps, readState: async () => calendarState };
+  expect(await handleCloudRequest({ type: 'CLOUD_THREAD_CONTEXT', kind: 'calendar_status', threadId }, gmail, { ...base, client: make(['mail_read']) })).toEqual({ ok: true, data: { connected: false } });
+  expect(await handleCloudRequest({ type: 'CLOUD_THREAD_CONTEXT', kind: 'calendar_status', threadId }, gmail, { ...base, client: make(['mail_read', 'calendar_read']) })).toEqual({ ok: true, data: { connected: true } });
+  expect(await handleCloudRequest({ type: 'CLOUD_THREAD_CONTEXT', kind: 'calendar_status', threadId: 'other-thread' }, gmail, { ...base, client: make(['mail_read', 'calendar_read']) })).toMatchObject({ ok: false });
+  expect(calls).not.toContain('calendarAvailability');
+  expect(calls).not.toContain('preferences');
+});

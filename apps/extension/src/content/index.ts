@@ -37,6 +37,9 @@ import {
 import { applyCategoryChip, rowsForThread } from './thread/chips';
 import { attachDocumentAction, insertDocumentLink } from './compose/documents';
 import { attachComposeBrainChecks, type BrainCheckReply, type ComposeBrainDeps } from './compose/brain-checks';
+import { autofillPreparedReply, claimThread, composerIsEmpty, holdsUneditedPrepared, releaseThread, rememberPlaced, removePrepared, selectOwnText } from './compose/prepared-reply';
+import { VARIANT_CHOICE_KEY } from './compose/variant-choice';
+import type { ThreadIntel } from '@pigeonbox/api-contract';
 import { isVisibleCommand, type CommandId } from './commands';
 import { attachSdkComposeTracking, type ComposeTrackingSession } from './tracking/compose-tracking';
 import { attachPlaceholderGuard } from './shell/placeholder-guard';
@@ -292,6 +295,8 @@ async function boot(): Promise<void> {
         if (changes.publicSettings?.newValue && typeof changes.publicSettings.newValue === 'object') {
           settings = { ...settings, ...(changes.publicSettings.newValue as PublicExtensionSettings) };
           sentStatus?.setTrackerBaseUrl(settings.trackerBaseUrl || '');
+          // Mode or sign-in may have changed: the next compose asks again.
+          cloudCheckedAt = 0;
         }
       }
       if (area === 'local' && Array.isArray(changes.trackedEmails?.newValue)) {
@@ -338,7 +343,36 @@ function brainDeps(): ComposeBrainDeps {
     available: () => cloudAvailable,
     check: (request) => send<BrainCheckReply>({ type: 'CLOUD_COMPOSE_CHECK', check: request }, 9_000),
     mailbox: () => mailboxOwner()?.email ?? null,
+    // Carries no draft text: only whether checks are on, so Pidgy shows only when it is watching.
+    statusEnabled: async () => Boolean((await send<{ enabled?: boolean }>({ type: 'CLOUD_COMPOSE_STATUS' }, 6_000))?.enabled),
   };
+}
+
+/** The open thread's Cloud state, the same read-only request the thread card makes. */
+async function cloudThread(threadId: string): Promise<ThreadIntel | null> {
+  const res = await send<{ threads?: Record<string, ThreadIntel> }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [threadId], mailbox: mailboxOwner()?.email });
+  return res?.threads?.[threadId] ?? null;
+}
+
+/** A newly opened reply composer gets the prepared reply when that is safe (compose/prepared-reply.ts). */
+function fillPreparedReply(composeView: unknown, openedAt: number): void {
+  const view = composeView as { isReply?: () => boolean; getBodyElement?: () => HTMLElement | null; on?: (event: string, handler: () => void) => void };
+  void autofillPreparedReply(view, {
+    available: () => cloudAvailable,
+    currentThreadId: () => currentNormalizedThread?.threadId ?? currentThreadId,
+    composeThreadId: () => resolveThreadId(composeView as Parameters<typeof resolveThreadId>[0]),
+    intel: cloudThread,
+    preferredVariant: async (draftId) => {
+      const stored = (await chrome.storage.local.get(VARIANT_CHOICE_KEY))[VARIANT_CHOICE_KEY] as Record<string, string> | undefined;
+      return typeof stored?.[draftId] === 'string' ? stored[draftId]! : null;
+    },
+    insert: async (body, text) => {
+      const result = await adapter.insertComposeBody(text, { id: 'prepared-reply', isReply: true, view: composeView, element: body }, { keepExisting: true });
+      return Boolean(result.success) && !composerIsEmpty(body);
+    },
+    onFilled: (body) => showToast('Prepared reply added', () => removePrepared(body), false, 'Undo'),
+    now: () => Date.now(),
+  }, openedAt);
 }
 
 function reportTracking(session: ComposeTrackingSession | null): void {
@@ -446,11 +480,14 @@ export function mountSdkUi(
     onComposeView: (composeView) => {
       attachSdkComposeTracking(composeView as any, trackingDeps());
       attachPlaceholderGuard(composeView as any);
-      void cloudBoot.then(() => { if (cloudCapabilities.includes('cloud_documents')) attachDocumentAction(composeView as any, () => cloudAvailable && cloudCapabilities.includes('cloud_documents')); });
-      // Real-time Pidgy checks: Cloud mode only. Local mode never hands draft text to the worker for this.
-      void cloudBoot.then(() => {
+      void cloudReady().then(() => { if (cloudCapabilities.includes('cloud_documents')) attachDocumentAction(composeView as any, () => cloudAvailable && cloudCapabilities.includes('cloud_documents')); });
+      // Real-time Pidgy checks and prepared replies: Cloud mode only. Local mode never hands draft text to the worker.
+      const openedAt = Date.now();
+      void cloudReady().then(() => {
         const element = (composeView as { getElement?: () => HTMLElement | null }).getElement?.();
-        if (cloudAvailable && element?.isConnected !== false) attachComposeBrainChecks(composeView as any, brainDeps());
+        if (!cloudAvailable || element?.isConnected === false) return;
+        attachComposeBrainChecks(composeView as any, brainDeps());
+        fillPreparedReply(composeView, openedAt);
       });
     },
   };
@@ -623,7 +660,26 @@ async function waitForSummaryJob(threadId: string, jobId: string, preview: strin
 /** Whether PigeonBox Cloud's always-on features are on (Cloud mode, Google connected). Learned from the worker. */
 let cloudAvailable = false;
 let cloudCapabilities: string[] = [];
-const cloudBoot = send<{ available?: boolean; capabilities?: string[] }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [] }).then((res) => { cloudAvailable = Boolean(res?.available); cloudCapabilities = res?.capabilities ?? []; });
+let cloudCheckedAt = 0;
+/** Re-read after this long, so turning on Cloud (or the worker waking late) does not need a Gmail reload. */
+const CLOUD_STATE_TTL_MS = 60_000;
+function refreshCloudAvailability(): Promise<void> {
+  cloudCheckedAt = Date.now();
+  return send<{ available?: boolean; capabilities?: string[] }>({ type: 'CLOUD_THREAD_INTEL', threadIds: [] }).then((res) => {
+    // No answer (the worker was asleep or busy) keeps what was known; it is asked again next time.
+    if (!res) {
+      cloudCheckedAt = 0;
+      return;
+    }
+    cloudAvailable = Boolean(res.available);
+    cloudCapabilities = res.capabilities ?? [];
+  });
+}
+let cloudBoot = refreshCloudAvailability();
+function cloudReady(): Promise<void> {
+  if (Date.now() - cloudCheckedAt > CLOUD_STATE_TTL_MS) cloudBoot = refreshCloudAvailability();
+  return cloudBoot;
+}
 
 function getIntel(threadId: string): Promise<LocalThreadIntel | undefined> {
   return send<LocalThreadIntel>({ type: 'GET_THREAD_INTEL', threadId, owner: mailboxOwner() });
@@ -694,6 +750,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
       if (message?.type === 'PUBLIC_SETTINGS_CHANGED' && message.settings && typeof message.settings === 'object') {
         settings = { ...settings, ...(message.settings as PublicExtensionSettings) };
         sentStatus?.setTrackerBaseUrl(settings.trackerBaseUrl || '');
+        cloudCheckedAt = 0;
         sendResponse({ ok: true });
         return;
       }
@@ -820,7 +877,23 @@ async function waitForNewComposeBody(existing: ReadonlySet<HTMLElement>, timeout
   return null;
 }
 
+/**
+ * Put a reply in Gmail's reply composer for this thread. Never over the
+ * person's own words: an empty composer gets the text at the top (Gmail's
+ * signature and quoted history stay), a composer holding an unedited prepared
+ * reply gets the other version, and anything else is left alone. Never sends.
+ */
 async function insertDraft(threadId: string, text: string) {
+  // The composer this opens must not also be auto-filled.
+  claimThread(threadId);
+  try {
+    return await placeDraft(threadId, text);
+  } finally {
+    releaseThread(threadId);
+  }
+}
+
+async function placeDraft(threadId: string, text: string) {
   const existingBodies = new Set(findComposeBodies(document));
   const opened = (await adapter.actions.enqueueAndWait({ kind: 'CREATE_REPLY_DRAFT', threadId })) as ActionQueueResult & {
     composeHandle?: ComposeHandle;
@@ -868,7 +941,21 @@ async function insertDraft(threadId: string, text: string) {
   }
   handle.element = body;
 
-  await adapter.insertComposeBody(text, handle);
+  if (holdsUneditedPrepared(body)) {
+    // Another version of a prepared reply PigeonBox put here, untouched since: swap it, as one undoable edit.
+    let swapped = false;
+    try {
+      swapped = selectOwnText(body) && document.execCommand('insertText', false, text);
+    } catch {
+      swapped = false;
+    }
+    if (!swapped) return { success: false, verified: false, action: 'CREATE_REPLY_DRAFT', threadId, reason: 'Could not switch the reply in Gmail. Edit it there.' };
+  } else if (!composerIsEmpty(body)) {
+    return { success: false, verified: false, action: 'CREATE_REPLY_DRAFT', threadId, reason: 'Your reply in Gmail already has text, so PigeonBox left it as it is.' };
+  } else {
+    await adapter.insertComposeBody(text, handle, { keepExisting: true });
+  }
+  rememberPlaced(body, text);
   await wait(300);
 
   let composeOpen = false;

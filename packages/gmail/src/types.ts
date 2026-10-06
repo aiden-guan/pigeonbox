@@ -56,6 +56,8 @@ export type ComposeViewState = {
   threadId?: string;
 };
 
+export type InsertComposeOptions = { keepExisting?: boolean };
+
 export type ComposeHandle = {
   id: string;
   threadId?: string;
@@ -105,7 +107,12 @@ export interface GmailAdapter {
   markUnread(threadId: string): Promise<GmailActionResult>;
   starThread(threadId: string): Promise<GmailActionResult>;
   createReplyDraft(threadId: string): Promise<GmailActionResult & { composeHandle?: ComposeHandle }>;
-  insertComposeBody(text: string, target?: ComposeHandle | { threadId?: string }): Promise<GmailActionResult>;
+  /**
+   * Put text in a compose body. `keepExisting` inserts it at the top and keeps
+   * whatever Gmail already put there (signature, quoted history); otherwise the
+   * InboxSDK path replaces the body.
+   */
+  insertComposeBody(text: string, target?: ComposeHandle | { threadId?: string }, options?: InsertComposeOptions): Promise<GmailActionResult>;
   navigateToSearch(query: string): Promise<GmailActionResult>;
   navigateToInbox(): Promise<GmailActionResult>;
 }

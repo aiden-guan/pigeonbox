@@ -1,6 +1,6 @@
 {
   "name": "@pigeonbox/gmail",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Gmail integration primitives: InboxSDK and DOM adapters, event and ID normalization, selectors, Gmail actions and draft placement.",
   "private": true,
   "type": "module",

@@ -5,11 +5,14 @@ test('MV3 worker boots; Local starts first and survives a failed Cloud', async (
   app.api.fail = true;
   const page = await app.page('sidepanel');
   expect(app.worker.url()).toContain('/background.js');
-  await expect(page.getByRole('button', { name: 'Inbox', exact: true })).toBeVisible();
+  // Gmail is the inbox: the chrome has Home and Ask only; Inbox insights are a command.
+  await expect(page.getByRole('navigation', { name: 'Workspace' }).getByRole('button')).toHaveText(['Home', 'Ask']);
   await expect(page.getByRole('button', { name: 'Cloud', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await expect(page.getByText('Needs your reply', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Inbox', exact: true }).click();
+  await page.locator('[data-command-launcher]').click();
+  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Inbox insights');
+  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
   await expect(page.getByRole('heading', { name: 'Nothing needs you here.' })).toBeVisible();
 });
 test('Cloud overview loads through the real worker/client and retains sections on partial failure', async ({ app }) => {
@@ -104,10 +107,19 @@ test('prepared variants render from the real Cloud transport; insert changes com
   await app.page('sidepanel', true);
   const page = await app.gmail();
   const workspace = page.frameLocator('iframe[title="PigeonBox"]');
-  await expect(workspace.getByText('Reply prepared', { exact: true }).first()).toBeVisible();
+  // A reply, not an object: one action, no "Reply prepared" section, provenance one click away.
+  await expect(workspace.getByRole('button', { name: 'Use reply', exact: true })).toBeVisible();
+  await expect(workspace.getByText('Reply prepared', { exact: true })).toHaveCount(0);
   await expect(workspace.getByText('Fill in [CONFIRM PRICE] before sending.')).toBeVisible();
+  await expect(workspace.locator('.gi-action')).toHaveCount(1);
   await workspace.getByRole('tab', { name: 'Shorter' }).click();
-  await workspace.getByRole('button', { name: 'Use prepared reply', exact: true }).click();
+  // The reply composer already has the person's words: PigeonBox never replaces them.
+  await workspace.getByRole('button', { name: 'Use reply', exact: true }).click();
+  await expect(workspace.getByRole('alert')).toContainText('already has text');
+  await expect(page.locator('[aria-label="Message Body"]')).toHaveText('Existing text');
+  // An empty composer gets the chosen version at the top.
+  await page.locator('[aria-label="Message Body"]').evaluate((node) => { node.innerHTML = '<div><br></div>'; });
+  await workspace.getByRole('button', { name: 'Use reply', exact: true }).click();
   await expect(page.locator('[aria-label="Message Body"]')).toContainText('Hi Maya');
   expect(await page.locator('body').getAttribute('data-sent')).toBeNull();
 });
@@ -249,7 +261,7 @@ test('profiles synthetic Cloud overview, Ask, thread mount and SPA navigation wi
   start = Date.now(); await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
   await expect(page.getByText('Maya needs pricing.', { exact: true })).toBeVisible(); timings.askIncluding300msFixtureMs = Date.now() - start;
   start = Date.now(); const gmail = await app.gmail();
-  await expect(gmail.frameLocator('iframe[title="PigeonBox"]').getByText('Reply prepared', { exact: true }).first()).toBeVisible(); timings.gmailNavigationAndThreadMountMs = Date.now() - start;
+  await expect(gmail.frameLocator('iframe[title="PigeonBox"]').getByRole('button', { name: 'Use reply', exact: true })).toBeVisible(); timings.gmailNavigationAndThreadMountMs = Date.now() - start;
   start = Date.now(); await gmail.evaluate(() => { location.hash = '#sent/abc123'; });
   await expect(gmail.locator('[data-gi-ui="workspace"]')).toHaveCount(1); timings.spaRouteAndCompanionCheckMs = Date.now() - start;
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

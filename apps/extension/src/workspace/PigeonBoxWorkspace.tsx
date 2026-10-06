@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ExtensionSettings } from '@pigeonbox/shared';
 import { DEFAULT_SETTINGS } from '@pigeonbox/shared';
 import { useDispatchLayout } from '../ui/dispatch-motion';
-import { AppearanceButton } from '../ui/appearance';
+import { useAppearance } from '../ui/appearance';
 import { Button, ContextCard, IconButton, Input } from '../ui/Primitives';
 import { openSettings } from '../ui/settings-link';
 import { Orb } from '../ui/Orb';
@@ -101,6 +101,7 @@ function WorkspaceContent() {
   const [palette, setPalette] = useState(false);
   const [mode, setMode] = useState<'home' | 'inbox' | 'ask' | 'cloud'>('home');
   const product = useProductState();
+  const theme = useAppearance();
   const cloudMode = product.state.runMode === 'cloud';
   const [cloudSection, setCloudSection] = useState('overview');
   const [, setApprovalCount] = useState(0);
@@ -224,6 +225,7 @@ function WorkspaceContent() {
     ] : []),
     { id: 'tracking', label: 'Tracking activity', detail: 'Sent mail and follow-ups', icon: 'tracking', run: () => choose('WAITING') },
     { id: 'settings', label: 'Settings', detail: 'Execution mode, privacy and preferences', icon: 'settings', run: () => openSettings('command_palette', cloudMode ? 'cloud' : 'local') },
+    ...(['light', 'dark', 'system'] as const).filter((value) => value !== theme.appearance).map((value) => ({ id: `appearance-${value}`, label: value === 'system' ? 'Match system appearance' : `Switch to ${value} appearance`, detail: `Appearance is ${theme.appearance} now`, icon: 'settings' as const, run: () => theme.change(value) })),
     ...(cloudMode ? [
       ...(product.has('cloud_auto_drafts') ? [
         { id: 'drafts', label: 'Prepared drafts', detail: 'Replies ready to review or already in Gmail', icon: 'edit' as const, run: () => navigate('cloud', 'drafts') },
@@ -266,10 +268,10 @@ function WorkspaceContent() {
           {palette ? <CommandPalette inline commands={commands} cloud={cloudMode} onClose={() => setPalette(false)} onAskQuery={(question) => { navigate('ask'); setPendingAsk({ id: crypto.randomUUID(), query: question }); }} /> : null}
         </div>
         <div className="pb-workspace-navigation"><nav className="pb-panel-nav" aria-label="Workspace">
-          <Tab active={mode === 'home'} onClick={() => navigate('home')}>Home</Tab>
-          <Tab active={mode === 'inbox'} onClick={() => navigate('inbox')}>Inbox</Tab>
+          {/* Gmail is already the inbox: Inbox insights live in the command palette and Home's links, not in the chrome. */}
+          <Tab active={mode !== 'ask'} onClick={() => navigate('home')}>Home</Tab>
           <Tab active={mode === 'ask'} onClick={() => navigate('ask')}>Ask</Tab>
-        </nav><div className="pb-window-controls"><AppearanceButton /><IconButton label="Open PigeonBox Settings" data-settings-entry onClick={() => openSettings('workspace_header', cloudMode ? 'cloud' : 'local')}><WorkspaceIcon name="settings" size={16} /></IconButton><button type="button" className="pb-icon-btn" aria-label={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} title={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} onClick={() => { setDisplayError(''); void requestWorkspaceDisplay(location.pathname.includes('sidepanel') ? 'float' : 'dock').catch(() => setDisplayError('Could not move the workspace. Try again.')); }}><WorkspaceIcon name="dock" size={16} /></button></div></div>
+        </nav><div className="pb-window-controls"><IconButton label="Open PigeonBox Settings" data-settings-entry onClick={() => openSettings('workspace_header', cloudMode ? 'cloud' : 'local')}><WorkspaceIcon name="settings" size={16} /></IconButton><button type="button" className="pb-icon-btn" aria-label={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} title={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} onClick={() => { setDisplayError(''); void requestWorkspaceDisplay(location.pathname.includes('sidepanel') ? 'float' : 'dock').catch(() => setDisplayError('Could not move the workspace. Try again.')); }}><WorkspaceIcon name="dock" size={16} /></button></div></div>
       </header>
       {displayError ? <p className="gi-warn px-4" role="alert">{displayError}</p> : null}
       <div className="pb-panel-content" inert={palette}>

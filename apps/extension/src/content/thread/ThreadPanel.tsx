@@ -2,7 +2,7 @@ import { FlightPath } from '../../ui/FlightPath';
 import { Orb } from '../../ui/Orb';
 import type { ThreadIntel } from '@pigeonbox/api-contract';
 import { categoryLabel } from './chips';
-import { CloudCompanion } from './CloudCompanion';
+import { CloudCompanion, cloudOwnsReply } from './CloudCompanion';
 
 /** What PigeonBox derived on this computer for a thread (classification, summary, draft). */
 export type LocalThreadIntel = {
@@ -53,6 +53,8 @@ export function ThreadPanel(props: {
   cloudCapabilities?: string[];
   mailbox?: string;
   onUseCloudDraft?: (body: string) => void;
+  /** The long tail goes to Ask (e.g. other times for a scheduling thread). */
+  onAsk?: (question: string) => void;
 }) {
   const category = categoryLabel(props.intel?.classification?.category);
   const analyzing = /analyzing|resolving/i.test(props.pending || '');
@@ -63,7 +65,8 @@ export function ThreadPanel(props: {
     Boolean(props.intel?.summary?.summary?.oneLine);
   const summary = summaryReady ? props.intel?.summary?.summary?.oneLine || null : null;
   const needsReply = Boolean(props.intel?.classification?.needsReply || props.intel?.draft?.suggestion?.body);
-  const canDraft = (props.canDraft ?? needsReply) && !props.cloud?.draft?.variants.length;
+  // One dominant action: when Cloud already has the reply (or the follow-up), the card offers no other.
+  const canDraft = (props.canDraft ?? needsReply) && !cloudOwnsReply(props.cloud);
   const brief = summaryReady ? props.intel?.summary?.summary : null;
   const points = sanitizeList(brief?.keyPoints || []);
   const dates = sanitizeDateTags(brief?.dates || []);
@@ -125,7 +128,7 @@ export function ThreadPanel(props: {
             <div className={props.tracking.opened ? 'gi-open-count is-open' : 'gi-open-count'}>{props.tracking.countLabel}</div>
           </div>
         ) : null}
-        {props.cloud ? <CloudCompanion key={props.cloud.threadId} intel={props.cloud} capabilities={props.cloudCapabilities} mailbox={props.mailbox} onUseDraft={(body) => props.onUseCloudDraft?.(body)} /> : null}
+        {props.cloud ? <CloudCompanion key={props.cloud.threadId} intel={props.cloud} capabilities={props.cloudCapabilities} mailbox={props.mailbox} onUseDraft={(body) => props.onUseCloudDraft?.(body)} onFollowUp={props.onDraft} onAsk={props.onAsk} /> : null}
         <div className="gi-actions">
           {canDraft ? (
             <button

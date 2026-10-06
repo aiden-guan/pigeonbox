@@ -12,9 +12,14 @@ const contrast = (a: string, b: string) => (Math.max(luminance(a), luminance(b))
 
 test('semantic themes stay readable at compact widths and appearance survives reopening', async ({ app }) => {
   const page = await app.page('sidepanel', true);
-  await page.getByRole('button', { name: 'Appearance: system. Switch to light' }).click();
+  const appearance = async (label: string) => {
+    await page.locator('[data-command-launcher]').click();
+    await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill(label);
+    await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
+  };
+  await appearance('Switch to light appearance');
   for (const theme of ['light', 'dark'] as const) {
-    if (theme === 'dark') await page.getByRole('button', { name: 'Appearance: light. Switch to dark' }).click();
+    if (theme === 'dark') await appearance('Switch to dark appearance');
     await expect(page.locator('html')).toHaveAttribute('data-pb-theme', theme);
     for (const width of [280, 320, 420, 680]) {
       await page.setViewportSize({ width, height: 850 });
@@ -56,13 +61,18 @@ test('Pidgy and the shell remain one spatial object through interruption and red
   await bird.evaluate((node) => { node.setAttribute('data-probe', 'same-node'); });
   await expect(gmail.frameLocator('iframe[title="PigeonBox"]').getByRole('navigation', { name: 'Workspace' })).toBeVisible();
   const workspace = gmail.frameLocator('iframe[title="PigeonBox"]');
-  await workspace.getByRole('button', { name:'Appearance: system. Switch to light' }).click();
+  const appearance = async (label: string) => {
+    await workspace.locator('[data-command-launcher]').click();
+    await workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill(label);
+    await workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
+  };
+  await appearance('Switch to light appearance');
   await expect(host).toHaveAttribute('data-pb-theme','light');
   expect(await shell.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgb(255, 255, 255)');
-  await workspace.getByRole('button', { name:'Appearance: light. Switch to dark' }).click();
+  await appearance('Switch to dark appearance');
   await expect(host).toHaveAttribute('data-pb-theme','dark');
   expect(await shell.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgb(25, 27, 30)');
-  await workspace.getByRole('button', { name:'Appearance: dark. Switch to system' }).click();
+  await appearance('Match system appearance');
   await host.getByRole('button', { name: 'Collapse PigeonBox' }).click();
   await expect(host.getByRole('button', { name: 'Reopen PigeonBox' })).toBeVisible();
   await expect.poll(async () => Math.round((await shell.boundingBox())!.width)).toBe(144);

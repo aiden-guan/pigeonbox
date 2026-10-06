@@ -27,14 +27,14 @@ test('the floating Gmail workspace opens Settings from its gear without disturbi
   await expect(gear).toBeVisible();
   await expect(gear).toHaveAttribute('title', 'Open PigeonBox Settings');
   await expect(frame.locator('.pb-mode-label')).toHaveText('Local');
-  // Appearance, Settings, dock: the gear sits with the existing window controls.
+  // Quiet chrome: Settings and dock only; appearance is a command and a Settings choice.
   expect(await frame.locator('.pb-window-controls button').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')))).toEqual([
-    expect.stringMatching(/^Appearance/), 'Open PigeonBox Settings', 'Dock to side',
+    'Open PigeonBox Settings', 'Dock to side',
   ]);
   const box = await gear.boundingBox();
   expect(box!.width).toBeGreaterThanOrEqual(24); expect(box!.height).toBeGreaterThanOrEqual(24);
 
-  await frame.getByRole('button', { name: 'Inbox', exact: true }).click();
+  await frame.getByRole('button', { name: 'Waiting & follow-ups →' }).click();
   await frame.getByRole('combobox', { name: 'Inbox category' }).selectOption('FYI');
   await frame.getByRole('button', { name: 'Ask', exact: true }).click();
   await frame.getByRole('textbox', { name: 'Ask about mail on this computer' }).fill('Unfinished question');

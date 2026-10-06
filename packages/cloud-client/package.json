@@ -1,6 +1,6 @@
 {
   "name": "@pigeonbox/cloud-client",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "private": true,
   "description": "HTTP client for the PigeonBox Cloud API, plus a Cloud-backed AIProvider.",
   "license": "MIT",

@@ -10,6 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.5.5] — 2026-10-06
+
+### Changed
+- **Scheduling replies already have the times.** "Are you free 1–3pm today?" gets a prepared reply offering the open times inside that window, or saying you're busy then and offering others. No calendar card, no "insert availability" step.
+- **Prepared replies go straight into Gmail.** Open Gmail's reply and the prepared reply is already there, above your signature, with Undo. It only fills an empty reply, never over your words, and never sends.
+- **Pidgy's checks are inline.** A conflicting time gets a quiet underline; click it for "You have Math 52 from 2–3 PM" and Fix (or press Tab). Escape dismisses. A small Pidgy by Send shows when it's checking or has something to say.
+- **A quieter thread panel.** It shows what matters for this email (scheduling, waiting, a promise) with one main action, and sources tucked behind a short line like "Calendar + 2 emails".
+- **A calmer header.** Inbox and the theme switch moved into the command palette.
+
+### Fixed
+- "Use reply" no longer replaces text you already wrote in Gmail's reply box.
+- Real-time checks start without reloading Gmail after turning on Cloud.
+
+---
+
 ## [0.5.4] — 2026-10-06
 
 ### Added

@@ -9,7 +9,7 @@ export function showBusyToast(message: string): void {
   showToast(message, undefined, true);
 }
 
-export function showToast(message: string, retry?: () => void, busy = false): void {
+export function showToast(message: string, retry?: () => void, busy = false, actionLabel = 'Retry'): void {
   disposeToast?.();
   document.querySelector('[data-gi-ui="toast"]')?.remove();
   ensureSurface();
@@ -33,7 +33,7 @@ export function showToast(message: string, retry?: () => void, busy = false): vo
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'gi-toast-retry';
-    button.textContent = 'Retry';
+    button.textContent = actionLabel;
     button.onclick = () => {
       disposeToast?.();
       retry();

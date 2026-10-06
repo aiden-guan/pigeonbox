@@ -45,6 +45,7 @@ attachComposeBrainChecks(compose.view(), {
   available: () => true,
   check: (check) => chrome.runtime.sendMessage({ type: 'CLOUD_COMPOSE_CHECK', check }) as Promise<BrainCheckReply | undefined>,
   mailbox: () => 'owner@fixture.test',
+  statusEnabled: async () => Boolean(((await chrome.runtime.sendMessage({ type: 'CLOUD_COMPOSE_STATUS' })) as { enabled?: boolean } | undefined)?.enabled),
 });
 document.body.dataset.brainChecks = String(activeBrainChecks());
 

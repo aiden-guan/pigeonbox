@@ -8,14 +8,17 @@
  * to the extension worker (never to Cloud directly), which decides whether it
  * may leave the extension at all.
  *
- * Each compose has its own state, timers, request generation, cache and
- * notice; nothing is shared between windows and nothing is written to storage.
+ * Each compose has its own state, timers, request generation, cache,
+ * advisory and ambient status; nothing is shared between windows and nothing
+ * is written to storage. An answer is shown inline (brain-notice.ts): the
+ * words get a quiet mark and the advice opens on demand, never as a card.
  * Tracking, the placeholder guard and sending are untouched: this module never
  * listens to presending or sending.
  */
 import { boundClaim, classifyComposeClaim, normalizeClaim, splitComposeClauses, stripQuotedHistory, type ComposeClaimKind } from '@pigeonbox/shared';
 import type { SdkComposeView } from '../tracking/compose-tracking';
 import { renderNotice, type NoticeHandle, type NoticeSource } from './brain-notice';
+import { mountComposeStatus, type ComposeStatusHandle } from './compose-status';
 
 /** Typing must settle this long before anything is read. */
 export const BRAIN_IDLE_MS = 900;
@@ -47,12 +50,17 @@ export type ComposeBrainDeps = {
   check: (request: BrainCheckRequest) => Promise<BrainCheckReply | undefined>;
   mailbox?: () => string | null;
   openSource?: (source: NoticeSource, mailbox: string | null) => void;
+  /**
+   * Whether this compose shows the ambient Pidgy status: true only when checks
+   * are actually on for the account (Cloud mode and the user's opt-in). Omitted: no status.
+   */
+  statusEnabled?: () => Promise<boolean>;
   now?: () => number;
 };
 
 type View = SdkComposeView & { getBodyElement?: () => HTMLElement | null };
 type Candidate = { claim: string; norm: string; hint: ComposeClaimKind };
-type ShownNotice = { norm: string; claim: string; generation: number; suggestion: string | null; handle: NoticeHandle };
+type ShownNotice = { norm: string; claim: string; generation: number; suggestion: string | null; title: string; handle: NoticeHandle };
 
 const controllers = new Map<string, { destroy: () => void }>();
 
@@ -178,34 +186,85 @@ function uniqueClaimLocation(body: HTMLElement, claim: string): { node: Text; in
   return null;
 }
 
-/** Replace exactly the checked clause, keeping the rest of the message and leaving the caret after it. */
+/**
+ * The smallest whole-word stretch that differs between a checked clause and its
+ * correction: "I'm free tomorrow at 2pm." → "…at 3:30pm." is { "2pm" → "3:30pm" }.
+ * Offsets are in `claim`. Null when they are equal.
+ */
+export function claimDiff(claim: string, replacement: string): { start: number; end: number; text: string } | null {
+  if (claim === replacement) return null;
+  let prefix = 0;
+  while (prefix < claim.length && prefix < replacement.length && claim[prefix] === replacement[prefix]) prefix += 1;
+  let suffix = 0;
+  while (suffix < claim.length - prefix && suffix < replacement.length - prefix && claim[claim.length - 1 - suffix] === replacement[replacement.length - 1 - suffix]) suffix += 1;
+  let start = prefix;
+  while (start > 0 && !/\s/.test(claim[start - 1]!)) start -= 1;
+  let end = claim.length - suffix;
+  while (end < claim.length && !/[\s.,;:!?]/.test(claim[end]!)) end += 1;
+  const kept = claim.length - end;
+  return { start, end, text: replacement.slice(start, replacement.length - kept) };
+}
+
+/** A live Range over the words an advisory is about: what its fix would change, or else the whole clause. */
+export function claimRange(body: HTMLElement, claim: string, suggestion: string | null): Range | null {
+  const found = uniqueClaimLocation(body, claim);
+  if (!found) return null;
+  const diff = suggestion ? claimDiff(claim, suggestion) : null;
+  const range = document.createRange();
+  range.setStart(found.node, found.index + (diff?.start ?? 0));
+  range.setEnd(found.node, found.index + (diff?.end ?? claim.length));
+  return range;
+}
+
+/**
+ * Replace exactly the checked words with the correction: only the part that
+ * differs is rewritten, through insertText so Gmail's undo history and draft
+ * saving see a normal edit. The caret goes back where the user had it.
+ */
 export function replaceClaim(body: HTMLElement, claim: string, replacement: string): boolean {
   const found = uniqueClaimLocation(body, claim);
   if (!found) return false;
-  const range = document.createRange();
-  range.setStart(found.node, found.index);
-  range.setEnd(found.node, found.index + claim.length);
+  const diff = claimDiff(claim, replacement) ?? { start: 0, end: claim.length, text: replacement };
+  const node = found.node;
+  const from = found.index + diff.start;
+  const to = found.index + diff.end;
   const selection = document.getSelection();
+  const before = selection?.rangeCount && body.contains(selection.focusNode) ? { node: selection.focusNode!, offset: selection.focusOffset } : null;
+  const range = document.createRange();
+  range.setStart(node, from);
+  range.setEnd(node, to);
   body.focus({ preventScroll: true });
   selection?.removeAllRanges();
   selection?.addRange(range);
   // insertText keeps Gmail's undo history and fires the input events its draft saving listens to.
   let inserted = false;
   try {
-    inserted = document.execCommand('insertText', false, replacement);
+    inserted = document.execCommand('insertText', false, diff.text);
   } catch {
     inserted = false;
   }
   if (!inserted || !(body.textContent ?? '').replace(/\u00a0/g, ' ').includes(replacement)) {
-    const value = found.node.nodeValue ?? '';
+    const value = node.nodeValue ?? '';
     if (value.slice(found.index, found.index + claim.length).replace(/\u00a0/g, ' ') !== claim) return false;
-    found.node.nodeValue = value.slice(0, found.index) + replacement + value.slice(found.index + claim.length);
-    const after = document.createRange();
-    after.setStart(found.node, found.index + replacement.length);
-    after.collapse(true);
-    selection?.removeAllRanges();
-    selection?.addRange(after);
+    node.nodeValue = value.slice(0, from) + diff.text + value.slice(to);
     body.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  // Put the caret back: unchanged before the edit, shifted after it, at the end of the new words inside it.
+  const delta = diff.text.length - (to - from);
+  let caret = { node: node as Node, offset: from + diff.text.length };
+  if (before && before.node !== node && before.node.isConnected) caret = before;
+  else if (before && before.node === node && before.offset <= from) caret = { node, offset: before.offset };
+  else if (before && before.node === node && before.offset >= to) caret = { node, offset: before.offset + delta };
+  if (caret.node.isConnected) {
+    try {
+      const after = document.createRange();
+      after.setStart(caret.node, Math.min(caret.offset, caret.node.nodeType === Node.TEXT_NODE ? (caret.node.nodeValue ?? '').length : caret.node.childNodes.length));
+      after.collapse(true);
+      selection?.removeAllRanges();
+      selection?.addRange(after);
+    } catch {
+      /* The editor moved the text; its own caret stays. */
+    }
   }
   return true;
 }
@@ -233,6 +292,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   let cooldownUntil = 0;
   let pausedUntil = 0;
   let notice: ShownNotice | null = null;
+  let status: ComposeStatusHandle | null = null;
   const cache = new Map<string, { reply: BrainCheckReply; at: number; candidate: Candidate }>();
   const dismissed = new Set<string>();
 
@@ -266,6 +326,25 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   function hideNotice(animate = true) {
     notice?.handle.remove(animate);
     notice = null;
+    if (status?.state() === 'attention') status.set('idle');
+  }
+
+  /** The status asked for the advice (keyboard or mouse): present it with focus inside. */
+  function openFromStatus() {
+    notice?.handle.open(true);
+  }
+
+  function showStatus() {
+    if (status || destroyed) return;
+    const element = view.getElement?.() ?? null;
+    if (!element) return;
+    status = mountComposeStatus(element, openFromStatus);
+    if (notice) status.set('attention', notice.title);
+  }
+
+  function hideStatus() {
+    status?.remove();
+    status = null;
   }
 
   function evaluate() {
@@ -356,6 +435,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     const mine = ++generation;
     inflight = { key, generation: mine };
     cooldownUntil = now + BRAIN_COOLDOWN_MS;
+    if (status && status.state() !== 'attention') status.set('checking');
     void deps
       .check(check)
       .catch(() => undefined)
@@ -364,11 +444,14 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
         if (destroyed) return;
         if (!reply) {
           cooldownUntil = Math.max(cooldownUntil, clock() + BRAIN_FAILURE_BACKOFF_MS);
+          if (status?.state() === 'checking') status.set('idle');
           return;
         }
         if (reply.status === 'disabled') {
           pausedUntil = clock() + BRAIN_DISABLED_BACKOFF_MS;
           hideNotice();
+          // Checks are off for this account: Pidgy is not watching, so it is not shown.
+          hideStatus();
           return;
         }
         cache.set(key, { reply, at: clock(), candidate });
@@ -376,6 +459,8 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
         // A newer check was sent while this one was out: its answer wins.
         if (mine !== generation) return;
         apply(reply, candidate, mine);
+        // A quiet, brief confirmation that the words were looked at and nothing is wrong.
+        if (reply.status === 'none' && status?.state() === 'checking') status.set('clear');
       });
   }
 
@@ -404,26 +489,24 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     const mailbox = deps.mailbox?.() ?? null;
     const source = reply.notice.sources.find((item) => sourceHref(item, mailbox)) ?? null;
     const suggestion = reply.notice.suggestedText && reply.notice.suggestedText !== candidate.claim && uniqueClaimLocation(body, candidate.claim) ? reply.notice.suggestedText : null;
-    const shown: ShownNotice = {
-      norm: candidate.norm,
-      claim: candidate.claim,
-      generation: answered,
-      suggestion,
-      handle: renderNotice(
-        body,
-        { severity: reply.notice.severity, message: reply.notice.message, suggestion, source },
-        {
-          onSource: () => source && (deps.openSource ?? defaultOpenSource)(source, mailbox),
-          onSuggest: () => applySuggestion(shown),
-          onDismiss: () => {
-            dismissed.add(shown.norm);
-            if (notice === shown) hideNotice();
-            body?.focus({ preventScroll: true });
-          },
+    const handle = renderNotice(
+      body,
+      claimRange(body, candidate.claim, suggestion),
+      { severity: reply.notice.severity, message: reply.notice.message, suggestion, source },
+      {
+        onSource: () => source && (deps.openSource ?? defaultOpenSource)(source, mailbox),
+        onSuggest: () => applySuggestion(shown),
+        onDismiss: () => {
+          dismissed.add(shown.norm);
+          if (notice === shown) hideNotice();
+          body?.focus({ preventScroll: true });
         },
-      ),
-    };
+      },
+      () => status?.host ?? null,
+    );
+    const shown: ShownNotice = { norm: candidate.norm, claim: candidate.claim, generation: answered, suggestion, title: reply.notice.message.replace(/\s+/g, ' ').trim(), handle };
     notice = shown;
+    status?.set('attention', shown.title);
   }
 
   function applySuggestion(shown: ShownNotice) {
@@ -431,7 +514,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     if (notice !== shown || !shown.suggestion || shown.generation !== generation || !body) return;
     if (!replaceClaim(body, shown.claim, shown.suggestion)) {
       // Something changed underneath: leave the advice, drop the one-click fix.
-      shown.handle.host.shadowRoot?.querySelector('[data-action="suggest"]')?.remove();
+      shown.handle.dropFix();
       shown.suggestion = null;
       return;
     }
@@ -447,6 +530,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     body?.removeEventListener('input', onInput);
     observer?.disconnect();
     hideNotice(false);
+    hideStatus();
     cache.clear();
     dismissed.clear();
     seen.clear();
@@ -458,6 +542,8 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
 
   bind();
   controllers.set(id, { destroy });
+  // Shown only once the worker confirms checks are on for this account; never in Local mode.
+  if (deps.statusEnabled && deps.available()) void deps.statusEnabled().then((on) => { if (on && deps.available()) showStatus(); }).catch(() => undefined);
   view.on?.('recipientsChanged', () => schedule(true));
   view.on?.('subjectChanged', () => schedule(true));
   view.on?.('destroy', destroy);

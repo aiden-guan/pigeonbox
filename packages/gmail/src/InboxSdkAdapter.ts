@@ -5,6 +5,7 @@ import { queryFirst, SELECTORS } from './selectors.js';
 import { resolveMessageId, resolveThreadId, type MessageIdView, type ThreadIdView } from './thread-id.js';
 import type {
   ComposeHandle,
+  InsertComposeOptions,
   ComposeViewState,
   CurrentThreadView,
   GmailAdapter,
@@ -479,7 +480,7 @@ export class InboxSdkAdapter implements GmailAdapter {
     return fallbackRes;
   }
 
-  async insertComposeBody(text: string, target?: ComposeHandle | { threadId?: string }) {
+  async insertComposeBody(text: string, target?: ComposeHandle | { threadId?: string }, options: InsertComposeOptions = {}) {
     let targetHandle: ComposeHandle | undefined;
 
     if (target && 'view' in target && target.view) {
@@ -502,7 +503,30 @@ export class InboxSdkAdapter implements GmailAdapter {
       setBodyHTML?: (html: string) => void;
       setBodyText?: (text: string) => void;
       insertTextIntoBodyAtCursor?: (text: string) => void;
+      insertHTMLIntoBodyAtCursor?: (html: string) => unknown;
+      getBodyElement?: () => HTMLElement | null;
     } | null;
+
+    if (view && options.keepExisting) {
+      // At the very top, through Gmail's own editing path, so the signature and quoted reply stay and undo works.
+      const body = view.getBodyElement?.() ?? (targetHandle?.element && targetHandle.element.isContentEditable ? targetHandle.element : null);
+      if (body && typeof view.insertHTMLIntoBodyAtCursor === 'function') {
+        try {
+          body.focus();
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(body);
+          range.collapse(true);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          view.insertHTMLIntoBodyAtCursor(textToComposeHtml(text));
+          return { ...ok('insertComposeBody'), verified: true, reason: 'Inserted via InboxSDK' };
+        } catch {
+          /* fall back to DOM, which also keeps existing content */
+        }
+      }
+      return this.fallback.insertComposeBody(text, body ? { ...(targetHandle as ComposeHandle), element: body } : targetHandle || target);
+    }
 
     if (view) {
       try {

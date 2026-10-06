@@ -146,8 +146,9 @@ export class GmailJsCaptureAdapter implements GmailAdapter {
   async createReplyDraft(threadId: string) {
     return this.fallback.createReplyDraft(threadId);
   }
-  async insertComposeBody(text: string) {
-    return this.fallback.insertComposeBody(text);
+  async insertComposeBody(text: string, target?: import('./types.js').ComposeHandle | { threadId?: string }) {
+    // The DOM path always inserts at the top and keeps what is already there.
+    return this.fallback.insertComposeBody(text, target);
   }
   async navigateToSearch(query: string) {
     return this.fallback.navigateToSearch(query);

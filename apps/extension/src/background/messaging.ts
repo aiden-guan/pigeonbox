@@ -54,6 +54,8 @@ const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   // Real-time Pidgy checks: one bounded clause of the draft being written. The worker checks
   // Cloud mode and the user's opt-in before anything leaves the extension, and returns no credentials.
   'CLOUD_COMPOSE_CHECK',
+  // Whether those checks are on (no draft text), so Pidgy appears in the composer only when it is watching.
+  'CLOUD_COMPOSE_STATUS',
   // Dictated words for Ask Pigeon, addressed to the panel that asked (the worker ignores them).
   'PB_DICTATION_EVENT',
   // InboxSDK's own content-script loader asks the worker to inject its page-world file.
