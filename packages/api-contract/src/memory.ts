@@ -7,6 +7,25 @@ export const MemoryEntitySchema = z.object({
   type: z.enum(['contact', 'company', 'email', 'course', 'project', 'topic', 'event', 'thread']),
   key: z.string().min(1).max(200),
 });
+/**
+ * A memory page: who or what a group of facts is about. `self` is the account
+ * owner across every connected inbox; a person is one correspondent; a topic is
+ * a project, course or organization. The id is an opaque keyed digest.
+ */
+export const MemorySubjectTypeSchema = z.enum(['self', 'person', 'topic']);
+export const MemorySubjectIdSchema = z.string().regex(/^[0-9a-f]{64}$/);
+export const MemorySubjectRefSchema = z.object({
+  id: MemorySubjectIdSchema,
+  type: MemorySubjectTypeSchema,
+  label: z.string().min(1).max(200),
+});
+export const MemorySubjectSchema = MemorySubjectRefSchema.extend({
+  /** Short synthesized overview of this page; null until enough is known. */
+  summary: z.string().max(1_200).nullable(),
+  factCount: z.number().int().nonnegative(),
+  lastConfirmedAt: InstantSchema,
+});
+export type MemorySubject = z.infer<typeof MemorySubjectSchema>;
 export const PersonalMemorySchema = z.object({
   id: z.string().uuid(),
   kind: MemoryKindSchema,
@@ -20,11 +39,15 @@ export const PersonalMemorySchema = z.object({
   corrected: z.boolean(),
   entities: z.array(MemoryEntitySchema).max(12),
   sources: z.array(SourceRefSchema).max(12),
+  /** Absent only on facts still waiting for their first consolidation pass. */
+  subject: MemorySubjectRefSchema.nullable().optional(),
 });
 export type PersonalMemory = z.infer<typeof PersonalMemorySchema>;
 export const MemoryListRequestSchema = z.object({
   query: z.string().max(500).optional(),
   category: MemoryCategorySchema.optional(),
+  /** One memory page. */
+  subject: MemorySubjectIdSchema.optional(),
   includeHistory: z.boolean().default(false),
   limit: LimitSchema(50, 20),
   cursor: z
@@ -41,3 +64,9 @@ export const MemoryUpdateRequestSchema = MemoryIdRequestSchema.extend({
 });
 export const MemoryPurgeRequestSchema = z.object({ confirm: z.literal('forget all memories') });
 export const MemoryPurgeResponseSchema = z.object({ removed: z.number().int().nonnegative() });
+export const MemorySubjectsRequestSchema = z.object({}).default({});
+export const MemorySubjectsResponseSchema = z.object({
+  subjects: z.array(MemorySubjectSchema).max(300),
+  /** True while older facts are still being merged into pages. */
+  organizing: z.boolean(),
+});

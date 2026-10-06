@@ -158,6 +158,7 @@ export class PigeonBoxCloudClient {
   forgetMemory(body: RouteRequest<'memoryForget'>) { return this.call('memoryForget', body); }
   correctMemory(body: RouteRequest<'memoryUpdate'>) { return this.call('memoryUpdate', body); }
   purgeMemories(body: RouteRequest<'memoryPurge'>) { return this.call('memoryPurge', body); }
+  memorySubjects(body: RouteRequest<'memorySubjects'> = {}) { return this.call('memorySubjects', body); }
   /**
    * Real-time Pidgy check of one short clause of an unsent draft. Callers decide
    * first that the user turned the preference on; the route is validated both ways.

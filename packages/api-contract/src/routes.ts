@@ -1,6 +1,6 @@
 import { TasksSchema, TaskCreateSchema, TaskUpdateSchema } from './tasks.js';
 import { ComposeCheckRequestSchema, ComposeCheckResponseSchema } from './compose.js';
-import { MemoryListRequestSchema, MemoryListResponseSchema, MemoryIdRequestSchema, MemoryResponseSchema, MemoryUpdateRequestSchema, MemoryPurgeRequestSchema, MemoryPurgeResponseSchema } from './memory.js';
+import { MemoryListRequestSchema, MemoryListResponseSchema, MemoryIdRequestSchema, MemoryResponseSchema, MemoryUpdateRequestSchema, MemoryPurgeRequestSchema, MemoryPurgeResponseSchema, MemorySubjectsRequestSchema, MemorySubjectsResponseSchema } from './memory.js';
 import type { z } from 'zod';
 import {
   AccountDeleteRequestSchema,
@@ -233,6 +233,7 @@ export const ROUTES = {
   memoryForget: { method: 'POST', path: '/v1/memory/forget', auth: 'user', request: MemoryIdRequestSchema, response: OkResponseSchema },
   memoryUpdate: { method: 'POST', path: '/v1/memory/update', auth: 'user', request: MemoryUpdateRequestSchema, response: MemoryResponseSchema },
   memoryPurge: { method: 'POST', path: '/v1/memory/purge', auth: 'user', request: MemoryPurgeRequestSchema, response: MemoryPurgeResponseSchema },
+  memorySubjects: { method: 'POST', path: '/v1/memory/subjects', auth: 'user', request: MemorySubjectsRequestSchema, response: MemorySubjectsResponseSchema },
   // Real-time Pidgy checks: one bounded clause of an unsent draft, processed ephemerally. Opt-in (memory.realtimeComposeChecks).
   composeCheck: { method: 'POST', path: '/v1/compose/check', auth: 'user', request: ComposeCheckRequestSchema, response: ComposeCheckResponseSchema, capability: 'cloud_mail_sync' },
 
