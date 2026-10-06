@@ -55,10 +55,10 @@ jobs:
       - name: Package and validate release ZIP
         run: node scripts/package-extension.mjs --out "$RUNNER_TEMP/package"
 
-      - name: Local release browser tests
+      - name: Unified release browser tests
         run: |
-          unzip -q "$RUNNER_TEMP/package/PigeonBox-v$(node -p 'require("./package.json").version').zip" -d "$RUNNER_TEMP/local-extension"
-          PIGEONBOX_BROWSER_EXTENSION_PATH="$RUNNER_TEMP/local-extension" npx playwright test tests/browser/settings-access.spec.ts tests/browser/waitlist.spec.ts --grep 'public Local build|unavailable Cloud' --output=test-results/local-release
+          unzip -q "$RUNNER_TEMP/package/PigeonBox-v$(node -p 'require("./package.json").version').zip" -d "$RUNNER_TEMP/release-extension"
+          PIGEONBOX_BROWSER_EXTENSION_PATH="$RUNNER_TEMP/release-extension" npx playwright test tests/browser/release.spec.ts --output=test-results/release
 
       - name: Upload browser traces and screenshots
         if: always()

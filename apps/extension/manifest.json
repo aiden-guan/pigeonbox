@@ -3,7 +3,7 @@
   "name": "PigeonBox",
   "short_name": "PigeonBox",
   "version": "0.5.3",
-  "description": "AI inbox intelligence and email open tracking for Gmail. Runs on your computer by default. No Gmail API.",
+  "description": "AI inbox intelligence and email open tracking for Gmail. Local by default, with optional PigeonBox Cloud.",
   "homepage_url": "https://github.com/aiden-guan/pigeonbox",
   "minimum_chrome_version": "116",
   "permissions": [

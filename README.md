@@ -59,7 +59,7 @@ git clone https://github.com/aiden-guan/pigeonbox.git && cd pigeonbox && npm run
 
 ### Option C — Download a prebuilt release
 
-No Node needed: grab `PigeonBox-vX.Y.Z.zip` from the [latest release](https://github.com/aiden-guan/pigeonbox/releases/latest) and unzip it into its own folder. The newest GitHub release is 0.4.0; 0.5.0 is available by building from source (Options A and B) and is going to the Chrome Web Store as a manual upload.
+No Node needed: grab `PigeonBox-vX.Y.Z.zip` from the [latest release](https://github.com/aiden-guan/pigeonbox/releases/latest) and unzip it into its own folder. The newest GitHub release is 0.4.0; 0.5.3 is available by building from source (Options A and B). `npm run package` creates one ZIP with Local and optional Cloud modes; store publication is a separate release step.
 
 ### Then, in Chrome (all options)
 
@@ -81,18 +81,18 @@ Open the PigeonBox workspace in Gmail and click the **Settings** gear, then go t
 
 PigeonBox is a Chrome extension (Manifest V3) that provides on-device email organization, thread summarization, draft generation, and open tracking directly inside Gmail. Local mode needs no cloud backend or Gmail API OAuth scopes, and by default keeps email contents on your computer. Chrome asks for access to a tracker or AI host only when you turn that feature on. Cloud is optional and requires explicit consent; connecting Google separately grants the permissions used for continuous sync.
 
-All indexing, search, rule evaluation, and model inferences execute locally through browser primitives: IndexedDB, WebGPU (via Transformers.js and ONNX Runtime Web), Chrome's built-in Gemini Nano (`window.ai`), or a local Ollama instance. For teams seeking hosted convenience, PigeonBox also offers an optional Cloud mode backed by typed API contracts and strict zero-fallback privacy boundaries.
+In Local mode, indexing, search, rule evaluation, and on-device model inference use browser primitives: IndexedDB, WebGPU (via Transformers.js and ONNX Runtime Web), Chrome's built-in Gemini Nano (`window.ai`), or a local Ollama instance. For teams seeking hosted convenience, PigeonBox also offers an optional Cloud mode backed by typed API contracts and strict zero-fallback privacy boundaries.
 
 ---
 
 ## Local vs. Cloud
 
-PigeonBox has two execution environments in one extension, selectable under **Settings → PigeonBox** (the gear in the Gmail workspace). Public builds ship Local only: they contain no Cloud endpoints, and Cloud entry points open the [Cloud waitlist](https://usepigeonbox.com/waitlist) without signing in or changing mode. Cloud runs only in configured development and beta builds.
+PigeonBox has two execution environments in one extension, selectable under **Settings → PigeonBox** (the gear in the Gmail workspace). The standard release ZIP includes both modes and starts in Local. Cloud requires explicit consent, account sign-in and the relevant subscription capabilities; connecting Google requires separate authorization. Real-time Pidgy checks are an additional opt-in and remain off by default. No separate Cloud extension or download is needed.
 
 | Feature / Dimension | On This Computer (Local) | PigeonBox Cloud |
 | :--- | :--- | :--- |
 | **Account Requirement** | No PigeonBox account; a tracker provider account is needed only if you enable tracking | PigeonBox account (OAuth + PKCE) |
-| **Availability** | Free, open-source (MIT); the default build | Not in public builds yet; join the [waitlist](https://usepigeonbox.com/waitlist) |
+| **Availability** | Free, open-source (MIT); the default build | Included in the same extension; account access and paid capabilities required |
 | **Inference Engine** | WebGPU (Transformers.js), Gemini Nano, Ollama, or BYOK | Hosted cloud inference cluster |
 | **Email Content Boundary** | Stays on this computer unless you explicitly choose a remote BYOK provider | Explicit consent and Google permissions; synced mail and derived intelligence are encrypted at rest. AI payloads are not logged |
 | **Search & Mailbox Index** | Local IndexedDB (`gi_mailbox_v1`) | Separate account-scoped synced Cloud index; Local data stays separate |

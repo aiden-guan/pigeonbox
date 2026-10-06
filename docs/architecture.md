@@ -181,7 +181,7 @@ Additional provider interfaces (search, sync, calendar, attachments) are deliber
 
 ## Builds
 
-`apps/extension` is the only extension. There are no separate local and cloud builds; a release build differs from a source build only in build-time flags (`PIGEONBOX_RELEASE=1`: no source maps, experimental features off, no machine-local tracker config).
+`apps/extension` is the only extension. The standard release ZIP includes Local and Cloud, with public production endpoints committed in `scripts/lib/release-config.mjs`. Fresh installations start in Local; Cloud still requires consent, sign-in and capabilities. Release hardening uses build-time flags (`PIGEONBOX_RELEASE=1`: no source maps, experimental features off, no machine-local tracker config).
 
 Packages not created, on purpose: a separate `local-ai` package (the WebGPU runtime is browser-specific and lives in `apps/extension/src/local-model`, with the model catalog in `packages/ai`) and a `ui` package (the extension is its only consumer).
 

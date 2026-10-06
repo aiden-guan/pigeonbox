@@ -18,7 +18,7 @@
     "dev:reload:uninstall": "node scripts/dev-reload-service.mjs uninstall",
     "dev:reload:status": "node scripts/dev-reload-service.mjs status",
     "build": "npm run build -w @pigeonbox/shared && npm run build -w @pigeonbox/api-contract && npm run build -w @pigeonbox/gmail && npm run build -w @pigeonbox/mailbox && npm run build -w @pigeonbox/ai && npm run build -w @pigeonbox/cloud-client && npm run build -w @pigeonbox/core && npm run build -w @pigeonbox/search && npm run build -w @pigeonbox/agent && npm run build -w @pigeonbox/tracking && npm run build -w @pigeonbox/extension && npm run build -w @pigeonbox/tracker",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/lib/release-config.test.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc -b --pretty false && tsc --noEmit -p convex/tsconfig.json",
     "lint": "eslint \"packages/**/*.{ts,tsx}\" \"apps/**/*.{ts,tsx}\" \"workers/**/*.{ts,tsx}\" --max-warnings 0",

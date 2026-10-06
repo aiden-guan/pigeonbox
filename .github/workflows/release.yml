@@ -12,10 +12,6 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      # Public build-time config (repository variables). Blank means Cloud shows as unavailable.
-      VITE_PIGEONBOX_CLOUD_API_URL: ${{ vars.PIGEONBOX_CLOUD_API_URL }}
-      VITE_PIGEONBOX_CLOUD_TRACKER_URL: ${{ vars.PIGEONBOX_CLOUD_TRACKER_URL }}
     steps:
       - uses: actions/checkout@v7
 
@@ -42,6 +38,14 @@ jobs:
           node scripts/package-extension.mjs --out "$RUNNER_TEMP/second"
           second=$(cut -d' ' -f1 "$RUNNER_TEMP/second/PigeonBox-${GITHUB_REF_NAME}.sha256")
           test "$first" = "$second" || { echo "Release ZIP is not reproducible: $first vs $second"; exit 1; }
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify the extracted unified release
+        run: |
+          unzip -q "release/PigeonBox-${GITHUB_REF_NAME}.zip" -d "$RUNNER_TEMP/release-extension"
+          PIGEONBOX_BROWSER_EXTENSION_PATH="$RUNNER_TEMP/release-extension" npx playwright test tests/browser/release.spec.ts --output=test-results/release
 
       - name: Create GitHub Release
         env:

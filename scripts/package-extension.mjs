@@ -3,7 +3,7 @@
  * Build and package the extension for the Chrome Web Store and GitHub Releases.
  *
  *   npm run package                 release build, validate, write release/PigeonBox-vX.Y.Z.zip + .sha256
- *   npm run package -- --cloud      configured Cloud beta (separate from the Local store release)
+ *   Both Local and optional Cloud modes ship in this one ZIP; fresh installs start in Local.
  *   npm run package -- --skip-build --from <dir> validate and package an existing release build
  *   npm run package -- --out <dir>  write artifacts somewhere else
  *
@@ -18,10 +18,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { collectFiles, isExcludedFromPackage, localSecretValues, validatePackage, vendorPublicValues } from './lib/extension-package.mjs';
 import { createZip, listZipEntries } from './lib/zip.mjs';
+import { releaseBuildEnv, validateReleaseConfig } from './lib/release-config.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
-const cloudBuild = args.includes('--cloud');
+if (args.includes('--cloud')) console.warn('--cloud is no longer needed: the standard ZIP includes both Local and Cloud.');
 const skipBuild = args.includes('--skip-build');
 const outIndex = args.indexOf('--out');
 const fromIndex = args.indexOf('--from');
@@ -48,10 +49,7 @@ if (!skipBuild) {
     cwd: root,
     stdio: 'inherit',
     shell: process.platform === 'win32',
-    env: {
-      ...process.env, PIGEONBOX_RELEASE: '1', PIGEONBOX_OUT_DIR: dist, VITE_PIGEONBOX_EXPERIMENTAL: 'false',
-      ...(!cloudBuild ? { VITE_PIGEONBOX_CLOUD_API_URL: '', VITE_PIGEONBOX_CLOUD_TRACKER_URL: '', VITE_PIGEONBOX_CLOUD_TRACKER_PREVIOUS_URLS: '' } : {}),
-    },
+    env: releaseBuildEnv(process.env, dist),
   });
   if (result.status !== 0) fail('Release build failed.');
 }
@@ -66,6 +64,7 @@ const problems = validatePackage(files, {
   forbiddenValues: localSecretValues(root),
   allowedValues: vendorPublicValues(root),
 });
+problems.push(...validateReleaseConfig(files));
 if (problems.length) {
   console.error('Package validation failed:');
   for (const problem of problems) console.error(`  - ${problem}`);

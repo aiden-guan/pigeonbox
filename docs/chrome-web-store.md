@@ -1,6 +1,6 @@
 # Chrome Web Store readiness
 
-Status checked in the owner dashboard on 2026-10-03: existing item `hmoiiokfmacghpddabpgaajolbeljhcp` has v0.4.0 **Published to testers**. The v0.5.0 Local update has not been uploaded or submitted. The prepared submission kit is `release/chrome-web-store-20261003/`; its README identifies the final ZIP and each dashboard asset.
+Status checked in the owner dashboard on 2026-10-03: existing item `hmoiiokfmacghpddabpgaajolbeljhcp` has v0.4.0 **Published to testers**. That historical status does not confirm a later submission. The old v0.5.0 kit at `release/chrome-web-store-20261003/` is retained as a snapshot. The current package is the unified v0.5.3 ZIP described below; preparing it does not upload or submit it.
 
 Listing text, dashboard answers and images: [store/listing.md](store/listing.md). Privacy policy: [PRIVACY.md](../PRIVACY.md).
 
@@ -15,7 +15,7 @@ Build with `npm run package`. The ZIP (`release/PigeonBox-vX.Y.Z.zip`) is what g
 - files referenced by `manifest.json` that are missing,
 - a manifest version that differs from `package.json`.
 
-Default release builds turn off experimental features (ChatGPT web sign-in), omit source maps and explicitly clear Cloud endpoints. For 0.5.0, upload the ZIP manually; do not push a release tag.
+Default release builds include both Local and Cloud using the public production endpoints in `scripts/lib/release-config.mjs`, turn off experimental features (ChatGPT web sign-in), and omit source maps. Local remains the default. Upload the canonical ZIP manually when publication is authorized; do not push a release tag merely to prepare it.
 
 ## Manifest V3 audit
 
@@ -63,7 +63,7 @@ Prepared in this repository:
 - [x] 128×128 icon in the package, and a store icon (`docs/store/store-icon-128.png`)
 - [x] Single purpose, permission justifications, data-use answers and reviewer test instructions ([store/listing.md](store/listing.md))
 - [x] Privacy policy: [PRIVACY.md](../PRIVACY.md), covering Local and Cloud
-- [x] Store description consistent with the README and the Local-only build
+- [x] Store description consistent with the README and the unified Local + Cloud build
 - [x] Screenshots (1280×800), small promo tile (440×280) and marquee (1400×560) in `docs/store/`, generated from real UI with fictional mail by `apps/extension/scripts/make-store-assets.py`
 - [x] Store installs hide the GitHub update check and the developer Reload button; Chrome updates them
 
@@ -73,7 +73,7 @@ Remaining dashboard actions:
 - [ ] Update the existing item with the final kit ZIP and listing from [store/listing.md](store/listing.md)
 - [ ] Replace the five older screenshots; upload the small and marquee promo tiles (currently empty)
 - [ ] Replace the older description and homepage; add the support URL and current reviewer instructions
-- [ ] Check Privacy practices against the prepared answers, then change visibility from testers to Public for the public Local launch
+- [ ] Check Privacy practices against the prepared answers, then change visibility from testers to Public for the public launch
 - [ ] Submit for review and confirm the dashboard status. Store approval timing is external.
 - [ ] Optional: set up release automation (below), after the manual release
 
@@ -94,9 +94,9 @@ To publish a release by hand: `CWS_PUBLISHER_ID=… CWS_EXTENSION_ID=… CWS_SER
 
 ## Cloud in store builds
 
-A build has PigeonBox Cloud only if it was built with `VITE_PIGEONBOX_CLOUD_API_URL`. Default store packaging clears the API URL, tracker URL and previous tracker URLs, including values present in local files or repository variables. Settings, onboarding and unavailable Cloud actions open `https://usepigeonbox.com/waitlist` without changing Local mode or requesting authentication. The store listing must describe Cloud as a waitlist.
+Run `npm run package` to produce one `release/PigeonBox-vX.Y.Z.zip` containing both modes. Packaging pins public production URLs regardless of local environment variables and rejects existing output without those endpoints. `--cloud` remains a compatibility alias for the same package. There is no second Cloud ZIP.
 
-Configured development builds keep their existing behavior. Build a separate beta using `npm run package -- --cloud --out release/beta`; this does not activate subscriptions or publish to the store. A public Cloud store release requires a reviewed workflow change and a separate publication decision. Follow "When Cloud launches" in [store/listing.md](store/listing.md).
+Cloud availability in the extension does not open public account registration or grant a subscription. Consent, account access, Google authorization and paid capabilities remain runtime checks. Real-time Pidgy checks remain off until explicitly enabled. CI loads the extracted ZIP to verify Local defaults, Cloud availability, consent and dashboard settings. See "Cloud release verification" in [store/listing.md](store/listing.md).
 
 ## Settings live on the dashboard
 
