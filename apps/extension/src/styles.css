@@ -533,6 +533,7 @@ a:focus-visible {
 .gi-open-state i { width:7px; height:7px; border-radius:var(--pb-radius-xs); box-shadow: none; }
 .gi-open-state[data-opened='true'] { color:var(--pb-copper-bright); }
 .gi-open-state[data-opened='true'] i { background:var(--gi-accent); box-shadow: none; }
+.gi-click-state { color:var(--pb-warning-color); font-size:var(--pb-size-meta); font-weight:500; white-space:nowrap; }
 .gi-chevron { color:var(--gi-mist); font-size:var(--pb-size-body); line-height:1; transition:transform var(--pb-motion-standard) var(--ease-out); }
 .gi-chevron[data-open='true'] { transform:rotate(90deg); }
 .gi-mail:disabled { cursor:default; }

@@ -453,9 +453,9 @@ function renderButton(
   button.setAttribute('aria-label', copy.headline);
   button.title = copy.headline;
   button.style.cssText = controlStyle(color);
-  // ○ sent, ✓ opened, ↗ link clicked without a detected open.
-  button.dataset.kind = email.openCount > 0 ? 'open' : email.clickCount > 0 ? 'click' : 'sent';
-  button.innerHTML = email.openCount > 0 ? CHECK_ICON : email.clickCount > 0 ? LINK_ICON : SENT_ICON;
+  // ○ sent, ✓ opened, ↗ link clicked (a click outranks an open).
+  button.dataset.kind = email.clickCount > 0 ? 'click' : email.openCount > 0 ? 'open' : 'sent';
+  button.innerHTML = email.clickCount > 0 ? LINK_ICON : email.openCount > 0 ? CHECK_ICON : SENT_ICON;
   if (labeled) {
     const label = document.createElement('span');
     label.className = 'gi-track-label';
@@ -531,7 +531,8 @@ export function renderActivity(list: HTMLElement, email: TrackedEmailSummary, en
     rows.push({ at: null, label: `${earlier} earlier detection${earlier === 1 ? '' : 's'}`, more: true });
   }
   for (const entry of shown) {
-    rows.push({ at: entry.timestamp, label: entry.type === 'CLICK' ? clickLabel(entry.destination) : 'Open detected' });
+    const on = entry.device ? ` on ${entry.device}` : '';
+    rows.push({ at: entry.timestamp, label: entry.type === 'CLICK' ? clickLabel(entry.destination, on) : `Open detected${on}` });
   }
   list.replaceChildren(
     ...rows.map((row) => {
@@ -551,12 +552,12 @@ export function renderActivity(list: HTMLElement, email: TrackedEmailSummary, en
   );
 }
 
-function clickLabel(destination?: string): string {
-  if (!destination) return 'Link clicked';
+function clickLabel(destination?: string, on = ''): string {
+  if (!destination) return `Link clicked${on}`;
   try {
-    return `Link clicked · ${new URL(destination).hostname.replace(/^www\./, '')}`;
+    return `Link clicked${on} · ${new URL(destination).hostname.replace(/^www\./, '')}`;
   } catch {
-    return 'Link clicked';
+    return `Link clicked${on}`;
   }
 }
 

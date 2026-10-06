@@ -220,6 +220,15 @@ describe('sent mail status', () => {
     expect(copy.markLabel).toBe('Sent');
   });
 
+  it('keeps a click visible on an email that was also opened', () => {
+    const copy = describeTrackingStatus(
+      { ...base, openCount: 7, lastOpenedAt: '2026-09-22T15:00:00.000Z', clickCount: 1, lastClickedAt: '2026-09-22T15:10:00.000Z' },
+      { now: Date.parse('2026-09-22T15:22:00.000Z') },
+    );
+    expect(copy.markLabel).toBe('Opened 7× · clicked');
+    expect(copy.headline).toBe('Open detected 22 minutes ago. Link clicked 12 minutes ago.');
+  });
+
   it('labels a click-only email and never names a reader of a shared pixel', () => {
     const copy = describeTrackingStatus(
       { ...base, recipients: ['a@b.com', 'c@d.com'], clickCount: 1, lastClickedAt: '2026-09-22T15:10:00.000Z' },

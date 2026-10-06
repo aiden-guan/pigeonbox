@@ -651,7 +651,27 @@ export type TrackingTimelineEntry = {
   destination?: string;
   /** Opens through Gmail's image proxy cannot say which device opened the message. */
   viaProxy?: boolean;
+  /** The kind of device behind the fetch, when its user agent says (never for Gmail's proxy). */
+  device?: string;
 };
+
+/**
+ * The device family behind a pixel fetch or click, for display. Null when the
+ * user agent hides it: Gmail's image proxy fetches every image from Google's
+ * servers, so its "Windows" user agent says nothing about the reader.
+ */
+export function describeEventDevice(userAgent?: string | null): string | null {
+  const ua = (userAgent || '').trim();
+  if (!ua || detectOpenRequestSource(ua) !== 'browser_like') return null;
+  if (/\biPhone\b/.test(ua)) return 'iPhone';
+  if (/\biPad\b/.test(ua)) return 'iPad';
+  if (/\bAndroid\b/i.test(ua)) return 'Android';
+  if (/\bCrOS\b/.test(ua)) return 'Chromebook';
+  if (/\bMacintosh\b|\bMac OS X\b/.test(ua)) return 'Mac';
+  if (/\bWindows\b/.test(ua)) return 'Windows PC';
+  if (/\bLinux\b/.test(ua)) return 'Linux';
+  return null;
+}
 
 /**
  * Every open and click that counts, oldest first. Uses the same rules as
@@ -668,9 +688,11 @@ export function deriveTrackingTimeline(events: Array<TrackingEventLike & { desti
       lastValidOpenMs = evtMs;
       const ua = evt.userAgent || evt.user_agent;
       const viaProxy = evt.classification === 'PROXY_LIKELY' || (ua ? detectOpenRequestSource(ua) === 'google_image_proxy' : false);
-      timeline.push({ type: 'OPEN', timestamp: evt.timestamp, ...(viaProxy ? { viaProxy } : {}) });
+      const device = viaProxy ? null : describeEventDevice(ua);
+      timeline.push({ type: 'OPEN', timestamp: evt.timestamp, ...(viaProxy ? { viaProxy } : {}), ...(device ? { device } : {}) });
     } else if (evt.type === 'CLICK' && countsAsRecipientClick(evt)) {
-      timeline.push({ type: 'CLICK', timestamp: evt.timestamp, ...(evt.destination ? { destination: evt.destination } : {}) });
+      const device = describeEventDevice(evt.userAgent || evt.user_agent);
+      timeline.push({ type: 'CLICK', timestamp: evt.timestamp, ...(evt.destination ? { destination: evt.destination } : {}), ...(device ? { device } : {}) });
     }
   }
   return timeline;

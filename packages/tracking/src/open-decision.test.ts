@@ -15,6 +15,7 @@ import {
   decideTrackedOpen,
   deriveTrackingStats,
   deriveTrackingTimeline,
+  describeEventDevice,
   PAGE_RELOAD_PROXY_WINDOW_MS,
   planPageReloadProxy,
   selectSenderProxyClaim,
@@ -282,12 +283,23 @@ describe('open decision order', () => {
     const timeline = deriveTrackingTimeline(events);
     expect(timeline).toEqual([
       { type: 'OPEN', timestamp: '2026-09-24T12:02:00.000Z', viaProxy: true },
-      { type: 'CLICK', timestamp: '2026-09-24T12:05:00.000Z', destination: 'https://example.com/doc' },
-      { type: 'OPEN', timestamp: '2026-09-25T08:04:00.000Z' },
+      { type: 'CLICK', timestamp: '2026-09-24T12:05:00.000Z', destination: 'https://example.com/doc', device: 'Mac' },
+      { type: 'OPEN', timestamp: '2026-09-25T08:04:00.000Z', device: 'Mac' },
     ]);
     const stats = workerStats(events);
     expect(timeline.filter((entry) => entry.type === 'OPEN')).toHaveLength(stats.openCount);
     expect(timeline.filter((entry) => entry.type === 'CLICK')).toHaveLength(stats.clickCount);
+  });
+
+  it('names the device only when the user agent reveals it', () => {
+    expect(describeEventDevice('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148')).toBe('iPhone');
+    expect(describeEventDevice('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36')).toBe('Windows PC');
+    expect(describeEventDevice('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36')).toBe('Android');
+    expect(describeEventDevice(browserUa)).toBe('Mac');
+    // Gmail's proxy claims Windows, but it is Google's server, not the reader.
+    expect(describeEventDevice('Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 (via ggpht.com GoogleImageProxy)')).toBeNull();
+    expect(describeEventDevice('Mozilla/5.0')).toBeNull();
+    expect(describeEventDevice(null)).toBeNull();
   });
 
   it('does not use the claim TTL to suppress every later Google proxy', () => {

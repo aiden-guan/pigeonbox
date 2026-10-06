@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Ask Pigeon remembers your chats.** Close the panel and your earlier questions and answers are still there; scroll up to see them. New chat starts fresh without erasing anything.
 - **You choose how long chats are kept:** off, 1, 3 or 7 days. Chats stay in this browser only, and signing out erases them.
 - **A new Home (Cloud).** What needs you comes first, then a feed of recent mail, each tagged with its state and a one-line summary.
+- **Clicks and devices in tracking.** Opened emails also show when a link was clicked ("Opened 7× · clicked"), and the timeline says which device opened or clicked (iPhone, Mac, Windows PC…) when it can tell. Opens through Gmail's image proxy can't reveal a device.
 - **Unsubscribe by asking (Cloud).** Tell Pigeon "unsubscribe me from these newsletters" and it leaves them using each sender's one-click unsubscribe.
 
 ---

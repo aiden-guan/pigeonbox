@@ -708,7 +708,10 @@ export function describeTrackingStatus(
   const clickAgo = clickedWhen ? formatAgo(clickedWhen, now) : 'recently';
   const delivered = isDeliveredTrackedEmail(email);
 
-  const headline = opened
+  // A click is the stronger signal, so it is never hidden behind the open count.
+  const headline = opened && clicked
+    ? `Open detected ${openAgo}. Link clicked ${clickAgo}.`
+    : opened
     ? `Open detected ${openAgo}.`
     : clicked
       ? `Link clicked ${clickAgo}.`
@@ -738,9 +741,7 @@ export function describeTrackingStatus(
 
   const loopback = Boolean(opts?.trackerBaseUrl && isLoopbackTracker(opts.trackerBaseUrl));
   const markLabel = opened
-    ? email.openCount > 1
-      ? `Opened ${email.openCount}×`
-      : 'Opened'
+    ? `${email.openCount > 1 ? `Opened ${email.openCount}×` : 'Opened'}${clicked ? ' · clicked' : ''}`
     : clicked
       ? 'Link clicked'
       : delivered
@@ -946,6 +947,7 @@ export {
   decideTrackedOpen,
   deriveTrackingStats,
   deriveTrackingTimeline,
+  describeEventDevice,
   detectOpenRequestSource,
   isCountableOpenEvent,
   formatTrackingReport,

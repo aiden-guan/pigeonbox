@@ -31,9 +31,9 @@ const demoTracked = [
 ];
 const demoTimeline = [
   { type:"OPEN", timestamp:ago(262), viaProxy:true },
-  { type:"CLICK", timestamp:ago(258), destination:"https://www.figma.com/file/demo" },
-  { type:"OPEN", timestamp:ago(120) },
-  { type:"OPEN", timestamp:ago(41) },
+  { type:"CLICK", timestamp:ago(258), destination:"https://www.figma.com/file/demo", device:"iPhone" },
+  { type:"OPEN", timestamp:ago(120), device:"Mac" },
+  { type:"OPEN", timestamp:ago(41), device:"iPhone" },
 ];
 const demoDraft = { answer:"Here's a draft to Maya Chen.", coverageNote:"Preview uses fictional messages.", citations:[], draft:{ to:[{ email:"maya@fieldwork.test", name:"Maya Chen" }], subject:"Friday screens", body:"Hi Maya,\n\nThanks for sending the updated screens. I'll go through them tonight and send notes before Friday.\n\nBest,\nAiden" } };
 const demoAsk = { answer:"Your 3 most recent sent emails.", coverageNote:"Preview uses fictional messages.", citations:[], items:[

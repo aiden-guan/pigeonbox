@@ -183,6 +183,9 @@ function TrackedRow(props: {
             <i aria-hidden="true" />
             {email.openCount > 0 ? (email.openCount > 1 ? `Opened ${email.openCount}×` : 'Opened') : email.clickCount > 0 ? 'Clicked' : 'Not opened'}
           </span>
+          {email.clickCount > 0 && email.openCount > 0 ? (
+            <span className="gi-click-state">{email.clickCount > 1 ? `${email.clickCount} clicks` : '1 click'}</span>
+          ) : null}
           {lastSeen ? <span className="gi-muted truncate">last {relative(lastSeen, true)}</span> : null}
           <span className="gi-chevron ml-auto" data-open={open} aria-hidden="true">›</span>
         </div>
@@ -199,8 +202,11 @@ function TrackedRow(props: {
                 <span className="gi-tl-label">{entry.type === 'OPEN' ? 'Opened' : 'Clicked a link'}</span>
                 <time dateTime={entry.timestamp}>{stamp(entry.timestamp)}</time>
                 <span className="gi-tl-note">
-                  {entry.type === 'CLICK' && entry.destination ? hostOf(entry.destination) : null}
-                  {entry.type === 'OPEN' && index === firstOpenIndex(timeline.entries!) && email.sentAt ? formatAfterSend(email.sentAt, entry.timestamp) : null}
+                  {[
+                    entry.device,
+                    entry.type === 'CLICK' && entry.destination ? hostOf(entry.destination) : null,
+                    entry.type === 'OPEN' && index === firstOpenIndex(timeline.entries!) && email.sentAt ? formatAfterSend(email.sentAt, entry.timestamp) : null,
+                  ].filter(Boolean).join(' · ')}
                 </span>
               </li>
             ))}

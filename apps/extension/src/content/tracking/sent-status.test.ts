@@ -347,10 +347,16 @@ describe('tracking detail card', () => {
     expect(kinds).toEqual(['open', 'sent', 'click']);
   });
 
+  it('shows the click mark when an opened email also has a click', () => {
+    row('thread-1', 'aiden@example.com', 'Hello');
+    paintRows(document, [{ ...opened, clickCount: 1, lastClickedAt: '2026-09-22T15:10:00.000Z' }], 'https://track.example', () => undefined);
+    expect(document.querySelector<HTMLElement>('.gi-track-btn')?.dataset.kind).toBe('click');
+  });
+
   it('lists sent time and counted detections, and loads them from the tracker', async () => {
     const loadActivity = vi.fn(async () => [
       { type: 'OPEN' as const, timestamp: '2026-09-22T15:00:20.000Z', viaProxy: true },
-      { type: 'CLICK' as const, timestamp: '2026-09-22T15:02:00.000Z', destination: 'https://www.example.com/doc' },
+      { type: 'CLICK' as const, timestamp: '2026-09-22T15:02:00.000Z', destination: 'https://www.example.com/doc', device: 'iPhone' },
     ]);
     const controller = installSentStatus({ emails: [opened], trackerBaseUrl: 'https://track.example', onNotify: () => undefined, loadActivity });
     row('thread-1', 'aiden@example.com', 'Hello');
@@ -358,7 +364,7 @@ describe('tracking detail card', () => {
     document.querySelector<HTMLElement>('.gi-track-btn')?.click();
     await vi.waitFor(() => expect(document.querySelectorAll('.gi-track-activity li')).toHaveLength(3));
     const labels = [...document.querySelectorAll('.gi-track-activity li span')].map((node) => node.textContent);
-    expect(labels).toEqual(['Sent', 'Open detected', 'Link clicked · example.com']);
+    expect(labels).toEqual(['Sent', 'Open detected', 'Link clicked on iPhone · example.com']);
     expect(loadActivity).toHaveBeenCalledWith('trk_open');
     controller.destroy();
   });
