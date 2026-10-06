@@ -10,6 +10,7 @@ import { ROUTES, type CloudDraft, type DraftListItem, type RouteName, type Threa
 const accountId = '00000000-0000-4000-8000-000000000001';
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const at = '2026-10-01T12:00:00.000Z';
+const dashboardFixture = '<!doctype html><title>PigeonBox</title><h1>PigeonBox dashboard</h1><script>const id = new URLSearchParams(location.search).get("ext"); chrome.runtime.sendMessage(id, { type: "HELLO" }, (reply) => { document.body.dataset.hello = reply?.ok === true ? "1" : "0"; });</script>';
 const capabilities = [
   'cloud_ai',
   'cloud_mail_sync',
@@ -221,7 +222,7 @@ export const test = base.extend<{ app: App }>({
       if (route === '/dashboard') {
         // A stand-in for the dashboard (Settings): like the real page, it says HELLO so the extension knows its tab.
         response.setHeader('Content-Type', 'text/html');
-        response.end('<!doctype html><title>PigeonBox</title><h1>PigeonBox dashboard</h1><script>const id = new URLSearchParams(location.search).get("ext"); chrome.runtime.sendMessage(id, { type: "HELLO" }, () => { document.body.dataset.hello = "1"; });</script>');
+        response.end(dashboardFixture);
         return;
       }
       if (api.tracker && (route.startsWith('/api/') || route.startsWith('/open/'))) {
@@ -458,6 +459,9 @@ export const test = base.extend<{ app: App }>({
       recordVideo: process.env.PIGEONBOX_MOTION_QA ? { dir: 'test-results/dispatch-videos', size: { width: 1280, height: 900 } } : undefined,
     });
     closeContext = context;
+    // Local release builds open the published origin. Keep its dashboard synthetic
+    // while exercising Chrome's real externally_connectable boundary and HELLO.
+    await context.route('https://usepigeonbox.com/dashboard**', (route) => route.fulfill({ contentType: 'text/html', body: dashboardFixture }));
     const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
     const id = worker.url().split('/')[2];
     await context.route('https://mail.google.com/**', (route) =>

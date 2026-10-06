@@ -52,6 +52,14 @@ jobs:
       - name: Manifest V3 browser tests
         run: npm run test:browser
 
+      - name: Package and validate release ZIP
+        run: node scripts/package-extension.mjs --out "$RUNNER_TEMP/package"
+
+      - name: Local release browser tests
+        run: |
+          unzip -q "$RUNNER_TEMP/package/PigeonBox-v$(node -p 'require("./package.json").version').zip" -d "$RUNNER_TEMP/local-extension"
+          PIGEONBOX_BROWSER_EXTENSION_PATH="$RUNNER_TEMP/local-extension" npx playwright test tests/browser/settings-access.spec.ts tests/browser/waitlist.spec.ts --grep 'public Local build|unavailable Cloud' --output=test-results/local-release
+
       - name: Upload browser traces and screenshots
         if: always()
         uses: actions/upload-artifact@v7
@@ -61,9 +69,6 @@ jobs:
             test-results/
             playwright-report/
           retention-days: 7
-
-      - name: Package and validate release ZIP
-        run: node scripts/package-extension.mjs --out "$RUNNER_TEMP/package"
 
       - name: Upload package
         uses: actions/upload-artifact@v7

@@ -9,6 +9,9 @@ async function opensSettings(context: BrowserContext, action: () => Promise<void
   await action();
   const page = await opened;
   await expect(page).toHaveURL(DASHBOARD);
+  // chrome.tabs.create starts the public navigation before Playwright attaches
+  // routing to the new page. Reload once to serve the synthetic dashboard.
+  if (page.url().startsWith('https://usepigeonbox.com/')) await page.reload();
   await expect(page.locator('body[data-hello="1"]')).toHaveCount(1);
   return page;
 }

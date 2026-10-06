@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures';
 
-test('unavailable Cloud opens the waitlist from onboarding, Settings and commands without changing Local', async ({ app }) => {
+test('unavailable Cloud keeps onboarding on the waitlist and account commands on the dashboard without changing Local', async ({ app }) => {
   await app.context.route('https://usepigeonbox.com/waitlist**', route => route.fulfill({ contentType: 'text/html', body: '<h1>Cloud waitlist</h1>' }));
   const page = await app.context.newPage();
   await page.goto(`chrome-extension://${app.id}/settings.html?here`);
@@ -25,8 +25,10 @@ test('unavailable Cloud opens the waitlist from onboarding, Settings and command
   await settingsWaitlist.close();
   const command = app.context.waitForEvent('page');
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'CLOUD_OPEN', section: 'documents' }));
-  const commandWaitlist = await command;
-  await expect(commandWaitlist).toHaveURL('https://usepigeonbox.com/waitlist?source=extension');
+  const commandDashboard = await command;
+  await expect(commandDashboard).toHaveURL(`https://usepigeonbox.com/dashboard?ext=${app.id}#documents`);
+  await commandDashboard.reload(); // Apply fixture routing after chrome.tabs.create opens the page.
+  await expect(commandDashboard.locator('body[data-hello="1"]')).toHaveCount(1);
   const state = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'GET_PRODUCT_STATE' }));
   expect(state.state?.runMode ?? state.runMode).toBe('local');
   expect(app.api.calls.some(call => /auth|checkout/.test(call.route))).toBe(false);
