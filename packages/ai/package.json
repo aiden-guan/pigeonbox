@@ -1,6 +1,6 @@
 {
   "name": "@pigeonbox/ai",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "AIProvider interface and implementations (on-device, Gemini Nano, Ollama, BYOK, prompt-backed) plus summary, draft and compact prompts.",
   "private": true,
   "type": "module",
