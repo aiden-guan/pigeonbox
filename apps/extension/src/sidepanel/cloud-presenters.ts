@@ -3,7 +3,8 @@
  * person reads are tested apart from React. Backend vocabulary (jobs,
  * backlogs, analysis, sync states) stops here.
  */
-import { syncPhase, type CloudDraft, type CloudOverview, type DraftKind, type FocusItem, type MailAccount, type SyncPhase } from '@pigeonbox/api-contract';
+import { syncPhase, type CloudDraft, type CloudOverview, type DraftKind, type FocusItem, type MailAccount, type RecentMail, type SyncPhase } from '@pigeonbox/api-contract';
+import type { ThreadState } from '@pigeonbox/shared';
 import { findPlaceholders } from '@pigeonbox/shared';
 
 const DAY = 86_400_000;
@@ -119,7 +120,7 @@ export function mailStatus(input: { accounts: MailAccount[] | null | undefined; 
 // Ready for you
 // ---------------------------------------------------------------------------
 
-export type ReadyAction = { kind: 'approval'; label: 'Review approval'; approvalId: string } | { kind: 'draft'; label: 'Review draft' } | { kind: 'thread'; label: 'Open thread' };
+export type ReadyAction = { kind: 'approval'; label: 'Review approval'; approvalId: string } | { kind: 'thread'; label: 'Open' };
 export type ReadyItem = { flags: Array<{ text: string; urgent: boolean }>; reason: string | null; action: ReadyAction };
 
 function dueLabel(deadline: string, now: number): { text: string; urgent: boolean } | null {
@@ -142,7 +143,7 @@ const COVERED = [/deadline|^due /i, /draft is ready/i, /follow-up is due/i, /^un
 export function readyItem(item: FocusItem, now = Date.now()): ReadyItem {
   const flags: ReadyItem['flags'] = [];
   if (item.approvalId) flags.push({ text: 'Approval needed', urgent: true });
-  if (item.draftReady) flags.push({ text: item.draftStatus === 'placed' ? 'Reply in Gmail' : 'Reply prepared', urgent: false });
+  if (item.draftReady) flags.push({ text: item.draftStatus === 'placed' ? 'Draft in Gmail' : 'Reply drafted', urgent: false });
   if (item.deadlineAt) {
     const due = dueLabel(item.deadlineAt, now);
     if (due) flags.push(due);
@@ -155,17 +156,16 @@ export function readyItem(item: FocusItem, now = Date.now()): ReadyItem {
   } else if (item.state === 'NEEDS_REPLY' && !item.draftReady) flags.push({ text: 'Needs your reply', urgent: false });
 
   const reason = item.reasons.find((text) => !COVERED.some((pattern) => pattern.test(text))) ?? null;
+  // A prepared reply is reviewed where it belongs, in the email itself.
   const action: ReadyAction = item.approvalId
     ? { kind: 'approval', label: 'Review approval', approvalId: item.approvalId }
-    : item.draftReady
-      ? { kind: 'draft', label: 'Review draft' }
-      : { kind: 'thread', label: 'Open thread' };
+    : { kind: 'thread', label: 'Open' };
   return { flags, reason, action };
 }
 
-/** Focus Queue items in one ranked list: approvals and prepared replies lead, then urgency. */
-export function readyList(overview: Pick<CloudOverview, 'focus'>, limit = 6): FocusItem[] {
-  const weight = (item: FocusItem) => (item.approvalId ? 2 : 0) + (item.draftReady ? 1 : 0);
+/** The few Focus Queue items that need the person: approvals lead, then urgency. */
+export function readyList(overview: Pick<CloudOverview, 'focus'>, limit = 4): FocusItem[] {
+  const weight = (item: FocusItem) => (item.approvalId ? 1 : 0);
   return (overview.focus?.sections ?? [])
     .flatMap((section) => section.items)
     .sort((a, b) => weight(b) - weight(a) || b.score - a.score)
@@ -178,18 +178,67 @@ export function readyList(overview: Pick<CloudOverview, 'focus'>, limit = 6): Fo
 
 export type PreparedRow = { id: 'drafts_ready' | 'drafts_gmail' | 'drafts_update' | 'drafts_preparing' | 'followups' | 'approvals'; count: number; label: string; target: { view: 'drafts'; filter: DraftFilter } | { view: 'activity' } | { view: 'approvals' } };
 
+/** "17", "999+": a count that never outgrows the line it sits in. */
+export function countLabel(count: number): string {
+  return count > 999 ? '999+' : String(count);
+}
+
 export function preparedRows(overview: Pick<CloudOverview, 'prepared' | 'work'>): PreparedRow[] {
   const prepared = overview.prepared;
   const drafts = prepared?.drafts;
   const approvals = prepared?.approvalsWaiting ?? overview.work?.approvalsWaiting ?? 0;
   const rows: PreparedRow[] = [
     { id: 'approvals', count: approvals, label: approvals === 1 ? 'approval waiting' : 'approvals waiting', target: { view: 'approvals' } },
-    { id: 'drafts_ready', count: drafts?.ready ?? 0, label: (drafts?.ready ?? 0) === 1 ? 'reply ready to review' : 'replies ready to review', target: { view: 'drafts', filter: 'ready' } },
-    { id: 'drafts_update', count: drafts?.needsUpdate ?? 0, label: (drafts?.needsUpdate ?? 0) === 1 ? 'draft needs an update' : 'drafts need an update', target: { view: 'drafts', filter: 'update' } },
-    { id: 'drafts_gmail', count: drafts?.inGmail ?? 0, label: (drafts?.inGmail ?? 0) === 1 ? 'draft in Gmail' : 'drafts in Gmail', target: { view: 'drafts', filter: 'gmail' } },
+    { id: 'drafts_ready', count: drafts?.ready ?? 0, label: (drafts?.ready ?? 0) === 1 ? 'draft ready' : 'drafts ready', target: { view: 'drafts', filter: 'ready' } },
+    { id: 'drafts_update', count: drafts?.needsUpdate ?? 0, label: (drafts?.needsUpdate ?? 0) === 1 ? 'needs an update' : 'need an update', target: { view: 'drafts', filter: 'update' } },
+    { id: 'drafts_gmail', count: drafts?.inGmail ?? 0, label: 'in Gmail', target: { view: 'drafts', filter: 'gmail' } },
     { id: 'followups', count: prepared?.followUpsOpen ?? 0, label: (prepared?.followUpsOpen ?? 0) === 1 ? 'follow-up tracked' : 'follow-ups tracked', target: { view: 'activity' } },
   ];
   return rows.filter((row) => row.count > 0);
+}
+
+// ---------------------------------------------------------------------------
+// Recent mail
+// ---------------------------------------------------------------------------
+
+/** What a conversation is, in the four words a person sorts mail by. */
+export type MailKind = 'reply' | 'fyi' | 'updates' | 'marketing';
+export const MAIL_KINDS: Array<{ id: MailKind; label: string }> = [
+  { id: 'reply', label: 'Reply' },
+  { id: 'fyi', label: 'FYI' },
+  { id: 'updates', label: 'Updates' },
+  { id: 'marketing', label: 'Marketing' },
+];
+
+const KIND_BY_STATE: Record<ThreadState, MailKind> = {
+  NEEDS_REPLY: 'reply',
+  WAITING_ON_ME: 'reply',
+  FOLLOW_UP_DUE: 'reply',
+  WAITING_ON_THEM: 'fyi',
+  FYI: 'fyi',
+  SCHEDULED: 'fyi',
+  DONE: 'fyi',
+  NOTIFICATION: 'updates',
+  PROMOTION: 'marketing',
+  NEWS: 'marketing',
+};
+
+export function mailKind(state: ThreadState): MailKind {
+  return KIND_BY_STATE[state] ?? 'fyi';
+}
+
+/** The tag beside a recent conversation. Newsletters and promotions share a filter but keep their own word. */
+export function mailTag(item: Pick<RecentMail, 'state'>): { kind: MailKind; text: string } {
+  const kind = mailKind(item.state);
+  const text = item.state === 'NEWS' ? 'Newsletter' : item.state === 'DONE' ? 'Done' : MAIL_KINDS.find((entry) => entry.id === kind)!.label;
+  return { kind, text };
+}
+
+/** Per-kind counts, so filters only appear for kinds that are present. */
+export function mailKindCounts(items: readonly Pick<RecentMail, 'state'>[]): Record<MailKind, number> {
+  const counts: Record<MailKind, number> = { reply: 0, fyi: 0, updates: 0, marketing: 0 };
+  for (const item of items) counts[mailKind(item.state)] += 1;
+  return counts;
 }
 
 /** "Reviewed 18 conversations", ... Empty when nothing happened, so zeros never render. */

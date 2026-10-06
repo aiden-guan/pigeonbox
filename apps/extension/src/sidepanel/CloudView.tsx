@@ -4,7 +4,7 @@
  * activity. Shown only in Cloud mode. Every call goes through the service
  * worker (`CLOUD_CALL`), which holds the session and allows only listed routes.
  */
-import type { Approval, CloudOverview, DraftListItem, FocusItem, RouteResponse } from '@pigeonbox/api-contract';
+import type { Approval, CloudOverview, DraftListItem, RouteResponse } from '@pigeonbox/api-contract';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { trackProductEvent } from '../ui/analytics';
 import { Orb } from '../ui/Orb';
@@ -281,7 +281,6 @@ export function CloudView(props: { initialSection?: string; onSectionChange?: (s
     if (target.view === 'approvals') setApprovalFocus(target.approvalId);
     go(target.view);
   }
-  function reviewFromHome(item: FocusItem) { setReview({ threadId: item.threadId, accountId: item.accountId, subject: item.subject, who: item.who || undefined, from: 'home' }); }
   function reviewFromDrafts(item: DraftListItem) { setReview({ threadId: item.draft.threadId, accountId: item.draft.accountId, draft: item.draft, subject: item.subject, person: item.person, from: 'drafts' }); }
   function changed() { setDraftsRevision((value) => value + 1); void overview.refresh(); }
 
@@ -296,7 +295,7 @@ export function CloudView(props: { initialSection?: string; onSectionChange?: (s
         <Suspense fallback={<p className="gi-orb-line gi-muted px-4 pt-3" role="status"><Orb size={18} />Opening…</p>}>
           {review ? <DraftReview key={`${review.accountId}:${review.threadId}`} target={review} onBack={() => setReview(null)} onOpenThread={props.onOpenThread} onChanged={changed} />
           : view === 'overview' && !mailSync ? <div className="px-4"><CloudPreview product={product} /><div className="gi-feature-grid">{availableCloudFeatures(product.state.capabilities).map((feature) => <button type="button" key={feature.id} onClick={() => setView(feature.id)}>{feature.title}</button>)}</div></div>
-          : view === 'overview' ? <CloudHome data={overview.data} loading={overview.loading} capabilities={product.state.capabilities} visitSince={overview.visitSince} onOpenThread={props.onOpenThread} onReviewDraft={reviewFromHome} onGo={goTarget} onNavigate={go} />
+          : view === 'overview' ? <CloudHome data={overview.data} loading={overview.loading} capabilities={product.state.capabilities} visitSince={overview.visitSince} onOpenThread={props.onOpenThread} onGo={goTarget} onNavigate={go} />
           : view === 'drafts' ? <DraftsView initialFilter={draftFilter} revision={draftsRevision} onReview={reviewFromDrafts} onOpenThread={props.onOpenThread} />
           : view === 'approvals' ? <Approvals focusId={approvalFocus} onCount={props.onApprovalCount} />
           : view === 'focus' ? <Focus onOpenThread={props.onOpenThread} />

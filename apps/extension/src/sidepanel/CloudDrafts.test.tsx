@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import type { CloudDraft, CloudOverview, DraftListItem, DraftListResponse, FocusItem } from '@pigeonbox/api-contract';
+import type { CloudDraft, CloudOverview, DraftListItem, DraftListResponse, FocusItem, RecentMail } from '@pigeonbox/api-contract';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -50,6 +50,7 @@ async function render(node: React.ReactNode) {
   await act(async () => { root.render(node); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 }
+const labeled = (label: string) => host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`) ?? undefined;
 const button = (name: string | RegExp) => [...host.querySelectorAll('button')].find((node) => (typeof name === 'string' ? node.textContent?.trim() === name : name.test(node.textContent ?? ''))) as HTMLButtonElement | undefined;
 async function click(node: HTMLElement | undefined) {
   if (!node) throw new Error('button not found');
@@ -159,32 +160,46 @@ describe('cloud home', () => {
 
   it('puts current work first and collapses zero activity', async () => {
     const data = { ...overview(zero), accounts: [{ id: ACCOUNT } as never] };
-    await render(<CloudHome data={data as CloudOverview} loading={false} capabilities={['cloud_mail_sync', 'cloud_auto_drafts']} visitSince={at} onOpenThread={() => undefined} onReviewDraft={() => undefined} onGo={() => undefined} onNavigate={() => undefined} />);
+    await render(<CloudHome data={data as CloudOverview} loading={false} capabilities={['cloud_mail_sync', 'cloud_auto_drafts']} visitSince={at} onOpenThread={() => undefined} onGo={() => undefined} onNavigate={() => undefined} />);
     const text = host.textContent!;
-    expect(text.indexOf('Ready for you')).toBeLessThan(text.indexOf('Prepared for you'));
+    expect(text.indexOf('Needs you')).toBeLessThan(text.indexOf('In the background'));
     expect(text).not.toContain('While you were away');
     expect(text).not.toContain('Nothing new since your last visit.');
     expect(text).not.toMatch(/Threads analyzed|analyzed/i);
     expect(host.querySelectorAll('.pb-away-list li')).toHaveLength(0);
   });
 
-  it('routes Review draft, Open thread and approvals', async () => {
-    const reviewed: string[] = []; const opened: string[] = []; const went: unknown[] = [];
+  it('opens the email for drafted replies, routes approvals and background counts', async () => {
+    const opened: string[] = []; const went: unknown[] = [];
     const data = { ...overview({ ...zero, threadsAnalyzed: 18 }, [focusItem, { ...focusItem, threadId: 't2', subject: 'Contract', draftReady: false, approvalId: 'ap1' }, { ...focusItem, threadId: 't3', subject: 'Partnership', draftReady: false, draftId: null, section: 'waiting', state: 'WAITING_ON_THEM', lastMessageFromOwner: true }]), accounts: [{ id: ACCOUNT } as never] };
-    await render(<CloudHome data={data as CloudOverview} loading={false} capabilities={['cloud_mail_sync', 'cloud_auto_drafts']} visitSince={null} onOpenThread={(id) => opened.push(id)} onReviewDraft={(entry) => reviewed.push(entry.threadId)} onGo={(target) => went.push(target)} onNavigate={() => undefined} />);
+    await render(<CloudHome data={data as CloudOverview} loading={false} capabilities={['cloud_mail_sync', 'cloud_auto_drafts']} visitSince={null} onOpenThread={(id) => opened.push(id)} onGo={(target) => went.push(target)} onNavigate={() => undefined} />);
     expect(host.textContent).toContain('Reviewed 18 conversations');
-    await click(button('Review draft'));
-    await click(button('Review approval'));
-    await click([...host.querySelectorAll<HTMLButtonElement>('.pb-ready-actions .gi-btn')].find((node) => node.textContent === 'Open thread'));
-    await click(button(/repl(y|ies) ready to review/));
-    expect(reviewed).toEqual(['t1']);
-    expect(opened).toEqual(['t3']);
+    expect(host.textContent).toContain('Reply drafted');
+    expect(host.textContent).not.toContain('Review draft');
+    await click(labeled('Open: Uniforms'));
+    await click(labeled('Review approval: Contract'));
+    await click(labeled('Open: Partnership'));
+    await click(labeled('1 draft ready'));
+    expect(opened).toEqual(['t1', 't3']);
     expect(went).toEqual([{ view: 'approvals', approvalId: 'ap1' }, { view: 'drafts', filter: 'ready' }]);
+  });
+
+  it('lists recent mail with tags and filters by kind', async () => {
+    const mail = (threadId: string, state: RecentMail['state'], subject: string): RecentMail => ({ threadId, accountId: ACCOUNT, subject, who: 'Someone', lastMessageAt: at, state, summary: `About ${subject}`, draftReady: false });
+    const opened: string[] = [];
+    const data = { ...overview(zero, []), accounts: [{ id: ACCOUNT } as never], recent: [mail('r1', 'NEEDS_REPLY', 'Budget'), mail('r2', 'PROMOTION', 'Big sale'), mail('r3', 'NEWS', 'Weekly digest')] };
+    await render(<CloudHome data={data as CloudOverview} loading={false} capabilities={['cloud_mail_sync']} visitSince={null} onOpenThread={(id) => opened.push(id)} onGo={() => undefined} onNavigate={() => undefined} />);
+    expect([...host.querySelectorAll('.pb-mail .pb-tag')].map((node) => node.textContent)).toEqual(['Reply', 'Marketing', 'Newsletter']);
+    expect(host.textContent).toContain('About Budget');
+    await click([...host.querySelectorAll<HTMLButtonElement>('.pb-mail-filter button')].find((node) => node.textContent?.startsWith('Marketing')));
+    expect([...host.querySelectorAll('.pb-mail-subject')].map((node) => node.textContent)).toEqual(['Big sale', 'Weekly digest']);
+    await click(host.querySelector<HTMLButtonElement>('.pb-mail'));
+    expect(opened).toEqual(['r2']);
   });
 
   it('says you are caught up when nothing needs attention', async () => {
     const data = { ...overview(zero, []), accounts: [{ id: ACCOUNT } as never] };
-    await render(<CloudHome data={data as CloudOverview} loading={false} capabilities={['cloud_mail_sync']} visitSince={null} onOpenThread={() => undefined} onReviewDraft={() => undefined} onGo={() => undefined} onNavigate={() => undefined} />);
+    await render(<CloudHome data={data as CloudOverview} loading={false} capabilities={['cloud_mail_sync']} visitSince={null} onOpenThread={() => undefined} onGo={() => undefined} onNavigate={() => undefined} />);
     expect(host.textContent).toContain('You’re caught up.');
   });
 });

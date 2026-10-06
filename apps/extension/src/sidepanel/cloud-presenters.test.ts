@@ -1,6 +1,6 @@
 import type { CloudOverview, FocusItem, MailAccount } from '@pigeonbox/api-contract';
 import { describe, expect, it } from 'vitest';
-import { awaySummary, draftFilterCount, draftStateLabel, mailStatus, openPlaceholders, placementLine, preparedRows, readyItem, readyList } from './cloud-presenters';
+import { awaySummary, countLabel, draftFilterCount, draftStateLabel, mailKindCounts, mailStatus, mailTag, openPlaceholders, placementLine, preparedRows, readyItem, readyList } from './cloud-presenters';
 
 const NOW = Date.parse('2026-10-01T12:00:00.000Z');
 const twoMinutesAgo = new Date(NOW - 120_000).toISOString();
@@ -50,25 +50,25 @@ describe('mail status', () => {
 });
 
 describe('ready for you', () => {
-  it('says a reply is prepared, why it matters, and offers Review draft', () => {
+  it('notes a drafted reply but opens the email to review it', () => {
     const view = readyItem(focus({ draftReady: true, draftId: 'd1', draftStatus: 'ready', deadlineAt: new Date(NOW - 86_400_000).toISOString() }), NOW);
-    expect(view.flags.map((flag) => flag.text)).toEqual(['Reply prepared', 'Deadline passed']);
+    expect(view.flags.map((flag) => flag.text)).toEqual(['Reply drafted', 'Deadline passed']);
     expect(view.flags[1]!.urgent).toBe(true);
     expect(view.reason).toBe('They are waiting on your reply');
-    expect(view.action).toEqual({ kind: 'draft', label: 'Review draft' });
+    expect(view.action).toEqual({ kind: 'thread', label: 'Open' });
   });
   it('opens the thread when there is no draft, and shows waiting time', () => {
     const view = readyItem(focus({ section: 'waiting', state: 'WAITING_ON_THEM', lastMessageFromOwner: true, reasons: ['Unanswered for 4 days'] }), NOW);
     expect(view.flags.map((flag) => flag.text)).toEqual(['Waiting 4 days for a reply']);
     expect(view.reason).toBeNull();
-    expect(view.action.label).toBe('Open thread');
+    expect(view.action.label).toBe('Open');
   });
   it('puts approvals first and in Gmail drafts are labeled as such', () => {
     const view = readyItem(focus({ approvalId: 'ap1', draftReady: true, draftStatus: 'placed' }), NOW);
     expect(view.action).toEqual({ kind: 'approval', label: 'Review approval', approvalId: 'ap1' });
-    expect(view.flags.map((flag) => flag.text)).toContain('Reply in Gmail');
+    expect(view.flags.map((flag) => flag.text)).toContain('Draft in Gmail');
     const ranked = readyList({ focus: { generatedAt: '', coverage: { syncedAccounts: 1, since: null, note: '' }, sections: [{ id: 'respond', label: 'Respond', items: [focus({ threadId: 'plain', score: 99 }), focus({ threadId: 'draft', draftReady: true, score: 10 }), focus({ threadId: 'approval', approvalId: 'x', score: 1 })] }] } });
-    expect(ranked.map((item) => item.threadId)).toEqual(['approval', 'draft', 'plain']);
+    expect(ranked.map((item) => item.threadId)).toEqual(['approval', 'plain', 'draft']);
   });
 });
 
@@ -83,8 +83,23 @@ describe('prepared and while away', () => {
   });
   it('lists only current prepared work with routes', () => {
     const rows = preparedRows({ work, prepared: { drafts: { ready: 3, inGmail: 1, needsUpdate: 0, preparing: 0 }, followUpsOpen: 2, approvalsWaiting: 1 } } as Pick<CloudOverview, 'work' | 'prepared'>);
-    expect(rows.map((row) => `${row.count} ${row.label}`)).toEqual(['1 approval waiting', '3 replies ready to review', '1 draft in Gmail', '2 follow-ups tracked']);
+    expect(rows.map((row) => `${row.count} ${row.label}`)).toEqual(['1 approval waiting', '3 drafts ready', '1 in Gmail', '2 follow-ups tracked']);
     expect(rows[1]!.target).toEqual({ view: 'drafts', filter: 'ready' });
+  });
+});
+
+describe('recent mail', () => {
+  it('tags each conversation by what it asks of you', () => {
+    expect(mailTag({ state: 'NEEDS_REPLY' })).toEqual({ kind: 'reply', text: 'Reply' });
+    expect(mailTag({ state: 'PROMOTION' })).toEqual({ kind: 'marketing', text: 'Marketing' });
+    expect(mailTag({ state: 'NEWS' })).toEqual({ kind: 'marketing', text: 'Newsletter' });
+    expect(mailTag({ state: 'NOTIFICATION' })).toEqual({ kind: 'updates', text: 'Updates' });
+    expect(mailTag({ state: 'SCHEDULED' })).toEqual({ kind: 'fyi', text: 'FYI' });
+    expect(mailKindCounts([{ state: 'NEEDS_REPLY' }, { state: 'NEWS' }, { state: 'PROMOTION' }])).toEqual({ reply: 1, fyi: 0, updates: 0, marketing: 2 });
+  });
+  it('caps counts so they never outgrow their line', () => {
+    expect(countLabel(138)).toBe('138');
+    expect(countLabel(12_000)).toBe('999+');
   });
 });
 
