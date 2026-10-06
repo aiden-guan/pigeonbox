@@ -131,6 +131,7 @@ const REQUIRED_FILES = [
   'settings.html',
   'sidepanel.html',
   'onboarding.html',
+  'grant.html',
   'icons/icon16.png',
   'icons/icon48.png',
   'icons/icon128.png',
@@ -163,7 +164,7 @@ export function validatePackage(files, { expectedVersion, forbiddenValues = [], 
     } catch {
       problems.push('manifest.json is not valid JSON');
     }
-    if (manifest) problems.push(...validateManifest(manifest, names, expectedVersion));
+    if (manifest) problems.push(...validateManifest(manifest, names, expectedVersion), ...validateReleaseManifest(manifest));
   }
 
   for (const file of files) {
@@ -204,4 +205,11 @@ export function validateManifest(manifest, names, expectedVersion) {
   const broad = hosts.filter((host) => /^(?:\*|<all_urls>|https?:\/\/\*\/\*|\*:\/\/\*\/\*)$/.test(host));
   if (broad.length) problems.push(`required host permissions are too broad: ${broad.join(', ')}`);
   return problems;
+}
+
+/** Only the published dashboard may message a release build; loopback dashboards are for source builds. */
+export function validateReleaseManifest(manifest) {
+  const connectable = manifest.externally_connectable?.matches ?? [];
+  const foreign = connectable.filter((match) => !/^https:\/\/(www\.)?usepigeonbox\.com\/\*$/.test(match));
+  return foreign.length ? [`externally_connectable allows pages other than usepigeonbox.com: ${foreign.join(', ')}`] : [];
 }

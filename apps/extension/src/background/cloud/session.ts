@@ -117,6 +117,18 @@ export class CloudSessionManager {
     return session.user;
   }
 
+  /**
+   * Finish a sign-in that the PigeonBox dashboard carried out for this browser:
+   * the worker made the PKCE pair, the dashboard sent the person through sign-in
+   * and passed back the code. Only the worker holds the verifier, so a code
+   * seen by the page alone cannot be exchanged.
+   */
+  async exchangeLinkedCode(apiBaseUrl: string, input: { code: string; codeVerifier: string; redirectUri: string }): Promise<StoredCloudSession['user']> {
+    const session = await this.anonymousClient(apiBaseUrl).exchangeCode(input);
+    await this.store(apiBaseUrl, session);
+    return session.user;
+  }
+
   async signOut(): Promise<void> {
     const session = await this.readSession();
     if (session) {

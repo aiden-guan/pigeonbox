@@ -122,12 +122,11 @@ test('Dispatch side panel: positional mail, intelligence sources, Cloud and narr
   const preferences = await app.page('settings', true);
   await preferences.getByRole('button', { name: /Run on this computer instead/ }).click();
   await expect(preferences.locator('#run-mode .gi-choice').first()).toHaveAttribute('aria-pressed', 'true');
+  // Switching to Cloud (agreement, sign-in, subscription) continues on the dashboard; nothing changes here first.
+  const dashboard = app.context.waitForEvent('page');
   await preferences.getByRole('button', { name: /^PigeonBox Cloud/ }).click();
-  await preferences.getByRole('checkbox', { name: /I understand that email content/ }).check();
-  await preferences.getByRole('button', { name: 'Use PigeonBox Cloud', exact: true }).click();
-  await expect(preferences.locator('#run-mode .gi-choice').nth(1)).toHaveAttribute('aria-pressed', 'true');
-  await preferences.waitForTimeout(450);
-  await preferences.screenshot({ path: 'test-results/dispatch-mode-cloud.png' });
+  await expect(await dashboard).toHaveURL(/\/dashboard\?ext=[a-p]{32}&setup=cloud#cloud$/);
+  await expect(preferences.locator('#run-mode .gi-choice').first()).toHaveAttribute('aria-pressed', 'true');
   expect(errors).toEqual([]);
 });
 

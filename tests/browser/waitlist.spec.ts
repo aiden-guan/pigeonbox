@@ -3,7 +3,7 @@ import { test, expect } from './fixtures';
 test('unavailable Cloud opens the waitlist from onboarding, Settings and commands without changing Local', async ({ app }) => {
   await app.context.route('https://usepigeonbox.com/waitlist**', route => route.fulfill({ contentType: 'text/html', body: '<h1>Cloud waitlist</h1>' }));
   const page = await app.context.newPage();
-  await page.goto(`chrome-extension://${app.id}/settings.html`);
+  await page.goto(`chrome-extension://${app.id}/settings.html?here`);
   await page.evaluate(async () => {
     await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { runMode: 'local', cloudApiUrl: '', aiMode: 'disabled' } });
   });
@@ -17,7 +17,7 @@ test('unavailable Cloud opens the waitlist from onboarding, Settings and command
   await expect(waitlist).toHaveURL('https://usepigeonbox.com/waitlist?source=extension');
   await expect(page.getByRole('heading', { name: 'How should PigeonBox work?' })).toBeVisible();
   await waitlist.close();
-  await page.goto(`chrome-extension://${app.id}/settings.html`);
+  await page.goto(`chrome-extension://${app.id}/settings.html?here`);
   const settings = app.context.waitForEvent('page');
   await page.getByRole('button', { name: 'PigeonBox Cloud', exact: false }).first().click();
   const settingsWaitlist = await settings;

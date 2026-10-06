@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { ProductControls } from '../ui/product-state';
 import { Orb } from '../ui/Orb';
 import { CloudConnections } from './CloudConnections';
-import { openCloud } from '../ui/cloud-features';
+import { openCloud, openDashboard } from '../ui/cloud-features';
 
 const CLOUD_STATUS_LABEL: Record<string, string> = {
   not_configured: 'Coming soon',
@@ -60,7 +60,8 @@ export function RunModePanel({
           }
           badge={state.cloudAvailable ? undefined : 'Join waitlist ↗'}
           active={cloudMode}
-          onClick={() => state.cloudAvailable ? setPickingCloud(true) : openCloudWaitlist()}
+          // Switching to Cloud (agreement, sign-in, subscription, Google) happens on the dashboard.
+          onClick={() => state.cloudAvailable ? (cloudMode ? openDashboard('overview') : openDashboard('cloud', 'cloud')) : openCloudWaitlist()}
         />
         {compact ? null : (
           <ModeChoice
@@ -109,13 +110,13 @@ export function RunModePanel({
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {!signedIn ? (
-              <button type="button" className="gi-btn" disabled={busy} onClick={() => void product.signIn()}>
-                {busy ? <><Orb size={14} tone="on-accent" />Signing in…</> : 'Sign in'}
+              <button type="button" className="gi-btn" disabled={busy} onClick={() => openDashboard('cloud', 'cloud')}>
+                Sign in on the dashboard ↗
               </button>
             ) : null}
             {cloudStatus === 'not_entitled' ? (
-              <button type="button" className="gi-btn" disabled={busy} onClick={() => void product.billing('checkout')}>
-                Subscribe
+              <button type="button" className="gi-btn" disabled={busy} onClick={() => openDashboard('billing')}>
+                Subscribe ↗
               </button>
             ) : null}
             {cloudStatus === 'ready' ? (

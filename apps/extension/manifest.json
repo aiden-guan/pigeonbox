@@ -57,6 +57,12 @@
   "side_panel": {
     "default_path": "sidepanel.html"
   },
+  "externally_connectable": {
+    "matches": [
+      "https://usepigeonbox.com/*",
+      "https://www.usepigeonbox.com/*"
+    ]
+  },
   "options_ui": {
     "page": "settings.html",
     "open_in_tab": true

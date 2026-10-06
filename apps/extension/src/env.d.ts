@@ -19,6 +19,8 @@ interface ImportMetaEnv {
   readonly VITE_PIGEONBOX_EXPERIMENTAL?: string;
   /** Local dev-reload helper origin. Source builds default it; release builds leave it blank. */
   readonly VITE_PIGEONBOX_DEV_REBUILD_URL?: string;
+  /** "1" in release builds (set by vite.config.ts from PIGEONBOX_RELEASE). */
+  readonly VITE_PIGEONBOX_RELEASE?: string;
 }
 
 interface ImportMeta {

@@ -1,13 +1,15 @@
 import { test, expect } from './fixtures';
 import type { BrowserContext, Page } from '@playwright/test';
 
-const settingsTabs = (context: BrowserContext) => context.pages().filter((page) => page.url().endsWith('/settings.html'));
+// Settings live on the PigeonBox dashboard; the fixture API serves a stand-in that says HELLO like the real one.
+const DASHBOARD = /\/dashboard\?ext=[a-p]{32}#general$/;
+const settingsTabs = (context: BrowserContext) => context.pages().filter((page) => page.url().includes('/dashboard?ext='));
 async function opensSettings(context: BrowserContext, action: () => Promise<void>): Promise<Page> {
   const opened = context.waitForEvent('page');
   await action();
   const page = await opened;
-  await expect(page).toHaveURL(/\/settings\.html$/);
-  await expect(page.getByRole('heading', { name: 'Settings.' })).toBeVisible();
+  await expect(page).toHaveURL(DASHBOARD);
+  await expect(page.locator('body[data-hello="1"]')).toHaveCount(1);
   return page;
 }
 
@@ -74,15 +76,11 @@ test('the docked side panel exposes Settings with the dock control', async ({ ap
   await settings.close();
 });
 
-test('an enabled Cloud workspace keeps Settings and the account action derives from the configured Cloud API', async ({ app }) => {
+test('an enabled Cloud workspace opens Settings on the dashboard of its configured Cloud API', async ({ app }) => {
   const panel = await app.page('sidepanel', true);
   await expect(panel.locator('.pb-mode-label')).toHaveText('Cloud');
   const settings = await opensSettings(app.context, () => panel.getByRole('button', { name: 'Open PigeonBox Settings' }).click());
-  await expect(settings.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: 'Memory' })).toBeVisible();
-  await expect(settings.getByRole('button', { name: 'Manage billing' })).toBeVisible();
-  const account = app.context.waitForEvent('page');
-  await settings.getByRole('button', { name: 'Manage Cloud account ↗' }).click();
-  await expect(await account).toHaveURL(`${new URL(app.api.baseUrl).origin}/dashboard#overview`);
+  expect(settings.url().startsWith(`${new URL(app.api.baseUrl).origin}/dashboard?ext=${app.id}`)).toBe(true);
 });
 
 test('the command palette still opens Settings', async ({ app }) => {
@@ -96,7 +94,7 @@ test('the command palette still opens Settings', async ({ app }) => {
 
 test('Settings stays usable at a narrow width and links only to visible sections', async ({ app }) => {
   const page = await app.page('workspace');
-  await page.goto(`chrome-extension://${app.id}/settings.html`);
+  await page.goto(`chrome-extension://${app.id}/settings.html?here`);
   await page.setViewportSize({ width: 360, height: 760 });
   const nav = page.getByRole('navigation', { name: 'Settings sections' });
   await expect(nav).toBeVisible();
@@ -121,12 +119,7 @@ test('a public Local build keeps Settings one click away and shows Cloud only as
   await panel.reload();
   await expect(panel.locator('.pb-mode-label')).toHaveText('Local');
   const settings = await opensSettings(app.context, () => panel.getByRole('button', { name: 'Open PigeonBox Settings' }).click());
-  await expect(settings.getByRole('button', { name: /PigeonBox Cloud.*Join waitlist ↗/ })).toBeVisible();
-  for (const name of ['Manage Cloud account ↗', 'Manage Cloud data and retention ↗', 'Manage billing', 'Sign in', 'Subscribe'])
-    await expect(settings.getByRole('button', { name, exact: true })).toHaveCount(0);
-  const nav = settings.getByRole('navigation', { name: 'Settings sections' });
-  await expect(nav.getByRole('link', { name: 'Cloud / Sync' })).toHaveCount(0);
-  await expect(nav.getByRole('link', { name: 'Memory' })).toHaveCount(0);
-  expect(await settings.content()).not.toMatch(/workers\.dev|\/app#|\/dashboard#/);
+  // A build without Cloud still opens the published dashboard, where Local settings live.
+  expect(settings.url().startsWith(`https://usepigeonbox.com/dashboard?ext=${app.id}`)).toBe(true);
   expect(app.api.calls.some((call) => /auth|checkout|billing/.test(call.route))).toBe(false);
 });

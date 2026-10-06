@@ -29,6 +29,9 @@ export const EXPERIMENTAL_FEATURES = import.meta.env.VITE_PIGEONBOX_EXPERIMENTAL
  */
 export const DEV_REBUILD_URL = import.meta.env.VITE_PIGEONBOX_DEV_REBUILD_URL ?? '';
 
+/** Source (non-release) build: the dashboard bridge also accepts loopback dashboards. */
+export const DEV_BUILD = import.meta.env.VITE_PIGEONBOX_RELEASE !== '1';
+
 /** The Cloud API this install talks to: a developer override, else the build's URL. */
 export function cloudApiUrl(settings: { cloudApiUrl: string }): string | null {
   return normalizeBaseUrl(settings.cloudApiUrl || '') ?? (BUILD_CLOUD_API_URL || null);

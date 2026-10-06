@@ -48,6 +48,7 @@ function flattenExtensionHtml(): Plugin {
         ['src/onboarding/index.html', 'onboarding.html'],
         ['src/workspace/index.html', 'workspace.html'],
         ['src/sidepanel/index.html', 'sidepanel.html'],
+        ['src/grant/index.html', 'grant.html'],
       ];
       for (const [from, to] of pages) {
         const sourcePath = resolve(outDir, from);
@@ -78,6 +79,8 @@ if (release) process.env.VITE_PIGEONBOX_EXPERIMENTAL = 'false';
 /** Source builds call the local `npm run dev:reload` helper; release builds never do. */
 if (release) process.env.VITE_PIGEONBOX_DEV_REBUILD_URL = '';
 else process.env.VITE_PIGEONBOX_DEV_REBUILD_URL ??= 'http://127.0.0.1:5199';
+/** Source builds also accept a dashboard served on loopback (the local Cloud API's copy). */
+process.env.VITE_PIGEONBOX_RELEASE = release ? '1' : '';
 
 /** Files that must never ship even if they sit in public/ on a developer machine. */
 const RELEASE_EXCLUDED = ['tracker-config.json'];
@@ -124,10 +127,18 @@ function extensionIdFromKey(key: string): string {
   return [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
 }
 
+/** Development dashboards on loopback may talk to source builds; release builds only to usepigeonbox.com. */
+const LOOPBACK_DASHBOARDS = ['http://127.0.0.1/*', 'http://localhost/*'];
+
 function manifestTransform(mode: string) {
   const key = extensionKey(mode);
   if (key) console.log(`[pigeonbox] Unpacked build uses the store extension ID ${extensionIdFromKey(key)}`);
-  return (content: string) => (key ? JSON.stringify({ ...JSON.parse(content), key }, null, 2) + '\n' : content);
+  return (content: string) => {
+    const manifest = JSON.parse(content);
+    if (key) manifest.key = key;
+    if (!release) manifest.externally_connectable = { matches: [...manifest.externally_connectable.matches, ...LOOPBACK_DASHBOARDS] };
+    return JSON.stringify(manifest, null, 2) + '\n';
+  };
 }
 
 export default defineConfig(({ mode }) => ({
@@ -179,6 +190,7 @@ export default defineConfig(({ mode }) => ({
         workspace: resolve(__dirname, 'src/workspace/index.html'),
         settings: resolve(__dirname, 'src/settings/index.html'),
         onboarding: resolve(__dirname, 'src/onboarding/index.html'),
+        grant: resolve(__dirname, 'src/grant/index.html'),
         offscreen: resolve(__dirname, 'offscreen.html'),
       },
       output: {

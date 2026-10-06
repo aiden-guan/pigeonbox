@@ -84,11 +84,12 @@ import { cachedCloudState, clearCloudState, cloudSession, cloudTrackerTarget, ge
 import { cloudThreadStateAvailable, forgetThreadIntel } from './cloud/thread-state';
 import { handleCloudRequest } from './cloud/handlers';
 import { serveAskStream } from './cloud/ask-stream';
-import { cloudSection, panelSection } from '../ui/cloud-features';
+import { cloudSection, dashboardSection, panelSection } from '../ui/cloud-features';
+import { handleWebMessage, type WebBridgeDeps } from './web-bridge';
 import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, isGmailContentScript, senderMaySend } from './messaging';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
-import { CLOUD_DASHBOARD_URL, EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl, cloudTrackerUrls, trackerIssuer } from '../config';
+import { CLOUD_DASHBOARD_URL, DEV_BUILD, EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl, cloudTrackerUrls, trackerIssuer } from '../config';
 import { gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './tracking/notifications';
 
 const db = getMailboxDb();
@@ -1725,20 +1726,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       if (message?.type === 'SAVE_AGENT_RULES') {
-        const { parseNaturalLanguageRule } = await import('@pigeonbox/agent');
-        const lines = (message.lines || []) as string[];
-        await db.agent_rules.clear();
-        for (const line of lines) {
-          const structured = parseNaturalLanguageRule(line);
-          if (!structured) continue;
-          await db.agent_rules.put({
-            id: `rule_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-            naturalLanguage: line,
-            structured,
-            enabled: true,
-            createdAt: Date.now(),
-          });
-        }
+        await saveAgentRules((message.lines || []) as string[]);
         sendResponse({ ok: true });
         return;
       }
@@ -1775,46 +1763,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'OPEN_COMPOSE_DRAFT':
         sendResponse(await openComposeDraft(msg.draft));
         break;
-      case 'INDEX_INBOX': {
-        const workerId = await workerTabs.ensureTab({ active: false, pinned: true });
-        indexRunner = new IndexJobRunner(ingestor, async (query, cursor) => {
-          const res = (await sendToTab(workerId, {
-            type: 'INDEX_FETCH_BATCH',
-            query,
-            cursor,
-          })) as {
-            threads?: IngestThread[];
-            nextCursor?: string;
-            error?: string;
-            captchaOrBlock?: boolean;
-          };
-          return {
-            threads: res.threads || [],
-            nextCursor: res.nextCursor,
-            error: res.error,
-            captchaOrBlock: res.captchaOrBlock,
-          };
-        });
-        const cp = await indexRunner.run({
-          mode: msg.mode,
-          customQuery: msg.customQuery,
-        });
-        for (const threadId of (cp.processedThreadIds || []).slice(0, 8)) {
-          const row = await db.threads.get(threadId);
-          if (row?.quality === 'THREAD_COMPLETE') continue;
-          const hydrated = (await sendToTab(workerId, {
-            type: 'HYDRATE_THREAD',
-            threadId,
-            restore: true,
-          })) as { thread?: IngestThread };
-          if (!hydrated.thread) continue;
-          const result = await ingestor.ingestThread(hydrated.thread);
-          if (result.changed) await classifyIngested(hydrated.thread, result.fingerprint, result.quality, 'inbound');
-        }
-        await rebuildSearchIndex();
-        sendResponse({ checkpoint: cp });
+      case 'INDEX_INBOX':
+        sendResponse({ checkpoint: await runInboxIndex(msg.mode, msg.customQuery) });
         break;
-      }
       case 'PAUSE_INDEX':
         indexRunner?.pause();
         sendResponse({ ok: true });
@@ -2072,6 +2023,61 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+/** Replace the local agent rules with the parseable lines. */
+async function saveAgentRules(lines: string[]): Promise<void> {
+  const { parseNaturalLanguageRule } = await import('@pigeonbox/agent');
+  await db.agent_rules.clear();
+  for (const line of lines) {
+    const structured = parseNaturalLanguageRule(line);
+    if (!structured) continue;
+    await db.agent_rules.put({
+      id: `rule_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      naturalLanguage: line,
+      structured,
+      enabled: true,
+      createdAt: Date.now(),
+    });
+  }
+}
+
+/** Index older Gmail threads through a background Gmail tab, then fill in a few incomplete ones. */
+async function runInboxIndex(mode: Parameters<IndexJobRunner['run']>[0]['mode'], customQuery?: string) {
+  const workerId = await workerTabs.ensureTab({ active: false, pinned: true });
+  indexRunner = new IndexJobRunner(ingestor, async (query, cursor) => {
+    const res = (await sendToTab(workerId, {
+      type: 'INDEX_FETCH_BATCH',
+      query,
+      cursor,
+    })) as {
+      threads?: IngestThread[];
+      nextCursor?: string;
+      error?: string;
+      captchaOrBlock?: boolean;
+    };
+    return {
+      threads: res.threads || [],
+      nextCursor: res.nextCursor,
+      error: res.error,
+      captchaOrBlock: res.captchaOrBlock,
+    };
+  });
+  const cp = await indexRunner.run({ mode, customQuery });
+  for (const threadId of (cp.processedThreadIds || []).slice(0, 8)) {
+    const row = await db.threads.get(threadId);
+    if (row?.quality === 'THREAD_COMPLETE') continue;
+    const hydrated = (await sendToTab(workerId, {
+      type: 'HYDRATE_THREAD',
+      threadId,
+      restore: true,
+    })) as { thread?: IngestThread };
+    if (!hydrated.thread) continue;
+    const result = await ingestor.ingestThread(hydrated.thread);
+    if (result.changed) await classifyIngested(hydrated.thread, result.fingerprint, result.quality, 'inbound');
+  }
+  await rebuildSearchIndex();
+  return cp;
+}
+
 /** Everything a PigeonBox page needs to render mode, capabilities and Cloud status. */
 async function productState() {
   const cloud: CloudState = await readCloudState(settings);
@@ -2091,13 +2097,59 @@ async function productState() {
   };
 }
 
-/** The Cloud web app (served by the Cloud API's origin), for a section such as "approvals". */
-function cloudWebUrl(section = 'overview'): string | null {
+/**
+ * The PigeonBox dashboard, where Settings live, opened at a section such as
+ * "approvals". It names this install's ID so the page can reach the worker
+ * (unpacked builds have their own IDs). A loopback API serves its own copy.
+ */
+function dashboardUrl(section = 'overview', extra: Record<string, string> = {}): string {
   const base = cloudApiUrl(settings);
-  if (!base) return null;
-  const api = new URL(base);
-  const dashboard = ['localhost', '127.0.0.1', '[::1]'].includes(api.hostname) ? `${api.origin}/dashboard` : CLOUD_DASHBOARD_URL;
-  return `${dashboard}#${cloudSection(section)}`;
+  const api = base ? new URL(base) : null;
+  const dashboard = api && ['localhost', '127.0.0.1', '[::1]'].includes(api.hostname) ? `${api.origin}/dashboard` : CLOUD_DASHBOARD_URL;
+  const query = new URLSearchParams({ ext: chrome.runtime.id, ...extra });
+  return `${dashboard}?${query}#${dashboardSection(section)}`;
+}
+
+function cloudWebUrl(section = 'overview'): string | null {
+  return dashboardUrl(cloudSection(section));
+}
+
+const DASHBOARD_TAB_KEY = 'dashboardTab';
+
+/**
+ * Open the dashboard, reusing the tab that shows it. Without the "tabs"
+ * permission the worker cannot read a website tab's address, so the dashboard
+ * reports its own tab when it loads and when it goes away (see web-bridge.ts).
+ */
+async function openDashboard(section = 'overview', extra: Record<string, string> = {}): Promise<void> {
+  const url = dashboardUrl(section, extra);
+  const tabId = (await chrome.storage.session.get(DASHBOARD_TAB_KEY))[DASHBOARD_TAB_KEY];
+  if (typeof tabId === 'number') {
+    try {
+      const tab = await chrome.tabs.update(tabId, { url, active: true });
+      if (tab?.windowId != null) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
+      return;
+    } catch {
+      await chrome.storage.session.remove(DASHBOARD_TAB_KEY);
+    }
+  }
+  await chrome.tabs.create({ url });
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void chrome.storage.session.get(DASHBOARD_TAB_KEY).then((stored) => {
+    if (stored[DASHBOARD_TAB_KEY] === tabId) return chrome.storage.session.remove(DASHBOARD_TAB_KEY);
+  }).catch(() => undefined);
+});
+
+/** After any Cloud sign-in: account state, voice, content settings, the agent and tracking history. */
+async function afterCloudSignIn(): Promise<void> {
+  await refreshCloudState(settings);
+  void syncVoiceToCloud();
+  await publishContentSettings();
+  rebuildAgent();
+  // Cloud is the record for hosted tracking: load its history right after sign-in.
+  void pollTracking().catch(() => undefined);
 }
 
 /** A Cloud client only when Cloud's always-on features (`cloud_mail_sync`) are available; null in Local mode. */
@@ -2153,6 +2205,13 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
   switch (message?.type) {
     case 'GET_PRODUCT_STATE':
       return productState();
+    case 'OPEN_DASHBOARD': {
+      const setup: Record<string, string> = message.setup === 'cloud' ? { setup: 'cloud' } : {};
+      await openDashboard(typeof message.section === 'string' ? message.section : 'overview', setup);
+      return { ok: true };
+    }
+    case 'GET_DASHBOARD_URL':
+      return { ok: true, url: dashboardUrl(typeof message.section === 'string' ? message.section : 'overview') };
     case 'SET_RUN_MODE': {
       const mode = message.mode;
       if (mode === 'local') {
@@ -2165,6 +2224,9 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
         return { ok: false, reason: 'Unknown mode.' };
       }
       await chrome.storage.local.set({ settings });
+      // A subscription may have started since the account state was cached. Only after saving:
+      // other messages reload settings from storage while this waits on the network.
+      if (mode === 'cloud') await refreshCloudState(settings).catch(() => undefined);
       await publishContentSettings();
       rebuildAgent();
       // Each mode has its own tracker; load its history now rather than on the next alarm.
@@ -2177,12 +2239,7 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       if (!base) return { ok: false, reason: 'PigeonBox Cloud is not available in this build.' };
       try {
         const user = await cloudSession.signIn(base);
-        await refreshCloudState(settings);
-        void syncVoiceToCloud();
-        await publishContentSettings();
-        rebuildAgent();
-        // Cloud is the record for hosted tracking: load its history right after sign-in.
-        void pollTracking().catch(() => undefined);
+        await afterCloudSignIn();
         return { ok: true, user, state: await productState() };
       } catch (error) {
         return { ok: false, reason: cloudErrorMessage(error).message, detail: error instanceof Error ? error.message : undefined };
@@ -2215,6 +2272,89 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       return undefined;
   }
 }
+
+// The dashboard on usepigeonbox.com edits settings and connects Cloud through here (see web-bridge.ts).
+const webBridge: WebBridgeDeps = {
+  extensionId: chrome.runtime.id,
+  version: chrome.runtime.getManifest().version,
+  storeInstall: () => chromeManagesUpdates(),
+  allowLoopback: DEV_BUILD,
+  settings: () => settings,
+  saveSettings: (partial) => saveSettings(partial),
+  productState: () => productState(),
+  productMessage: async (message) => {
+    const reply = await handleProductMessage(message);
+    return reply && typeof reply === 'object' && 'state' in reply ? { ...reply, product: (reply as { state: unknown }).state } : reply;
+  },
+  apiBaseUrl: () => cloudApiUrl(settings),
+  exchangeLinkedCode: async (apiBaseUrl, input) => {
+    forgetThreadIntel();
+    return cloudSession.exchangeLinkedCode(apiBaseUrl, input);
+  },
+  afterSignIn: () => afterCloudSignIn(),
+  agentRules: async () => (await db.agent_rules.toArray()).map((rule) => rule.naturalLanguage),
+  saveAgentRules: (lines) => saveAgentRules(lines),
+  action: async (name) => {
+    switch (name) {
+      case 'clear_index':
+        await ingestor.clearIndex();
+        lexical.clear();
+        return null;
+      case 'clear_ai_cache':
+        queue.clearCache();
+        await db.model_cache.clear();
+        return null;
+      case 'index_inbox':
+        void runInboxIndex('30d').catch(() => undefined);
+        return null;
+      case 'pause_index':
+        indexRunner?.pause();
+        return null;
+      case 'reset_workspace':
+        await updateWorkspace({ position: undefined, size: undefined });
+        return null;
+      case 'diagnostics':
+        return runDiagnostics();
+      case 'open_ai_setup':
+        await chrome.tabs.create({ url: chrome.runtime.getURL('settings.html?here=ai') });
+        return null;
+      case 'open_gmail':
+        await chrome.tabs.create({ url: 'https://mail.google.com/' });
+        return null;
+      default:
+        return null;
+    }
+  },
+  analytics: {
+    get: async () => (await chrome.storage.local.get('productAnalyticsEnabled')).productAnalyticsEnabled === true,
+    set: async (enabled) => {
+      await chrome.storage.local.set({ productAnalyticsEnabled: enabled });
+      if (!enabled) await chrome.storage.local.remove('productEventCounts');
+    },
+  },
+  hasOrigins: (origins) => chrome.permissions.contains({ origins }).catch(() => false),
+  noteDashboardTab: async (tabId) => {
+    if (tabId === null) await chrome.storage.session.remove(DASHBOARD_TAB_KEY);
+    else await chrome.storage.session.set({ [DASHBOARD_TAB_KEY]: tabId });
+  },
+  openGrant: async (origins) => {
+    await chrome.windows.create({ url: chrome.runtime.getURL(`grant.html?${new URLSearchParams({ origins: origins.join(',') })}`), type: 'popup', width: 440, height: 420, focused: true });
+  },
+  session: chrome.storage.session,
+};
+
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  void (async () => {
+    try {
+      await loadSettings();
+      if (!agent) rebuildAgent();
+      sendResponse(await handleWebMessage(message, sender, webBridge));
+    } catch (error) {
+      sendResponse({ ok: false, reason: error instanceof Error ? error.message : 'PigeonBox hit an error.' });
+    }
+  })();
+  return true;
+});
 
 const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 

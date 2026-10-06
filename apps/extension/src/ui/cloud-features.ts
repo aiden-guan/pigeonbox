@@ -19,4 +19,9 @@ const PANEL_SECTIONS: ReadonlySet<string> = new Set([...CLOUD_SECTIONS, 'drafts'
 export function panelSection(value: unknown): string { return typeof value === 'string' && PANEL_SECTIONS.has(value) ? value : 'overview'; }
 export function cloudSection(value: unknown): string { return typeof value === 'string' && CLOUD_SECTIONS.has(value) ? value : 'overview'; }
 export function availableCloudFeatures(capabilities: readonly string[]) { return CLOUD_FEATURES.filter((feature) => capabilities.includes(feature.capability)); }
+/** Dashboard sections: the Cloud ones plus Settings (both modes) and Cloud setup. */
+const DASHBOARD_SECTIONS: ReadonlySet<string> = new Set([...CLOUD_SECTIONS, 'billing', 'memory', 'general', 'ai', 'inbox', 'tracking', 'personalization', 'advanced', 'cloud']);
+export function dashboardSection(value: unknown): string { return typeof value === 'string' && DASHBOARD_SECTIONS.has(value) ? value : 'general'; }
 export function openCloud(section: string) { chrome.runtime.sendMessage({ type: 'CLOUD_OPEN', section: cloudSection(section) }); }
+/** Open Settings, which live on the PigeonBox dashboard. `setup: 'cloud'` starts switching to Cloud there. */
+export function openDashboard(section = 'general', setup?: 'cloud') { chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD', section, ...(setup ? { setup } : {}) }); }
