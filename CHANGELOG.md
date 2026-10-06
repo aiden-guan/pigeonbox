@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.5.4] — 2026-10-06
+
+### Added
+- **Ask Pigeon remembers your chats.** Close the panel and your earlier questions and answers are still there; scroll up to see them. New chat starts fresh without erasing anything.
+- **You choose how long chats are kept:** off, 1, 3 or 7 days. Chats stay in this browser only, and signing out erases them.
+- **Unsubscribe by asking (Cloud).** Tell Pigeon "unsubscribe me from these newsletters" and it leaves them using each sender's one-click unsubscribe.
+
+---
+
 ## [0.5.2] — 2026-10-04
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "@pigeonbox/shared",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Shared primitives: extension settings and their migration, message schemas, constants and small utilities.",
   "private": true,
   "type": "module",

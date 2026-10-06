@@ -1,6 +1,6 @@
 {
   "name": "pigeonbox",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "private": true,
   "description": "PigeonBox: AI-powered Gmail intelligence that can run on your machine. Chrome extension, local AI, BYOK, Ollama, open tracking. No Gmail API.",
   "license": "MIT",

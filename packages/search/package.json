@@ -1,6 +1,6 @@
 {
   "name": "@pigeonbox/search",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Local retrieval for Ask Pigeon: query parsing, lexical and hybrid search over the local mailbox index.",
   "private": true,
   "type": "module",
