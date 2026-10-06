@@ -110,7 +110,7 @@ test('Dispatch side panel: positional mail, intelligence sources, Cloud and narr
   await page.screenshot({ path: 'test-results/dispatch-local-ask.png' });
   const cloud = await app.page('sidepanel', true);
   cloud.on('pageerror', (error) => errors.push(error.message));
-  await expect(cloud.getByText('Ready for you', { exact: true })).toBeVisible();
+  await expect(cloud.getByText('Needs you', { exact: true })).toBeVisible();
   await cloud.waitForTimeout(450);
   await cloud.screenshot({ path: 'test-results/dispatch-cloud.png' });
   await cloud.getByRole('button', { name: 'Ask', exact: true }).click();

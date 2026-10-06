@@ -38,6 +38,9 @@ test('semantic themes stay readable at compact widths and appearance survives re
   }
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-pb-theme', 'dark');
+  await page.locator('[data-command-launcher]').click();
+  await page.getByRole('combobox').fill('Prepared drafts');
+  await page.getByRole('combobox').press('Enter');
   await page.getByRole('button', { name: 'Review draft: Pricing' }).click();
   await expect(page.getByRole('textbox', { name: 'Draft' })).toBeVisible();
   await page.screenshot({ path: 'test-results/design-prepared-reply-dark.png', fullPage: true });

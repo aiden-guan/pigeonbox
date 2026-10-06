@@ -20,7 +20,7 @@ test('Cloud overview loads through the real worker/client and retains sections o
   await expect(page.getByText('Up to date', { exact: true })).toBeVisible();
   await expect(page.getByText('Reviewed 7 conversations', { exact: true })).toBeVisible();
   await expect(page.getByText('Briefing could not load.', { exact: false })).toBeVisible();
-  await expect(page.getByText('Ready for you', { exact: true })).toBeVisible();
+  await expect(page.getByText('Needs you', { exact: true })).toBeVisible();
   app.api.partial = false;
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByText('Your morning briefing', { exact: true })).toBeVisible();
@@ -243,7 +243,7 @@ test('Chrome permission boundary grants declared Gmail access and denies undecla
 test('profiles synthetic Cloud overview, Ask, thread mount and SPA navigation without polling', async ({ app }) => {
   const timings: Record<string, number> = {};
   let start = Date.now(); const page = await app.page('sidepanel', true);
-  await expect(page.getByText('Ready for you', { exact: true })).toBeVisible(); timings.overviewSetupToReadyMs = Date.now() - start;
+  await expect(page.getByText('Needs you', { exact: true })).toBeVisible(); timings.overviewSetupToReadyMs = Date.now() - start;
   await page.getByRole('button', { name: 'Ask', exact: true }).click();
   await page.getByRole('textbox', { name: 'Ask Pigeon' }).fill('What needs a reply?');
   start = Date.now(); await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();

@@ -117,7 +117,7 @@ export function mailStatus(input: { accounts: MailAccount[] | null | undefined; 
 }
 
 // ---------------------------------------------------------------------------
-// Ready for you
+// Needs you
 // ---------------------------------------------------------------------------
 
 export type ReadyAction = { kind: 'approval'; label: 'Review approval'; approvalId: string } | { kind: 'thread'; label: 'Open' };
@@ -173,7 +173,7 @@ export function readyList(overview: Pick<CloudOverview, 'focus'>, limit = 4): Fo
 }
 
 // ---------------------------------------------------------------------------
-// Prepared for you, and while you were away
+// In the background, and while you were away
 // ---------------------------------------------------------------------------
 
 export type PreparedRow = { id: 'drafts_ready' | 'drafts_gmail' | 'drafts_update' | 'drafts_preparing' | 'followups' | 'approvals'; count: number; label: string; target: { view: 'drafts'; filter: DraftFilter } | { view: 'activity' } | { view: 'approvals' } };
