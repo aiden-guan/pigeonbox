@@ -126,7 +126,6 @@
 
 .pb-settings-brand{display:flex;align-items:center;justify-content:space-between}
 .gi-welcome-pigeon{height:auto;padding-top:var(--pb-space-5);margin-bottom:var(--pb-space-4)}
-.pb-ready-who{display:flex;align-items:center;justify-content:space-between;gap:var(--pb-space-2)}
 .pb-ready-item[data-prepared=true]{border-left:2px solid var(--pb-accent);padding-left:var(--pb-space-3)}
 .pb-local-draft-content[data-motion-id]{padding:var(--pb-space-3)}
 .pb-local-draft-content .gi-draft-body{padding:0}

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import type { CloudDraft, CloudOverview, DraftListItem, DraftListResponse, FocusItem, RecentMail } from '@pigeonbox/api-contract';
+import type { CloudDraft, CloudOverview, DraftListItem, DraftListResponse, FocusItem } from '@pigeonbox/api-contract';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -182,19 +182,6 @@ describe('cloud home', () => {
     await click(labeled('1 draft ready'));
     expect(opened).toEqual(['t1', 't3']);
     expect(went).toEqual([{ view: 'approvals', approvalId: 'ap1' }, { view: 'drafts', filter: 'ready' }]);
-  });
-
-  it('lists recent mail with tags and filters by kind', async () => {
-    const mail = (threadId: string, state: RecentMail['state'], subject: string): RecentMail => ({ threadId, accountId: ACCOUNT, subject, who: 'Someone', lastMessageAt: at, state, summary: `About ${subject}`, draftReady: false });
-    const opened: string[] = [];
-    const data = { ...overview(zero, []), accounts: [{ id: ACCOUNT } as never], recent: [mail('r1', 'NEEDS_REPLY', 'Budget'), mail('r2', 'PROMOTION', 'Big sale'), mail('r3', 'NEWS', 'Weekly digest')] };
-    await render(<CloudHome data={data as CloudOverview} loading={false} capabilities={['cloud_mail_sync']} visitSince={null} onOpenThread={(id) => opened.push(id)} onGo={() => undefined} onNavigate={() => undefined} />);
-    expect([...host.querySelectorAll('.pb-mail .pb-tag')].map((node) => node.textContent)).toEqual(['Reply', 'Marketing', 'Newsletter']);
-    expect(host.textContent).toContain('About Budget');
-    await click([...host.querySelectorAll<HTMLButtonElement>('.pb-mail-filter button')].find((node) => node.textContent?.startsWith('Marketing')));
-    expect([...host.querySelectorAll('.pb-mail-subject')].map((node) => node.textContent)).toEqual(['Big sale', 'Weekly digest']);
-    await click(host.querySelector<HTMLButtonElement>('.pb-mail'));
-    expect(opened).toEqual(['r2']);
   });
 
   it('says you are caught up when nothing needs attention', async () => {

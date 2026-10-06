@@ -1,18 +1,17 @@
-import type { Briefing, CloudOverview, FocusItem, RecentMail } from '@pigeonbox/api-contract';
+import type { Briefing, CloudOverview, FocusItem } from '@pigeonbox/api-contract';
 import { useState } from 'react';
 import { Orb } from '../ui/Orb';
 import { openCloud } from '../ui/cloud-features';
 import { BriefingReader } from './BriefingReader';
 import { SourceChips } from './SourceChips';
-import { ago, awaySummary, countLabel, sinceLabel, mailKind, mailKindCounts, mailTag, MAIL_KINDS, preparedRows, readyItem, readyList, type DraftFilter, type MailKind, type PreparedRow } from './cloud-presenters';
+import { ago, awaySummary, countLabel, sinceLabel, preparedRows, readyItem, readyList, type DraftFilter, type PreparedRow } from './cloud-presenters';
 
 export type CloudNavigate = (section: string) => void;
 export type HomeTarget = { view: 'drafts'; filter: DraftFilter } | { view: 'approvals'; approvalId?: string } | { view: 'activity' };
 
 /**
  * Cloud Home, in the order a person needs it: the few things that need them,
- * then what came in (each conversation tagged reply / FYI / updates /
- * marketing), then a quiet line of background work, history and tools.
+ * then a quiet line of background work, history and tools.
  * Prepared replies are reviewed in the email itself, never queued here.
  */
 export function CloudHome(props: {
@@ -71,15 +70,6 @@ export function CloudHome(props: {
             </div>
           )}
         </section>
-
-        {data.recent === undefined || noAccount ? null : data.recent === null ? (
-          <section className="pb-home-section" aria-labelledby="pb-recent-title">
-            <h2 id="pb-recent-title" className="pb-home-kicker">Recent mail</h2>
-            <SectionFailure label="Recent mail" />
-          </section>
-        ) : (
-          <RecentMailSection items={data.recent} onOpenThread={onOpenThread} />
-        )}
       </div>
 
       <div className="pb-home-side">
@@ -170,79 +160,17 @@ function ReadyRow(props: { item: FocusItem; onOpenThread: (id: string, accountId
       <div className="pb-ready-copy">
         <span className="pb-ready-who" data-continuity="sender">{item.who || item.subject}</span>
         <span className="pb-ready-subject" data-continuity="subject">{item.subject}</span>
-        {view.flags.length ? (
-          <span className="pb-flags">
-            {view.flags.map((flag) => <span key={flag.text} className="pb-flag" data-urgent={flag.urgent}>{flag.text}</span>)}
+        {view.flags.length || view.reason ? (
+          <span className="pb-ready-meta">
+            {view.flags.map((flag) => <span key={flag.text} className="pb-ready-flag" data-urgent={flag.urgent}>{flag.text}</span>)}
+            {view.reason ? <span className="pb-ready-reason">{view.reason}</span> : null}
           </span>
         ) : null}
-        {view.reason ? <span className="pb-ready-reason">{view.reason}</span> : null}
       </div>
       <div className="pb-ready-actions">
-        <button type="button" className="gi-btn pb-btn-sm" onClick={primary} aria-label={`${action.label}: ${item.subject}`}>{action.label}</button>
-        {action.kind === 'approval' ? <button type="button" className="gi-text-btn" onClick={() => props.onOpenThread(item.threadId, item.accountId)} aria-label={`Open: ${item.subject}`}>Open</button> : null}
+        <button type="button" className="gi-btn gi-btn-ghost pb-btn-xs" onClick={primary} aria-label={`${action.label}: ${item.subject}`}>{action.kind === 'approval' ? 'Review' : action.label}</button>
+        {action.kind === 'approval' ? <button type="button" className="gi-text-btn pb-btn-xs" onClick={() => props.onOpenThread(item.threadId, item.accountId)} aria-label={`Open: ${item.subject}`}>Open</button> : null}
       </div>
-    </li>
-  );
-}
-
-const RECENT_PAGE = 6;
-
-/** What came in, newest first, each tagged so it can be skimmed or filtered. */
-function RecentMailSection({ items, onOpenThread }: { items: RecentMail[]; onOpenThread: (id: string, accountId?: string) => void }) {
-  const [filter, setFilter] = useState<MailKind | 'all'>('all');
-  const [expanded, setExpanded] = useState(false);
-  const counts = mailKindCounts(items);
-  const kinds = MAIL_KINDS.filter((kind) => counts[kind.id] > 0);
-  const active = filter !== 'all' && counts[filter] === 0 ? 'all' : filter;
-  const shown = active === 'all' ? items : items.filter((item) => mailKind(item.state) === active);
-  const visible = expanded ? shown : shown.slice(0, RECENT_PAGE);
-  return (
-    <section className="pb-home-section" aria-labelledby="pb-recent-title">
-      <div className="pb-section-head">
-        <h2 id="pb-recent-title" className="pb-home-kicker">Recent mail</h2>
-      </div>
-      {!items.length ? (
-        <p className="pb-quiet">Nothing new in the last two weeks.</p>
-      ) : (
-        <>
-          {kinds.length > 1 ? (
-            <div className="pb-filter pb-mail-filter" role="toolbar" aria-label="Filter recent mail">
-              <button type="button" className="pb-filter-btn" aria-pressed={active === 'all'} onClick={() => { setFilter('all'); setExpanded(false); }}>All</button>
-              {kinds.map((kind) => (
-                <button key={kind.id} type="button" className="pb-filter-btn" data-kind={kind.id} aria-pressed={active === kind.id} onClick={() => { setFilter(kind.id); setExpanded(false); }}>
-                  {kind.label}<span className="pb-count">{countLabel(counts[kind.id])}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <ul className="pb-mail-list">
-            {visible.map((item) => <RecentMailRow key={`${item.accountId}-${item.threadId}`} item={item} onOpenThread={onOpenThread} />)}
-          </ul>
-          {shown.length > RECENT_PAGE ? (
-            <button type="button" className="gi-text-btn pb-mail-more" onClick={() => setExpanded((value) => !value)}>
-              {expanded ? 'Show fewer' : `Show ${shown.length - RECENT_PAGE} more`}
-            </button>
-          ) : null}
-        </>
-      )}
-    </section>
-  );
-}
-
-function RecentMailRow({ item, onOpenThread }: { item: RecentMail; onOpenThread: (id: string, accountId?: string) => void }) {
-  const tag = mailTag(item);
-  return (
-    <li>
-      <button type="button" className="pb-mail" data-kind={tag.kind} onClick={() => onOpenThread(item.threadId, item.accountId)} aria-label={`Open: ${item.subject}, from ${item.who || 'unknown sender'}, ${tag.text}`}>
-        <span className="pb-mail-top">
-          <strong className="pb-mail-who">{item.who || 'Unknown sender'}</strong>
-          <span className="pb-tag" data-kind={tag.kind}>{tag.text}</span>
-          <time className="pb-meta" dateTime={item.lastMessageAt}>{ago(item.lastMessageAt)}</time>
-        </span>
-        <span className="pb-mail-subject">{item.subject}</span>
-        {item.summary ? <span className="pb-mail-summary">{item.summary}</span> : null}
-        {item.draftReady ? <span className="pb-mail-note">Reply drafted · review it in the email</span> : null}
-      </button>
     </li>
   );
 }
