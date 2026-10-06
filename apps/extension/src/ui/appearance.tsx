@@ -19,10 +19,30 @@ export function watchAppearance(apply: (value: Appearance) => void): () => void 
   chrome.storage.onChanged.addListener(changed);
   return () => { live = false; chrome.storage.onChanged.removeListener(changed); };
 }
+/**
+ * Swap the theme in one frame. Color transitions are suspended for the swap,
+ * so hundreds of elements don't each animate to the new palette at once.
+ */
+export function applyTheme(target: HTMLElement, value: Appearance) {
+  if (target.dataset.pbTheme === value) return;
+  const scope = target.shadowRoot ?? target.ownerDocument.head;
+  const freeze = target.ownerDocument.createElement('style');
+  freeze.textContent = '*,*::before,*::after{transition:none!important}';
+  scope.append(freeze);
+  target.dataset.pbTheme = value;
+  void target.offsetHeight;
+  requestAnimationFrame(() => requestAnimationFrame(() => freeze.remove()));
+}
 export function useAppearance() {
   const [appearance, setAppearance] = useState<Appearance>('system');
-  useEffect(() => watchAppearance((value) => { document.documentElement.dataset.pbTheme = value; setAppearance(value); }), []);
-  const change = (value: Appearance) => { document.documentElement.dataset.pbTheme = value; setAppearance(value); void chrome.storage.local.set({ [APPEARANCE_KEY]: value }); };
+  useEffect(() => watchAppearance((value) => { applyTheme(document.documentElement, value); setAppearance(value); }), []);
+  const change = (value: Appearance) => {
+    applyTheme(document.documentElement, value);
+    setAppearance(value);
+    // Inside Gmail's floating shell, let the frame around us switch now rather than after the storage round trip.
+    if (window.parent !== window) window.parent.postMessage({ type: 'PB_APPEARANCE', appearance: value }, '*');
+    void chrome.storage.local.set({ [APPEARANCE_KEY]: value });
+  };
   return { appearance, change };
 }
 export function AppearanceButton() {

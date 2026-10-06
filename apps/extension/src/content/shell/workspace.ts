@@ -1,7 +1,7 @@
 import { installFloatDrag, placeFloat } from './float-drag';
 import { DEFAULT_WORKSPACE, workspaceState, type WorkspaceState } from '../../workspace/state';
 import productTokens from '../../ui/product-tokens.css?inline';
-import { watchAppearance } from '../../ui/appearance';
+import { applyTheme, normalizeAppearance, watchAppearance } from '../../ui/appearance';
 import { motionOptions, prefersReducedMotion } from '../../ui/motion';
 const CSS = `${productTokens}
 :host{all:initial;position:fixed;right:24px;top:80px;z-index:1100;display:block;color:var(--pb-fg);font:var(--pb-size-secondary) var(--pb-sans);isolation:isolate;contain:layout style}
@@ -105,7 +105,9 @@ export function ensureWorkspace() {
   const frame = document.createElement('iframe'); frame.src = chrome.runtime.getURL('workspace.html'); frame.title = 'PigeonBox';
   shell.append(header, frame);
   window.addEventListener('message', (event) => {
-    if (event.source !== frame.contentWindow || event.origin !== new URL(frame.src).origin || event.data?.type !== 'PB_VISUAL_STATE') return;
+    if (event.source !== frame.contentWindow || event.origin !== new URL(frame.src).origin) return;
+    if (event.data?.type === 'PB_APPEARANCE') { if (host) applyTheme(host, normalizeAppearance(event.data.appearance)); return; }
+    if (event.data?.type !== 'PB_VISUAL_STATE') return;
     const visual = String(event.data.state);
     const row = visual === 'thinking' ? 1 : visual === 'drafting' || visual === 'ready' ? 2 : 0;
     const image = host?.shadowRoot?.querySelector<HTMLElement>('.pidgy');
@@ -117,7 +119,7 @@ export function ensureWorkspace() {
   const text = document.createElement('span'); text.textContent = 'PigeonBox'; pill.append(text); pill.onclick = () => showFloatingWorkspace(true, true);
   shadow.append(shell, pill, image);
   document.body.append(host);
-  watchAppearance((appearance) => { if (host) host.dataset.pbTheme = appearance; });
+  watchAppearance((appearance) => { if (host) applyTheme(host, appearance); });
   installFloatDrag(host, () => ({ right: 24, top: 80 }), { geometry: () => state, save: (geometry) => persist(geometry) });
   render();
   void chrome.runtime.sendMessage({ type: 'GET_WORKSPACE_PRESENTATION' }).then((result) => {
