@@ -9,7 +9,7 @@
  * may leave the extension at all.
  *
  * Each compose has its own state, timers, request generation, cache,
- * advisory and ambient status; nothing is shared between windows and nothing
+ * and advisory; nothing is shared between windows and nothing
  * is written to storage. An answer is shown inline (brain-notice.ts): the
  * words get a quiet mark and the advice opens on demand, never as a card.
  * Tracking, the placeholder guard and sending are untouched: this module never
@@ -18,7 +18,6 @@
 import { boundClaim, classifyComposeClaim, normalizeClaim, splitComposeClauses, stripQuotedHistory, type ComposeClaimKind } from '@pigeonbox/shared';
 import type { SdkComposeView } from '../tracking/compose-tracking';
 import { renderNotice, type NoticeHandle, type NoticeSource } from './brain-notice';
-import { mountComposeStatus, type ComposeStatusHandle } from './compose-status';
 
 /** Typing must settle this long before anything is read. */
 export const BRAIN_IDLE_MS = 900;
@@ -50,17 +49,12 @@ export type ComposeBrainDeps = {
   check: (request: BrainCheckRequest) => Promise<BrainCheckReply | undefined>;
   mailbox?: () => string | null;
   openSource?: (source: NoticeSource, mailbox: string | null) => void;
-  /**
-   * Whether this compose shows the ambient Pidgy status: true only when checks
-   * are actually on for the account (Cloud mode and the user's opt-in). Omitted: no status.
-   */
-  statusEnabled?: () => Promise<boolean>;
   now?: () => number;
 };
 
 type View = SdkComposeView & { getBodyElement?: () => HTMLElement | null };
 type Candidate = { claim: string; norm: string; hint: ComposeClaimKind };
-type ShownNotice = { norm: string; claim: string; generation: number; suggestion: string | null; title: string; handle: NoticeHandle };
+type ShownNotice = { norm: string; claim: string; generation: number; suggestion: string | null; handle: NoticeHandle };
 
 const controllers = new Map<string, { destroy: () => void }>();
 
@@ -292,7 +286,6 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   let cooldownUntil = 0;
   let pausedUntil = 0;
   let notice: ShownNotice | null = null;
-  let status: ComposeStatusHandle | null = null;
   const cache = new Map<string, { reply: BrainCheckReply; at: number; candidate: Candidate }>();
   const dismissed = new Set<string>();
 
@@ -326,25 +319,6 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   function hideNotice(animate = true) {
     notice?.handle.remove(animate);
     notice = null;
-    if (status?.state() === 'attention') status.set('idle');
-  }
-
-  /** The status asked for the advice (keyboard or mouse): present it with focus inside. */
-  function openFromStatus() {
-    notice?.handle.open(true);
-  }
-
-  function showStatus() {
-    if (status || destroyed) return;
-    const element = view.getElement?.() ?? null;
-    if (!element) return;
-    status = mountComposeStatus(element, openFromStatus);
-    if (notice) status.set('attention', notice.title);
-  }
-
-  function hideStatus() {
-    status?.remove();
-    status = null;
   }
 
   function evaluate() {
@@ -435,7 +409,6 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     const mine = ++generation;
     inflight = { key, generation: mine };
     cooldownUntil = now + BRAIN_COOLDOWN_MS;
-    if (status && status.state() !== 'attention') status.set('checking');
     void deps
       .check(check)
       .catch(() => undefined)
@@ -444,14 +417,11 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
         if (destroyed) return;
         if (!reply) {
           cooldownUntil = Math.max(cooldownUntil, clock() + BRAIN_FAILURE_BACKOFF_MS);
-          if (status?.state() === 'checking') status.set('idle');
           return;
         }
         if (reply.status === 'disabled') {
           pausedUntil = clock() + BRAIN_DISABLED_BACKOFF_MS;
           hideNotice();
-          // Checks are off for this account: Pidgy is not watching, so it is not shown.
-          hideStatus();
           return;
         }
         cache.set(key, { reply, at: clock(), candidate });
@@ -459,8 +429,6 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
         // A newer check was sent while this one was out: its answer wins.
         if (mine !== generation) return;
         apply(reply, candidate, mine);
-        // A quiet, brief confirmation that the words were looked at and nothing is wrong.
-        if (reply.status === 'none' && status?.state() === 'checking') status.set('clear');
       });
   }
 
@@ -502,11 +470,9 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
           body?.focus({ preventScroll: true });
         },
       },
-      () => status?.host ?? null,
     );
-    const shown: ShownNotice = { norm: candidate.norm, claim: candidate.claim, generation: answered, suggestion, title: reply.notice.message.replace(/\s+/g, ' ').trim(), handle };
+    const shown: ShownNotice = { norm: candidate.norm, claim: candidate.claim, generation: answered, suggestion, handle };
     notice = shown;
-    status?.set('attention', shown.title);
   }
 
   function applySuggestion(shown: ShownNotice) {
@@ -530,7 +496,6 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     body?.removeEventListener('input', onInput);
     observer?.disconnect();
     hideNotice(false);
-    hideStatus();
     cache.clear();
     dismissed.clear();
     seen.clear();
@@ -542,8 +507,6 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
 
   bind();
   controllers.set(id, { destroy });
-  // Shown only once the worker confirms checks are on for this account; never in Local mode.
-  if (deps.statusEnabled && deps.available()) void deps.statusEnabled().then((on) => { if (on && deps.available()) showStatus(); }).catch(() => undefined);
   view.on?.('recipientsChanged', () => schedule(true));
   view.on?.('subjectChanged', () => schedule(true));
   view.on?.('destroy', destroy);

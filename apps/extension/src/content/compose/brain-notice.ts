@@ -9,7 +9,7 @@
  * root on <body> positioned from the Range's rects, so Gmail's contenteditable
  * DOM, undo history and draft saving are untouched. Where highlights are not
  * supported, or the words cannot be located exactly, there is no mark and the
- * popover anchors to the compose status instead.
+ * popover anchors to the compose's corner instead.
  *
  * Keyboard: while the popover is presented and the caret is in the message,
  * Tab applies Fix and Escape dismisses. Tab is never taken otherwise. From the
@@ -207,7 +207,7 @@ function scrollParent(element: HTMLElement): HTMLElement | null {
 
 /**
  * Show the advisory for the words `range` covers in `body` (null: no exact
- * words, anchor to `fallbackAnchor`, normally the compose status).
+ * words, anchor to `fallbackAnchor`, else the compose's corner).
  */
 export function renderNotice(
   body: HTMLElement,

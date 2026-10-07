@@ -344,7 +344,6 @@ function brainDeps(): ComposeBrainDeps {
     check: (request) => send<BrainCheckReply>({ type: 'CLOUD_COMPOSE_CHECK', check: request }, 9_000),
     mailbox: () => mailboxOwner()?.email ?? null,
     // Carries no draft text: only whether checks are on, so Pidgy shows only when it is watching.
-    statusEnabled: async () => Boolean((await send<{ enabled?: boolean }>({ type: 'CLOUD_COMPOSE_STATUS' }, 6_000))?.enabled),
   };
 }
 

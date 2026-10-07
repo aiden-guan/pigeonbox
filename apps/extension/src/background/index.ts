@@ -190,8 +190,17 @@ async function saveSettings(partial: Partial<ExtensionSettings>): Promise<Extens
 async function syncVoiceToCloud(): Promise<void> {
   const client = await cloudSyncClient().catch(() => null);
   if (!client) return;
-  await client.call('preferencesUpdate', { preferences: { voice: settings.voiceProfile } }).catch(() => undefined);
+  // Sign-in often comes before Gmail sync is live, so this also runs on each
+  // Cloud poll until the current profile has reached Cloud once.
+  const voice = JSON.stringify(settings.voiceProfile);
+  const stored = await chrome.storage.local.get(VOICE_SYNCED_KEY).catch(() => ({} as Record<string, unknown>));
+  if (stored[VOICE_SYNCED_KEY] === voice) return;
+  await client.call('preferencesUpdate', { preferences: { voice: settings.voiceProfile } })
+    .then(() => chrome.storage.local.set({ [VOICE_SYNCED_KEY]: voice }))
+    .catch(() => undefined);
 }
+
+const VOICE_SYNCED_KEY = 'cloudVoiceSynced';
 
 function getAI() {
   return resolveAIProvider(settings, {
@@ -2145,6 +2154,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 /** After any Cloud sign-in: account state, voice, content settings, the agent and tracking history. */
 async function afterCloudSignIn(): Promise<void> {
   await refreshCloudState(settings);
+  await chrome.storage.local.remove(VOICE_SYNCED_KEY).catch(() => undefined);
   void syncVoiceToCloud();
   await publishContentSettings();
   rebuildAgent();
@@ -2172,6 +2182,7 @@ async function handleCloudMessage(message: { type?: unknown; [key: string]: unkn
 async function pollCloudNotifications(): Promise<void> {
   const client = await cloudSyncClient().catch(() => null);
   if (!client) return;
+  void syncVoiceToCloud();
   await pollNotifications(client, chrome.storage.local, (id, _kind, title, body) => {
     void Promise.resolve(chrome.notifications.create(id, { type: 'basic', iconUrl: chrome.runtime.getURL('icons/icon128.png'), title, message: body })).catch(() => undefined);
   }).catch(() => undefined);

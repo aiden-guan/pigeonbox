@@ -10,7 +10,6 @@ test('real-time Pidgy check: prose stays local, a busy-calendar claim gets one q
   await expect(page.locator('body')).toHaveAttribute('data-brain-checks', '1');
   const body = page.locator('#brain-compose [aria-label="Message Body"]');
   const notice = page.locator('[data-gi-ui="brain-notice"]');
-  const status = page.locator('#brain-compose [data-gi-ui="pidgy-status"] .pb-status');
 
   // Ordinary prose: no Brain request of any kind.
   const preferenceReads = () => app.api.calls.filter((call) => call.route === '/v1/preferences').length;
@@ -21,12 +20,8 @@ test('real-time Pidgy check: prose stays local, a busy-calendar claim gets one q
   expect(checks(app.api.calls)).toHaveLength(0);
   expect(preferenceReads()).toBe(readsBefore);
 
-  // Pidgy is present and quiet; prose never changed it.
-  await expect(status).toHaveAttribute('data-state', 'idle');
-
   // An availability claim while the (mocked, calendar-backed) Cloud says busy: the time gets a quiet mark, no card.
   await page.keyboard.type(" I'm free tomorrow at 3.");
-  await expect(status).toHaveAttribute('data-state', 'attention');
   const dot = notice.locator('.pb-dot');
   await expect(dot).toBeVisible();
   const popover = notice.getByRole('dialog', { name: 'Pidgy' });
@@ -83,12 +78,9 @@ test('real-time Pidgy check: with the preference off, the clause never leaves th
   await (await app.page('settings', true)).close();
   const page = await app.context.newPage();
   await page.goto(`chrome-extension://${app.id}/brain-fixture.html`);
-  // The composer asked (with no draft text) whether checks are on; they are not, so Pidgy never appears.
-  await expect.poll(() => app.api.calls.filter((call) => call.route === '/v1/preferences').length).toBeGreaterThan(0);
   await page.locator('#brain-compose [aria-label="Message Body"]').click();
   await page.keyboard.type("I'm free tomorrow at 3.");
   await page.waitForTimeout(2_000);
-  await expect(page.locator('#brain-compose [data-gi-ui="pidgy-status"]')).toHaveCount(0);
   expect(checks(app.api.calls)).toHaveLength(0);
   await expect(page.locator('#brain-compose [data-gi-ui="brain-notice"]')).toHaveCount(0);
 });

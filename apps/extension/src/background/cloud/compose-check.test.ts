@@ -4,7 +4,7 @@ import type { CloudState } from '@pigeonbox/core';
 import type { PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
 import { CloudApiError } from '@pigeonbox/cloud-client';
 import { handleCloudRequest } from './handlers';
-import { MAX_CHECKS_PER_MINUTE, PREFERENCE_TTL_MS, forgetComposeCheckPreference, handleComposeCheck, handleComposeCheckStatus, parseComposeCheck, resetComposeCheckForTests } from './compose-check';
+import { MAX_CHECKS_PER_MINUTE, PREFERENCE_TTL_MS, forgetComposeCheckPreference, handleComposeCheck, parseComposeCheck, resetComposeCheckForTests } from './compose-check';
 
 const id = 'a'.repeat(32);
 const gmail = { id, origin: 'https://mail.google.com', tab: { id: 10 } };
@@ -112,24 +112,6 @@ describe('Real-time Pidgy checks in the worker', () => {
     const api = cloud(true, { status: 'none' });
     for (let i = 0; i < MAX_CHECKS_PER_MINUTE + 5; i += 1) await handleComposeCheck(check, { state: ready, runMode: 'cloud', client: api.client, now: () => 5_000 });
     expect(api.composeCheck).toHaveBeenCalledTimes(MAX_CHECKS_PER_MINUTE);
-  });
-
-  it('tells the composer whether checks are on without any draft text, and never contacts Cloud in Local mode', async () => {
-    const local = cloud(true);
-    expect(await handleComposeCheckStatus({ state: ready, runMode: 'local', client: local.client })).toEqual({ ok: true, enabled: false });
-    expect(local.client).not.toHaveBeenCalled();
-    const off = cloud(false);
-    expect(await handleComposeCheckStatus({ state: ready, runMode: 'cloud', client: off.client })).toEqual({ ok: true, enabled: false });
-    resetComposeCheckForTests();
-    const on = cloud(true);
-    const deps = { settings: () => ({ ...DEFAULT_SETTINGS, runMode: 'cloud' as const }), readState: async () => ready, client: on.client, webUrl: () => null };
-    expect(await handleCloudRequest({ type: 'CLOUD_COMPOSE_STATUS', check }, gmail, deps)).toEqual({ ok: true, enabled: true });
-    expect(on.composeCheck).not.toHaveBeenCalled();
-    expect(await handleCloudRequest({ type: 'CLOUD_COMPOSE_STATUS' }, { ...gmail, origin: 'https://evil.test' }, deps)).toMatchObject({ ok: false, code: 'forbidden' });
-    const failing = cloud(true);
-    failing.call.mockRejectedValueOnce(new Error('offline'));
-    resetComposeCheckForTests();
-    expect(await handleComposeCheckStatus({ state: ready, runMode: 'cloud', client: failing.client })).toEqual({ ok: true, enabled: false });
   });
 
   it('routes through the Cloud handler: Gmail may ask, other senders are refused before any client exists', async () => {

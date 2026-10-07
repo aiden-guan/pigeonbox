@@ -5,7 +5,7 @@ import { cloudErrorMessage } from '@pigeonbox/cloud-client';
 import { isExtensionPageSender, senderMaySend } from '../messaging';
 import { cloudThreadStateAvailable, threadIntel } from './thread-state';
 import { pageCall } from './page-calls';
-import { forgetComposeCheckPreference, handleComposeCheck, handleComposeCheckStatus } from './compose-check';
+import { forgetComposeCheckPreference, handleComposeCheck } from './compose-check';
 import { cloudSection } from '../../ui/cloud-features';
 import { CLOUD_WAITLIST_URL, cloudApiUrl } from '../../config';
 
@@ -29,7 +29,6 @@ export async function handleCloudRequest(
       'CLOUD_THREAD_INTEL',
       'CLOUD_THREAD_CONTEXT',
       'CLOUD_COMPOSE_CHECK',
-      'CLOUD_COMPOSE_STATUS',
       'CLOUD_INTEL_STATE',
       'CLOUD_CALL',
       'CLOUD_OPEN',
@@ -116,9 +115,6 @@ export async function handleCloudRequest(
   if (message.type === 'CLOUD_COMPOSE_CHECK') {
     // Mode, preference and shape are decided here, in the trusted worker, before anything is sent.
     return handleComposeCheck(message.check, { state: await deps.readState(), runMode: deps.settings().runMode, client: deps.client });
-  }
-  if (message.type === 'CLOUD_COMPOSE_STATUS') {
-    return handleComposeCheckStatus({ state: await deps.readState(), runMode: deps.settings().runMode, client: deps.client });
   }
   if (message.type === 'CLOUD_INTEL_STATE') {
     const state = await deps.readState();

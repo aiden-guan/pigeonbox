@@ -91,22 +91,6 @@ async function realtimeChecksEnabled(client: PigeonBoxCloudClient, key: string, 
   return preference.enabled;
 }
 
-/**
- * Whether real-time checks are on for this browser's Cloud account, for the
- * ambient Pidgy in Gmail's composer. Carries and reads no draft text: the same
- * mode gate and cached preference the check itself uses.
- */
-export async function handleComposeCheckStatus(deps: Deps): Promise<{ ok: true; enabled: boolean }> {
-  if (!cloudThreadStateAvailable(deps.state, deps.runMode)) return { ok: true, enabled: false };
-  try {
-    const client = await deps.client();
-    if (!client) return { ok: true, enabled: false };
-    return { ok: true, enabled: await realtimeChecksEnabled(client, `${deps.state.email ?? ''}`, deps.now?.() ?? Date.now()) };
-  } catch {
-    return { ok: true, enabled: false };
-  }
-}
-
 export async function handleComposeCheck(input: unknown, deps: Deps): Promise<ComposeCheckReply> {
   const now = deps.now?.() ?? Date.now();
   // Local mode, signed out, or no Cloud sync: the clause never leaves the extension.

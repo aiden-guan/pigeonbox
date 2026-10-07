@@ -427,60 +427,6 @@ describe('real-time Pidgy checks in compose', () => {
     }
   });
 
-  it('shows the ambient Pidgy only when checks are on, and reflects checking, clear and attention', async () => {
-    const c = compose();
-    const send = document.createElement('div');
-    send.setAttribute('role', 'button');
-    send.setAttribute('data-tooltip', 'Send');
-    const row = document.createElement('div');
-    row.append(send);
-    c.harness.element.append(row);
-    const resolvers: Array<(reply: BrainCheckReply) => void> = [];
-    const { deps } = brain(() => new Promise((resolve) => resolvers.push(resolve)));
-    attachComposeBrainChecks(c.harness.view(), { ...deps, statusEnabled: async () => true });
-    await vi.advanceTimersByTimeAsync(0);
-    const status = () => c.harness.element.querySelector('[data-gi-ui="pidgy-status"]')?.shadowRoot?.querySelector<HTMLElement>('.pb-status') ?? null;
-    expect(status()?.dataset.state).toBe('idle');
-    expect(status()?.tagName).toBe('SPAN');
-    c.type("I'm free tomorrow at 5.");
-    await settle();
-    expect(status()?.dataset.state).toBe('checking');
-    resolvers[0]!(none);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(status()?.dataset.state).toBe('clear');
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(status()?.dataset.state).toBe('idle');
-    c.setText("I'm free tomorrow at 3.");
-    await settle();
-    await vi.advanceTimersByTimeAsync(BRAIN_COOLDOWN_MS);
-    resolvers[1]!(busy);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(status()?.dataset.state).toBe('attention');
-    expect(status()?.tagName).toBe('BUTTON');
-    expect(status()?.getAttribute('aria-label')).toContain('Math 52');
-    // A Local-mode compose, or one where checks are off, never shows Pidgy.
-    const off = compose(['sam@example.test']);
-    attachComposeBrainChecks(off.harness.view(), { ...brain(none, false).deps, statusEnabled: async () => true });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(off.harness.element.querySelector('[data-gi-ui="pidgy-status"]')).toBeNull();
-    c.emit('destroy');
-    expect(c.harness.element.querySelector('[data-gi-ui="pidgy-status"]')).toBeNull();
-  });
-
-  it('hides Pidgy when the worker reports checks are turned off', async () => {
-    const c = compose();
-    const send = document.createElement('div');
-    send.setAttribute('data-tooltip', 'Send');
-    c.harness.element.append(document.createElement('div').appendChild(send).parentElement!);
-    const { deps } = brain({ ok: true, status: 'disabled' });
-    attachComposeBrainChecks(c.harness.view(), { ...deps, statusEnabled: async () => true });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(c.harness.element.querySelector('[data-gi-ui="pidgy-status"]')).not.toBeNull();
-    c.type("I'm free tomorrow at 3.");
-    await settle();
-    expect(c.harness.element.querySelector('[data-gi-ui="pidgy-status"]')).toBeNull();
-  });
-
   it('drops an answer whose words changed while Cloud was answering', async () => {
     const c = compose();
     let resolve: (reply: BrainCheckReply) => void = () => undefined;
