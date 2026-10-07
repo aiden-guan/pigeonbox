@@ -1592,7 +1592,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ emails: await readTrackedEmails() });
         return;
       }
-      if (message?.type === 'GET_TRACKING_TIMELINE') {
       if (message?.type === 'RESOLVE_SENDER_TRACKING_LINK') {
         const clickId = String(message.clickId || '');
         const origin = String(message.origin || '');
@@ -1606,6 +1605,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         } catch { sendResponse({}); }
         return;
       }
+      if (message?.type === 'GET_TRACKING_TIMELINE') {
         // Every counted open and click for one email, for the side panel's Waiting view.
         const trackingId = String(message.trackingId || '');
         const target = /^[\w-]{1,80}$/.test(trackingId) && settings.trackingEnabled ? await trackerTargetFor(trackingId) : null;
@@ -1887,8 +1887,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               selfViewEventId,
               reconcileGmailIds: msg.reconcileGmailIds === true,
               quotedRender: msg.quotedRender === true,
-            });
               pixelRender: msg.pixelRender === true,
+            });
             lastErr = null;
             break;
           } catch (err) {

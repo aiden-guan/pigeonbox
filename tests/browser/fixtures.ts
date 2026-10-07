@@ -235,11 +235,11 @@ export const test = base.extend<{ app: App }>({
           response.setHeader('Content-Type', 'image/gif');
           response.end(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64')); return;
         }
-        if (route.endsWith('/self-view')) {
-          if (tracker.holdClaims) await new Promise<void>((resolve) => heldClaims.push(resolve));
         if (tracker.senderLink && route === `/api/links/${tracker.senderLink.clickId}`) {
           response.end(JSON.stringify({ tracking_id: tracker.email.tracking_id, destination: tracker.senderLink.destination })); return;
         }
+        if (route.endsWith('/self-view')) {
+          if (tracker.holdClaims) await new Promise<void>((resolve) => heldClaims.push(resolve));
           const reclassifiedEventIds = tracker.events.filter((event) => event.classification === 'PROXY_LIKELY').map((event) => event.id);
           tracker.events.forEach((event) => { if (reclassifiedEventIds.includes(event.id)) { event.classification = 'SELF_LIKELY'; event.suspected_self_open = true; } });
           const opens = tracker.events.filter((event) => event.type === 'OPEN' && event.classification === 'RECIPIENT_LIKELY');
