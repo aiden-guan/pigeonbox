@@ -27,6 +27,7 @@ test('Home puts what needs you first and collapses zero activity', async ({ app 
   const page = await app.page('sidepanel', true);
   await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible();
   await expect(page.getByText('Nothing new since your last visit.')).toHaveCount(0);
+  await expect(page.locator('.pb-home-kicker').first()).toHaveText('Needs you');
   const order = await page.locator('.pb-home-kicker').allTextContents();
   expect(order[0]).toBe('Needs you');
   expect(order).not.toContain('While you were away');
