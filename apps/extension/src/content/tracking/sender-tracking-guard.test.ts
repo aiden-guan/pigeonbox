@@ -211,6 +211,68 @@ describe('sender drafting a reply inside their own tracked thread', () => {
   });
 });
 
+describe('Gmail draft saves upload the trimmed quote with the sender pixel', () => {
+  const PROXY = 'https://ci3.googleusercontent.com/meips/ADKq_Nb=s0-d-e1-ft';
+  const escape = (html: string) => html.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Gmail keeps the collapsed "..." history in a hidden form field, not in the editor.
+  const trimmed = escape(
+    `<div class="gmail_quote">On Mon, Dana wrote:<blockquote>thanks!<div class="gmail_quote">On Sun, Owner wrote:<blockquote>scope attached` +
+      `<img src="${PROXY}?w=1&amp;h=1#${BASE}/open/trk_own"><img src="${BASE}/open/trk_older"><img src="${BASE}/open/trk_other">` +
+      `<img src="https://evil.example/open/trk_own"><img src="https://example.com/logo.png"></blockquote></div></blockquote></div>`,
+  );
+  const form = (editorQuote = '') =>
+    `<div role="main"><div id="compose" class="M9"><form><input type="hidden" name="draft" value="msg-a:r123"><input type="hidden" name="uet" value="${trimmed}"></form>` +
+    `<div contenteditable="true" aria-label="Message Body"><div>Sounds good, typing my reply</div>${editorQuote}</div></div></div>`;
+  function install(bases: string | null = BASE) {
+    const onPixelRender = vi.fn();
+    guard = installSenderTrackingGuard({ getTrackerBases: () => bases, getOwnedTrackingIds: () => new Set(['trk_own', 'trk_older']), resolveLink: vi.fn(async () => null), onPixelRender }, document);
+    return onPixelRender;
+  }
+  const compose = () => document.querySelector('#compose')!;
+
+  it('reports every owned pixel in the hidden quote on each save, without touching the draft', () => {
+    document.body.innerHTML = form();
+    const onPixelRender = install();
+    // Nothing on the page renders the trimmed history.
+    expect(onPixelRender).not.toHaveBeenCalled();
+    const before = compose().outerHTML;
+    guard!.draftSaved(compose());
+    expect(onPixelRender.mock.calls).toEqual([['trk_own', true], ['trk_older', true]]);
+    // Typing between autosaves changes nothing the guard sees; every save still uploads the quote.
+    guard!.draftSaved(compose());
+    guard!.draftSaved(compose());
+    expect(onPixelRender).toHaveBeenCalledTimes(6);
+    expect(compose().outerHTML).toBe(before);
+  });
+
+  it('also covers an expanded quote inside the editor', () => {
+    document.body.innerHTML = form(`<div class="gmail_quote"><img id="q" src="${PROXY}#${BASE}/open/trk_own"></div><img src="${BASE}/open/trk_older">`);
+    const onPixelRender = install();
+    onPixelRender.mockClear();
+    document.querySelector('input[name="uet"]')!.setAttribute('value', '');
+    guard!.draftSaved(compose());
+    expect(onPixelRender.mock.calls).toEqual([['trk_own', true]]);
+    expect(document.querySelector('#q')!.getAttribute('src')).toBe(`${PROXY}#${BASE}/open/trk_own`);
+  });
+
+  it('stays quiet without tracking, for a compose with no owned pixel, and after teardown', () => {
+    document.body.innerHTML = form();
+    const disabled = install(null);
+    guard!.draftSaved(compose());
+    expect(disabled).not.toHaveBeenCalled();
+    guard!.destroy();
+
+    const onPixelRender = install();
+    document.querySelector('input[name="uet"]')!.setAttribute('value', escape(`<img src="${BASE}/open/trk_other"><img src="https://example.com/logo.png">`));
+    guard!.draftSaved(compose());
+    guard!.draftSaved(null);
+    expect(onPixelRender).not.toHaveBeenCalled();
+    guard!.destroy();
+    guard!.draftSaved(compose());
+    expect(onPixelRender).not.toHaveBeenCalled();
+  });
+});
+
 it('matches configured old tracker origins and Gmail link wrappers only', () => {
   expect(senderClickUrl('https://www.google.com/url?q=' + encodeURIComponent(BASE + '/c/clk_own'), ['https://new.example', BASE])).toEqual({ origin: BASE, clickId: 'clk_own' });
   expect(senderClickUrl('https://evil.example/c/clk_own', BASE)).toBeNull();

@@ -4,6 +4,7 @@ import { extractTrackingIdFromCandidateUrl, type TrackerBase } from '@pigeonbox/
 const EMPTY_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const QUOTE = 'blockquote, .gmail_quote, .gmail_quote_container, .gmail_extra';
 const PIXEL_ATTRS = ['src', 'data-src', 'srcset'] as const;
+const URL_IN_TEXT = /https?:\/\/[^\s"'<>]+/gi;
 
 function pixelIdIn(attr: typeof PIXEL_ATTRS[number], raw: string, bases: TrackerBase): string | null {
   if (attr !== 'srcset') return extractTrackingIdFromCandidateUrl(raw, bases);
@@ -45,6 +46,11 @@ function safeDestination(raw: string | null): string | null {
  * A live draft is never modified, but Gmail still loads an owned pixel that
  * sits in the draft's quoted history. Each such image node (or a new pixel URL
  * on it) is reported once as a quoted render so the tracker can attribute it.
+ *
+ * Every Gmail draft save also uploads the quoted history, including the trimmed
+ * part Gmail keeps outside the editor in hidden form fields, and Google's image
+ * proxy can fetch an owned pixel from it with nothing rendered on the page.
+ * `draftSaved` reports those pixels for one compose form, read-only.
  */
 export function installSenderTrackingGuard(opts: {
   getTrackerBases: () => TrackerBase | null | undefined;
@@ -75,6 +81,29 @@ export function installSenderTrackingGuard(opts: {
         if (id) opts.onPixelRender(id, true);
       }
     }
+  };
+
+  const draftSaved = (root: ParentNode | null | undefined) => {
+    if (stopped || !root) return;
+    const bases = opts.getTrackerBases();
+    if (!bases || (Array.isArray(bases) && !bases.length)) return;
+    const owned = opts.getOwnedTrackingIds();
+    const ids = new Set<string>();
+    for (const image of root.querySelectorAll<HTMLImageElement>('[contenteditable="true"] img')) {
+      if (!image.closest(QUOTE)) continue;
+      for (const attr of PIXEL_ATTRS) {
+        const raw = image.getAttribute(attr);
+        const id = raw ? pixelIdIn(attr, raw, bases) : null;
+        if (id && owned.has(id)) ids.add(id);
+      }
+    }
+    for (const field of root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[type="hidden"], textarea')) {
+      for (const url of field.value.replace(/&amp;/gi, '&').match(URL_IN_TEXT) ?? []) {
+        const id = extractTrackingIdFromCandidateUrl(url, bases);
+        if (id && owned.has(id)) ids.add(id);
+      }
+    }
+    for (const id of ids) opts.onPixelRender(id, true);
   };
 
   const refresh = () => {
@@ -162,6 +191,7 @@ export function installSenderTrackingGuard(opts: {
   refresh();
   return {
     refresh,
+    draftSaved,
     destroy: () => { stopped = true; observer.disconnect(); doc.removeEventListener('click', onClick, true); doc.removeEventListener('auxclick', onClick, true); requests.clear(); },
   };
 }

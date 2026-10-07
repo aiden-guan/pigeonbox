@@ -1940,6 +1940,20 @@ describe('sender drafting a reply inside their own tracked thread', () => {
     expect(await readOpenCount(tracking_id)).toBe(2);
   });
 
+  it('never counts Google fetching the trimmed quote on each draft save, before or after Gmail confirms it', async () => {
+    const start = Date.now();
+    const { tracking_id } = await createSentTracked(new Date(start - 3_600_000).toISOString());
+    // Nothing renders: each save uploads the hidden quote and the extension claims it on draftSaved.
+    const saves: DraftStep[] = [0, 9_000, 21_000, 31_000, 44_000, 57_000, 88_000, 101_000, 114_000].flatMap((at, i): DraftStep[] =>
+      i % 2 ? [[at, 'proxy'], [at + 2_500, 'quoted']] : [[at, 'quoted'], [at + 1_200, 'proxy']],
+    );
+    await replay(tracking_id, start, saves);
+    expect(await readOpenCount(tracking_id)).toBe(0);
+    expect((await readOpenEvents(tracking_id)).every((event) => event.classification === 'SELF_LIKELY')).toBe(true);
+    await replay(tracking_id, start, [[150_000, 'recipient']]);
+    expect(await readOpenCount(tracking_id)).toBe(1);
+  });
+
   it('still counts a real recipient who opens while the sender is drafting', async () => {
     const start = Date.now();
     const { tracking_id } = await createSentTracked(new Date(start - 3_600_000).toISOString());

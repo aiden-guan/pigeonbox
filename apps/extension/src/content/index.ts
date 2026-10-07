@@ -496,6 +496,8 @@ export function mountSdkUi(
     },
     onComposeView: (composeView) => {
       attachSdkComposeTracking(composeView as any, trackingDeps());
+      const draftView = composeView as { on?: (event: string, cb: () => void) => void; getElement?: () => HTMLElement | null };
+      draftView.on?.('draftSaved', () => senderTrackingGuard?.draftSaved(draftView.getElement?.()));
       attachPlaceholderGuard(composeView as any);
       void cloudReady().then(() => { if (cloudCapabilities.includes('cloud_documents')) attachDocumentAction(composeView as any, () => cloudAvailable && cloudCapabilities.includes('cloud_documents')); });
       // Real-time Pidgy checks and prepared replies: Cloud mode only. Local mode never hands draft text to the worker.
