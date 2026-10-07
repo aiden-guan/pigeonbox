@@ -13,7 +13,7 @@ it('reads only presentation metadata in Gmail while extension storage remains tr
   expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'GET_WORKSPACE_PRESENTATION' });
   const changed = add.mock.calls[0]![0] as (message: unknown) => void;
   changed({ type: 'WORKSPACE_APPEARANCE_CHANGED', appearance: 'light' }); expect(apply).toHaveBeenLastCalledWith('light');
-  changed({ type: 'WORKSPACE_APPEARANCE_CHANGED', appearance: 'invalid' }); expect(apply).toHaveBeenLastCalledWith('system');
+  changed({ type: 'WORKSPACE_APPEARANCE_CHANGED', appearance: 'invalid' }); expect(apply).toHaveBeenLastCalledWith('light');
   stop(); expect(remove).toHaveBeenCalledWith(changed);
   apply.mockClear(); changed({ type: 'WORKSPACE_APPEARANCE_CHANGED', appearance: 'dark' }); expect(apply).not.toHaveBeenCalled();
 });

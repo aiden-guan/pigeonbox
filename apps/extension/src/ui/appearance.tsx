@@ -2,14 +2,19 @@ import { useEffect, useState } from 'react';
 import { IconButton } from './Primitives';
 export type Appearance = 'system' | 'light' | 'dark';
 export const APPEARANCE_KEY = 'pigeonboxAppearance';
-export const normalizeAppearance = (value: unknown): Appearance => value === 'light' || value === 'dark' ? value : 'system';
-export function watchAppearance(apply: (value: Appearance) => void): () => void {
-  if (typeof chrome === 'undefined' || !chrome.storage?.local) { apply('system'); return () => undefined; }
+/** Light unless the person chose dark or to match the system. */
+export const normalizeAppearance = (value: unknown): Appearance => value === 'dark' || value === 'system' ? value : 'light';
+let known: Appearance = 'light';
+/** The last appearance this script saw, for short-lived surfaces created later (toasts, notices). */
+export const knownAppearance = () => known;
+export function watchAppearance(onChange: (value: Appearance) => void): () => void {
+  const apply = (value: Appearance) => { known = value; onChange(value); };
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) { apply('light'); return () => undefined; }
   let live = true;
   if (typeof location !== 'undefined' && location.protocol !== 'chrome-extension:') {
     // Gmail's isolated script has no access to trusted extension storage. Only
     // presentation metadata crosses this already-allowlisted worker bridge.
-    void chrome.runtime.sendMessage({ type: 'GET_WORKSPACE_PRESENTATION' }).then((result) => { if (live) apply(normalizeAppearance(result?.appearance)); }).catch(() => { if (live) apply('system'); });
+    void chrome.runtime.sendMessage({ type: 'GET_WORKSPACE_PRESENTATION' }).then((result) => { if (live) apply(normalizeAppearance(result?.appearance)); }).catch(() => { if (live) apply('light'); });
     const changed = (message: { type?: string; appearance?: unknown }) => { if (live && message.type === 'WORKSPACE_APPEARANCE_CHANGED') apply(normalizeAppearance(message.appearance)); };
     chrome.runtime.onMessage.addListener(changed);
     return () => { live = false; chrome.runtime.onMessage.removeListener(changed); };
@@ -34,7 +39,7 @@ export function applyTheme(target: HTMLElement, value: Appearance) {
   requestAnimationFrame(() => requestAnimationFrame(() => freeze.remove()));
 }
 export function useAppearance() {
-  const [appearance, setAppearance] = useState<Appearance>('system');
+  const [appearance, setAppearance] = useState<Appearance>('light');
   useEffect(() => watchAppearance((value) => { applyTheme(document.documentElement, value); setAppearance(value); }), []);
   const change = (value: Appearance) => {
     applyTheme(document.documentElement, value);
@@ -47,7 +52,7 @@ export function useAppearance() {
 }
 export function AppearanceButton() {
   const { appearance, change } = useAppearance();
-  const next = appearance === 'system' ? 'light' : appearance === 'light' ? 'dark' : 'system';
+  const next = appearance === 'light' ? 'dark' : appearance === 'dark' ? 'system' : 'light';
   return <IconButton label={`Appearance: ${appearance}. Switch to ${next}`} onClick={() => change(next)}>
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="7" /><path d="M12 5v14a7 7 0 0 0 0-14Z" fill="currentColor" stroke="none" /></svg>
   </IconButton>;

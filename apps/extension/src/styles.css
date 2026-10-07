@@ -564,15 +564,12 @@ a:focus-visible {
   height: 30px;
   flex: 0 0 auto;
   border-radius: var(--pb-radius);
-  font-size: var(--pb-size-body);
-  font-weight: 700;
-  color: var(--pb-on-accent);
-  box-shadow: none;
+  /* A white tile in both themes: the marks are drawn for light backgrounds. */
+  background: #ffffff;
+  border: 1px solid var(--pb-border);
+  box-shadow: var(--pb-shadow-low);
 }
-.gi-model-mark.is-liquid { background: var(--gi-surface); }
-.gi-model-mark.is-google { background: var(--gi-surface); }
-.gi-model-mark.is-qwen { background: var(--gi-surface); color: var(--pb-fg); }
-.gi-model-mark.is-huggingface { background: var(--gi-surface); }
+.gi-model-mark img { display: block; width: 20px; height: 20px; }
 
 .gi-badge.is-tag {
   background: var(--pb-success-soft);

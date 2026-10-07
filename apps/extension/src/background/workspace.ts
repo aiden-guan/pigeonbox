@@ -40,7 +40,7 @@ export function installWorkspaceToolbar() {
   chrome.storage.onChanged?.addListener((changes, area) => {
     if (area === 'local' && changes.pigeonboxAppearance) {
       const value = changes.pigeonboxAppearance.newValue;
-      const appearance = value === 'light' || value === 'dark' ? value : 'system';
+      const appearance = value === 'dark' || value === 'system' ? value : 'light';
       void broadcastToGmailTabs({ type: 'WORKSPACE_APPEARANCE_CHANGED', appearance });
     }
   });

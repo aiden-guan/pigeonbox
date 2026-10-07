@@ -1,3 +1,4 @@
+import { knownAppearance } from '../../ui/appearance';
 import { observeVisual } from '../../ui/motion';
 import { createOrb } from '../../ui/orb-markup';
 import { ensureSurface, SURFACE_CSS } from './surface';
@@ -15,6 +16,7 @@ export function showToast(message: string, retry?: () => void, busy = false, act
   ensureSurface();
   const host = document.createElement('div');
   host.setAttribute('data-gi-ui', 'toast');
+  host.dataset.pbTheme = knownAppearance();
   host.style.cssText = 'position:fixed;left:0;right:0;bottom:24px;z-index:2147483646;pointer-events:none;';
   const shadow = host.attachShadow({ mode: 'open' });
   const style = document.createElement('style');

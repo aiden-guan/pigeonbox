@@ -10,12 +10,12 @@ test('unavailable Cloud keeps onboarding on the waitlist and account commands on
   const initial = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'GET_PRODUCT_STATE' }));
   test.skip(initial.cloudAvailable, 'Requires an unconfigured Local build; configured beta behavior is covered by the Cloud suite.');
   await page.goto(`chrome-extension://${app.id}/onboarding.html`);
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.getByRole('button', { name: /That’s me/ }).click();
   const onboarding = app.context.waitForEvent('page');
-  await page.getByRole('button', { name: 'With Cloud capabilities', exact: false }).click();
+  await page.getByRole('button', { name: /PigeonBox Cloud/ }).click();
   const waitlist = await onboarding;
   await expect(waitlist).toHaveURL('https://usepigeonbox.com/waitlist?source=extension');
-  await expect(page.getByRole('heading', { name: 'How should PigeonBox work?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Let’s quiet your inbox.' })).toBeVisible();
   await waitlist.close();
   await page.goto(`chrome-extension://${app.id}/settings.html?here`);
   const settings = app.context.waitForEvent('page');

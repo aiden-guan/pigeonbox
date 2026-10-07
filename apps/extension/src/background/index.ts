@@ -1141,7 +1141,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await chrome.storage.session.remove('workspaceReopen');
       }
       const appearanceValue = (await chrome.storage.local.get('pigeonboxAppearance')).pigeonboxAppearance;
-      sendResponse({ state: await readWorkspace(), appearance: appearanceValue === 'light' || appearanceValue === 'dark' ? appearanceValue : 'system' }); return;
+      sendResponse({ state: await readWorkspace(), appearance: appearanceValue === 'dark' || appearanceValue === 'system' ? appearanceValue : 'light' }); return;
     }
     if (message?.type === 'WORKSPACE_PRESENTATION') {
       const row = message.patch || {};

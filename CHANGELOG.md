@@ -10,6 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.5.6] — 2026-10-07
+
+### Added
+- **A new first run.** Onboarding opens with "You seem more like a ___ mode person." Spin the blank (scroll, drag or arrow keys) between light and night; the page floods into the one you land on. Then your cluttered inbox appears, and choosing On this computer or Cloud sorts it, live, into Needs you, Waiting, Updates and an archived pile.
+- **Setup that shows what it sets up.** Pick the features you want (sorting, summaries, replies in your voice, follow-up nudges, quieting noise, open tracking); only those ask a question, each with Skip. The sorted inbox stays beside the questions and lights up what each one changes. Replies in your voice shows a live draft as you choose your sign-off, tone and length.
+- **Model logos.** Local models show their maker's mark (Liquid, Gemma, Qwen, Hugging Face, Gemini).
+
+### Changed
+- **Light by default.** PigeonBox starts in light mode everywhere instead of following the system; dark and Match system remain one command away.
+- In onboarding, only the model list scrolls; the question and Continue stay in place. API key and Ollama are offered there too.
+
+### Fixed
+- Toasts and compose notices in Gmail follow your PigeonBox theme instead of the system's.
+
+---
+
 ## [0.5.5] — 2026-10-06
 
 ### Changed

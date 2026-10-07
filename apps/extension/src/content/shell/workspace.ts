@@ -1,7 +1,7 @@
 import { installFloatDrag, placeFloat } from './float-drag';
 import { DEFAULT_WORKSPACE, workspaceState, type WorkspaceState } from '../../workspace/state';
 import productTokens from '../../ui/product-tokens.css?inline';
-import { applyTheme, normalizeAppearance, watchAppearance } from '../../ui/appearance';
+import { applyTheme, knownAppearance, normalizeAppearance, watchAppearance } from '../../ui/appearance';
 import { motionOptions, prefersReducedMotion } from '../../ui/motion';
 const CSS = `${productTokens}
 :host{all:initial;position:fixed;right:24px;top:80px;z-index:1100;display:block;color:var(--pb-fg);font:var(--pb-size-secondary) var(--pb-sans);isolation:isolate;contain:layout style}
@@ -95,6 +95,7 @@ export function ensureWorkspace() {
   host.id = 'pigeonbox-workspace';
   host.setAttribute('aria-label', 'PigeonBox workspace');
   host.setAttribute('data-gi-ui', 'workspace');
+  host.dataset.pbTheme = knownAppearance();
   const shadow = host.attachShadow({ mode: 'open' });
   const style = document.createElement('style'); style.textContent = CSS; shadow.append(style);
   const shell = document.createElement('div'); shell.className = 'gi-shell';

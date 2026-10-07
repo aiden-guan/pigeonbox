@@ -17,6 +17,7 @@
  * Every string is set as text; nothing from Cloud is parsed as HTML.
  */
 import { SURFACE_CSS } from '../shell/surface';
+import { knownAppearance } from '../../ui/appearance';
 
 export type NoticeSource = { kind: string; title: string; at?: string; gmailThreadId?: string; url?: string };
 export type NoticeView = {
@@ -219,6 +220,7 @@ export function renderNotice(
   ensureHighlightStyle();
   const host = document.createElement('div');
   host.setAttribute('data-gi-ui', 'brain-notice');
+  host.dataset.pbTheme = knownAppearance();
   const owner = body.closest<HTMLElement>('[data-gi-compose-id]')?.getAttribute('data-gi-compose-id');
   if (owner) host.setAttribute('data-gi-compose', owner);
   const shadow = host.attachShadow({ mode: 'open' });

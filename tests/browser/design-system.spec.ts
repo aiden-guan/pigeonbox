@@ -17,7 +17,8 @@ test('semantic themes stay readable at compact widths and appearance survives re
     await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill(label);
     await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
   };
-  await appearance('Switch to light appearance');
+  // Light is the default; no command needed to get there.
+  await expect(page.locator('html')).toHaveAttribute('data-pb-theme', 'light');
   for (const theme of ['light', 'dark'] as const) {
     if (theme === 'dark') await appearance('Switch to dark appearance');
     await expect(page.locator('html')).toHaveAttribute('data-pb-theme', theme);
@@ -66,7 +67,7 @@ test('Pidgy and the shell remain one spatial object through interruption and red
     await workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill(label);
     await workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
   };
-  await appearance('Switch to light appearance');
+  // Light is the default; no command needed to get there.
   await expect(host).toHaveAttribute('data-pb-theme','light');
   expect(await shell.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe('rgb(255, 255, 255)');
   await appearance('Switch to dark appearance');

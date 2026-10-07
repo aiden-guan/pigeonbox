@@ -46,12 +46,15 @@ export function AiConnect({
   onPatch,
   onSignedIn,
   compact = false,
+  intro = true,
   experimental = false,
 }: {
   settings: ExtensionSettings;
   onPatch: (partial: Partial<ExtensionSettings>) => void;
   onSignedIn?: (partial: Partial<ExtensionSettings>) => void;
   compact?: boolean;
+  /** The one-line overview. Off where the page already says it (onboarding). */
+  intro?: boolean;
   /** Show experimental providers (ChatGPT web sign-in). Release builds pass false. */
   experimental?: boolean;
 }) {
@@ -262,9 +265,11 @@ export function AiConnect({
 
   return (
     <div id="ai-setup" className="space-y-3">
-      <p className="text-sm gi-muted">
-        Use a model on this computer, Ollama, or your own API key. Mail never goes to the tracker.
-      </p>
+      {intro ? (
+        <p className="text-sm gi-muted">
+          Use a model on this computer, Ollama, or your own API key. Mail never goes to the tracker.
+        </p>
+      ) : null}
 
       <div className={cardClass(Boolean(localActiveId) || onDeviceActive)}>
         <div className="text-sm font-medium">On this computer</div>
@@ -612,12 +617,19 @@ const GEMINI_NANO_INFO: ModelInfo = {
   cons: ['Needs about 16 GB of memory and 22 GB of disk', 'Desktop Chrome only'],
 };
 
-const VENDOR_MARK: Record<LocalModelVendor, { letter: string; label: string }> = {
-  liquid: { letter: 'L', label: 'Liquid AI' },
-  google: { letter: 'G', label: 'Google' },
-  qwen: { letter: 'Q', label: 'Alibaba Qwen' },
-  huggingface: { letter: 'S', label: 'Hugging Face' },
+const VENDOR_LABEL: Record<LocalModelVendor, string> = {
+  liquid: 'Liquid AI',
+  google: 'Google',
+  qwen: 'Alibaba Qwen',
+  huggingface: 'Hugging Face',
 };
+
+/** The maker's mark from public/brand/models (see LICENSE.txt there). Google ships two families. */
+function modelLogo(model: ModelInfo): string {
+  const name = model.vendor === 'google' ? (/gemini/i.test(model.label) ? 'gemini' : 'gemma') : model.vendor;
+  const path = `brand/models/${name}.svg`;
+  return typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL(path) : `/${path}`;
+}
 
 function ModelRow({
   model,
@@ -630,12 +642,11 @@ function ModelRow({
   sizeLabel?: string;
   children: ReactNode;
 }) {
-  const mark = VENDOR_MARK[model.vendor];
   return (
     <div className={active ? 'gi-inset gi-model is-active' : 'gi-inset gi-model'}>
       <div className="flex items-start gap-3">
-        <span className={`gi-model-mark is-${model.vendor}`} title={mark.label} aria-hidden="true">
-          {mark.letter}
+        <span className="gi-model-mark" title={VENDOR_LABEL[model.vendor]} aria-hidden="true">
+          <img src={modelLogo(model)} alt="" width={20} height={20} draggable={false} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
