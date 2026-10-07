@@ -364,8 +364,6 @@
   transition: opacity .75s ease .2s;
 }
 .ob-theme[data-leaving] { opacity: 0; pointer-events: none; }
-.ob-theme-sky { position: absolute; inset: 0; opacity: var(--t); pointer-events: none; }
-.ob-theme-sky i { position: absolute; border-radius: 50%; background: var(--pb-fg-muted); animation: ob-twinkle 3.4s ease-in-out infinite alternate; }
 .ob-theme-glow {
   position: absolute; left: 50%; top: 30%; width: min(1100px, 140vw); aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; pointer-events: none;
   background: radial-gradient(circle, color-mix(in oklab, var(--sun) calc((1 - var(--t)) * 100%), #7f95c8) 0%, transparent 62%);
@@ -374,10 +372,46 @@
 .ob-theme-body { --base: 420ms; position: relative; display: grid; justify-items: center; padding: 24px; text-align: center; transition: translate .8s var(--ob-ease-io), filter .6s ease, opacity .5s ease; }
 .ob-theme[data-leaving] .ob-theme-body { translate: 0 -36px; filter: blur(8px); opacity: 0; }
 
-.ob-orb { width: clamp(140px, 21vh, 210px); height: auto; aspect-ratio: 1; margin-bottom: clamp(16px, 4vh, 36px); overflow: visible; animation: ob-orb-in 1.4s var(--ob-ease-out) .1s backwards; transition: scale .8s var(--ob-ease-io); }
-.ob-theme[data-leaving] .ob-orb { scale: 1.25; }
+.ob-sky-art { position: absolute; inset: 0; pointer-events: none; animation: ob-fade 1.4s ease .1s backwards; }
+.ob-sky-defs { position: absolute; }
+.ob-sky-day, .ob-sky-night { position: absolute; inset: 0; }
+.ob-sky-sprite { position: absolute; overflow: visible; }
+.ob-sky-orb { width: clamp(140px, 21vh, 210px); height: auto; margin-bottom: clamp(16px, 4vh, 36px); overflow: visible; pointer-events: none; animation: ob-sky-in 1.4s var(--ob-ease-out) .1s backwards; }
+.ob-sky-cloud-back { left: 7%; top: 65%; width: clamp(100px, 12vw, 170px); }
+.ob-sky-cloud-front { right: 12%; top: 8%; width: clamp(100px, 11vw, 160px); }
+.ob-sky-bird-sprite { width: calc(clamp(100px, 11vw, 150px) * var(--bird-scale)); transform: translate(-50%, -50%); }
+.ob-sky-kite-sprite { right: 9%; bottom: 8%; width: clamp(95px, 9vw, 130px); }
+.ob-sky-ufo-sprite { right: 7%; top: 13%; width: clamp(140px, 14vw, 190px); }
+.ob-sky-star-sprite { width: 14px; height: 14px; }
+.ob-sky-meteor-sprite { width: 230px; height: 125px; transform: translate(-30%, -25%); }
+.ob-sky-day { opacity: clamp(0, calc(1 - var(--t) * 1.6), 1); }
+.ob-sky-night { opacity: clamp(0, calc(var(--t) * 1.6 - .6), 1); }
+.ob-sky-cloud { opacity: .45; }
+.ob-sky-cloud-back { opacity: .3; }
+.ob-sky-cloud-drift { animation: ob-cloud-drift 15s ease-in-out infinite alternate; }
+.ob-sky-cloud-back .ob-sky-cloud-drift { animation-delay: -8s; animation-duration: 21s; }
+.ob-sky-bird { animation: ob-bird-glide 12s ease-in-out var(--bird-delay) infinite; }
+.ob-sky-wings { animation: ob-bird-wings 1.8s ease-in-out var(--bird-delay) infinite; transform-origin: 0 4px; }
+.ob-sky-kite { animation: ob-kite-sway 7s ease-in-out -2s infinite; transform-origin: 0 42px; }
+.ob-sky-star { animation: ob-twinkle 5s ease-in-out infinite alternate; }
+.ob-sky-meteor { opacity: 0; animation: ob-meteor 14s linear infinite; }
+.ob-sky-ufo { animation: ob-ufo-hover 16s ease-in-out infinite; }
+.ob-sky-beam { opacity: 0; animation: ob-ufo-beam 16s ease-in-out infinite; }
+.ob-sky-passenger { opacity: 0; animation: ob-ufo-lift 16s cubic-bezier(.45, 0, .25, 1) infinite; }
+.ob-sky-art[data-paused] * { animation-play-state: paused !important; }
+/* Entire scenes fade with the reel. The shared dot screen stays attached to each silhouette. */
+@keyframes ob-sky-in { from { opacity: 0; transform: translateY(16px); } }
+@keyframes ob-cloud-drift { from { transform: translateX(-12px); } to { transform: translateX(12px); } }
+@keyframes ob-bird-glide { 0%, 100% { transform: translate(-18px, 2px) rotate(-3deg); } 50% { transform: translate(22px, -9px) rotate(3deg); } }
+@keyframes ob-bird-wings { 0%, 55%, 100% { transform: scaleY(1); } 25% { transform: scaleY(-.55); } 75% { transform: scaleY(.8); } }
+@keyframes ob-kite-sway { 0%, 100% { transform: translate(-5px, 3px) rotate(-8deg); } 50% { transform: translate(7px, -7px) rotate(6deg); } }
+@keyframes ob-meteor { 0%, 4% { opacity: 0; transform: translate(0, 0); } 5% { opacity: .8; } 11% { opacity: 0; transform: translate(132px, 66px); } 100% { opacity: 0; transform: translate(132px, 66px); } }
+@keyframes ob-ufo-hover { 0%, 100% { transform: translate(-14px, -5px) rotate(-4deg); } 25%, 62% { transform: translate(0, 0) rotate(0deg); } 80% { transform: translate(16px, -9px) rotate(4deg); } }
+@keyframes ob-ufo-beam { 0%, 17%, 72%, 100% { opacity: 0; } 28%, 58% { opacity: 1; } }
+@keyframes ob-ufo-lift { 0%, 24% { opacity: 0; transform: translateY(0); } 31% { opacity: .85; transform: translateY(0); } 57% { opacity: .85; transform: translateY(-82px); } 63%, 100% { opacity: 0; transform: translateY(-92px); } }
 .ob-rays { stroke: var(--sun); stroke-width: 5; stroke-linecap: round; opacity: calc(1 - var(--t) * 1.5); transform: rotate(calc(var(--t) * 150deg)) scale(calc(1 - var(--t) * .45)); transform-origin: 0 0; }
-.ob-rays-spin { transform-origin: 0 0; animation: ob-spin 70s linear infinite; }
+.ob-rays-spin { transform-origin: 0 0; animation: ob-sky-sun-spin 70s linear infinite; }
+@keyframes ob-sky-sun-spin { to { transform: rotate(360deg); } }
 .ob-orb-body { fill: color-mix(in oklab, var(--sun) calc((1 - var(--t)) * 100%), var(--moon)); }
 .ob-orb-bite { transform: translate(calc(36px + (1 - var(--t)) * 116px), calc(var(--t) * -16px)); }
 .ob-craters { fill: var(--pb-fg); opacity: calc(var(--t) * .07); }
@@ -394,8 +428,8 @@
 .ob-slot:focus-visible { box-shadow: 0 0 0 3px var(--pb-accent-soft); }
 .ob-slot-window {
   position: absolute; left: -.25em; right: -.25em; top: -1.3em; bottom: -1.3em; perspective: 5.5em; pointer-events: none;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, rgba(0, 0, 0, .2) 24%, #000 43%, #000 57%, rgba(0, 0, 0, .2) 76%, transparent);
-  mask-image: linear-gradient(to bottom, transparent, rgba(0, 0, 0, .2) 24%, #000 43%, #000 57%, rgba(0, 0, 0, .2) 76%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 10%, rgba(0, 0, 0, .035) 24%, rgba(0, 0, 0, .1) 30%, #000 40%, #000 60%, rgba(0, 0, 0, .1) 70%, rgba(0, 0, 0, .035) 76%, transparent 90%);
+  mask-image: linear-gradient(to bottom, transparent 10%, rgba(0, 0, 0, .035) 24%, rgba(0, 0, 0, .1) 30%, #000 40%, #000 60%, rgba(0, 0, 0, .1) 70%, rgba(0, 0, 0, .035) 76%, transparent 90%);
 }
 .ob-drum { position: absolute; left: 0; right: 0; top: 50%; height: 1.2em; margin-top: -.6em; transform-style: preserve-3d; will-change: transform; }
 .ob-drum-face {
@@ -412,6 +446,30 @@
 .ob-mouse i { position: absolute; left: 50%; top: 4px; width: 2px; height: 5px; margin-left: -1px; border-radius: 2px; background: currentColor; animation: ob-scroll 1.6s var(--ob-ease-out) infinite; }
 .ob-theme-actions { display: grid; justify-items: center; gap: 12px; margin-top: clamp(22px, 4vh, 34px); animation: ob-rise .9s var(--ob-ease-out) 1.5s backwards; }
 .ob-theme-note { font-size: 12.5px; color: var(--pb-fg-muted); }
+@media (max-width: 560px) {
+  .ob-theme-body { padding: 16px; }
+  .ob-sky-orb { margin-bottom: 8px; }
+  .ob-sky-ufo-sprite { width: 108px; right: 3%; top: 8%; }
+  .ob-sky-kite-sprite { width: 80px; right: 5%; bottom: 3%; }
+  .ob-sky-cloud-back { width: 90px; left: 2%; top: 77%; }
+  .ob-sky-cloud-front { width: 90px; right: 7%; top: 2%; }
+  .ob-sky-bird-sprite { width: calc(92px * var(--bird-scale)); }
+  .ob-theme-line { font-size: clamp(29px, 7.5vw, 40px); }
+}
+@media (max-height: 600px) and (min-width: 561px) {
+  .ob-sky-orb { width: min(170px, 30vh); margin-bottom: 0; }
+  .ob-theme-hint, .ob-theme-actions { margin-top: 14px; }
+}
+@media (max-height: 450px) {
+  .ob-theme-body { padding: 12px; }
+  .ob-sky-orb { width: min(140px, 26vh); margin-bottom: 0; }
+  .ob-sky-ufo-sprite { width: 100px; right: 2%; top: 2%; }
+  .ob-sky-kite-sprite { width: 65px; right: 3%; bottom: 0; }
+  .ob-sky-cloud-back { left: 1%; top: 72%; width: 85px; }
+  .ob-theme-line { max-width: none; font-size: clamp(26px, 4.5vw, 34px); line-height: 1.35; }
+  .ob-theme-hint { margin-top: 8px; font-size: 11px; }
+  .ob-theme-actions { margin-top: 10px; gap: 8px; }
+}
 
 /* The stage arrives as the question leaves. */
 .ob-stage { animation: ob-stage-in 1.1s var(--ob-ease-out) backwards; }
@@ -451,9 +509,11 @@
   .ob-rise, .ob-word > span, .ob-welcome, .ob-panel, .ob-welcome-wrap, .ob-ticker-text, .ob-morph, .ob-track-log li { animation-name: ob-fade !important; }
   .ob-popup-inner, .ob-agent::after, .ob-ring, .ob-ticker-live i, .ob-draft-dot { animation: none !important; }
   .ob-sweep { display: none; }
-  .ob-theme-body, .ob-orb { transition: opacity .4s ease !important; translate: none !important; filter: none !important; scale: none !important; }
-  .ob-rays-spin, .ob-mouse i, .ob-theme-sky i { animation: none !important; }
-  .ob-slot, .ob-slot-line, .ob-orb, .ob-stage { animation-name: ob-fade !important; }
+  .ob-theme-body { transition: opacity .4s ease !important; translate: none !important; filter: none !important; scale: none !important; }
+  .ob-rays-spin, .ob-mouse i, .ob-sky-art * { animation: none !important; }
+  .ob-sky-beam { opacity: .65; }
+  .ob-sky-passenger { opacity: .85; }
+  .ob-slot, .ob-slot-line, .ob-sky-art, .ob-sky-orb, .ob-stage { animation-name: ob-fade !important; }
   .ob-welcome-pidgy { animation: none; }
   .ob-lane, .ob-ticker, .ob-agent { translate: none !important; scale: none !important; }
   .ob-swap-item[data-leaving] { animation-name: ob-fade-out !important; }

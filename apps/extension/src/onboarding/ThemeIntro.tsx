@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { prefersReducedMotion } from '../ui/motion';
+import { ThemeOrb, ThemeSky } from './ThemeSky';
 
 export type Mode = 'light' | 'night';
 
 /** Faces on the drum, alternating light / night. Even indexes are light. */
 const FACES = 12;
 const STEP = 360 / FACES;
+const WHEEL_RESPONSE = .86;
 const modeAt = (index: number): Mode => (((index % 2) + 2) % 2 === 0 ? 'light' : 'night');
-const STARS = Array.from({ length: 26 }, (_, index) => ({ x: (index * 37.3) % 100, y: (index * 53.7) % 62, s: 1 + (index % 3), d: (index % 7) * 0.6 }));
 
 type Sim = {
   pos: number;
@@ -15,7 +16,7 @@ type Sim = {
   mode: 'idle' | 'drag' | 'wheel' | 'coast' | 'snap' | 'tween';
   target: number;
   tween: { from: number; to: number; start: number; duration: number } | null;
-  drag: { y: number; pos: number; lastY: number; lastT: number } | null;
+  drag: { pointerId: number; y: number; pos: number; lastY: number; lastT: number } | null;
 };
 
 /**
@@ -36,6 +37,7 @@ export function ThemeIntro({ initial, leaving, onPick, onContinue }: {
   const frame = useRef(0);
   const wheelTimer = useRef(0);
   const committed = useRef<Mode>(initial);
+  const interacted = useRef(false);
   const [value, setValue] = useState<Mode>(initial);
   const [touched, setTouched] = useState(false);
   const latest = useRef({ onPick, value });
@@ -45,8 +47,10 @@ export function ThemeIntro({ initial, leaving, onPick, onContinue }: {
     const { pos } = sim.current;
     if (drum.current) drum.current.style.transform = `rotateX(${pos * STEP}deg)`;
     // 0 at a light face, 1 at a night face, smooth in between: the sky follows the drum.
-    scene.current?.style.setProperty('--t', ((1 - Math.cos(pos * Math.PI)) / 2).toFixed(4));
-    const next = modeAt(Math.round(pos));
+    // Keep the opening reel flourish from flashing the sky through ten day/night cycles.
+    const sky = sim.current.mode === 'tween' ? (initial === 'night' ? 1 : 0) : (1 - Math.cos(pos * Math.PI)) / 2;
+    scene.current?.style.setProperty('--t', sky.toFixed(4));
+    const next = sim.current.mode === 'tween' ? initial : modeAt(Math.round(pos));
     if (next !== latest.current.value) setValue(next);
   };
 
@@ -94,12 +98,13 @@ export function ThemeIntro({ initial, leaving, onPick, onContinue }: {
 
   const snapTo = (target: number) => {
     const s = sim.current;
+    if (prefersReducedMotion()) { cancelAnimationFrame(frame.current); s.pos = target; settle(); return; }
     s.mode = 'snap';
     s.target = target;
     run();
   };
 
-  const interact = () => { if (!touched) setTouched(true); if (sim.current.mode === 'tween') sim.current.mode = 'idle'; };
+  const interact = () => { interacted.current = true; if (!touched) setTouched(true); if (sim.current.mode === 'tween') sim.current.mode = 'idle'; };
 
   // Opening spin: a few turns of the reel, landing on the current appearance.
   useEffect(() => {
@@ -110,7 +115,7 @@ export function ThemeIntro({ initial, leaving, onPick, onContinue }: {
     s.pos = to - 10;
     paint();
     const timer = window.setTimeout(() => {
-      if (s.mode !== 'idle') return;
+      if (s.mode !== 'idle' || interacted.current) return;
       s.mode = 'tween';
       s.tween = { from: s.pos, to, start: performance.now(), duration: 1900 };
       run();
@@ -130,7 +135,7 @@ export function ThemeIntro({ initial, leaving, onPick, onContinue }: {
       if (s.mode === 'drag') return;
       cancelAnimationFrame(frame.current);
       const unit = event.deltaMode === 1 ? 0.34 : event.deltaMode === 2 ? 1 : 0.0105;
-      s.pos += Math.max(-0.9, Math.min(0.9, event.deltaY * unit));
+      s.pos += WHEEL_RESPONSE * Math.max(-0.9, Math.min(0.9, event.deltaY * unit));
       s.mode = 'wheel';
       s.v = 0;
       paint();
@@ -145,18 +150,18 @@ export function ThemeIntro({ initial, leaving, onPick, onContinue }: {
   const faceHeight = () => (slot.current?.getBoundingClientRect().height || 60);
 
   function onPointerDown(event: PointerEvent<HTMLSpanElement>) {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || sim.current.mode === 'drag' || leaving) return;
     interact();
     cancelAnimationFrame(frame.current);
     event.currentTarget.setPointerCapture(event.pointerId);
     const s = sim.current;
     s.mode = 'drag';
     s.v = 0;
-    s.drag = { y: event.clientY, pos: s.pos, lastY: event.clientY, lastT: performance.now() };
+    s.drag = { pointerId: event.pointerId, y: event.clientY, pos: s.pos, lastY: event.clientY, lastT: performance.now() };
   }
   function onPointerMove(event: PointerEvent<HTMLSpanElement>) {
     const s = sim.current;
-    if (s.mode !== 'drag' || !s.drag) return;
+    if (s.mode !== 'drag' || !s.drag || event.pointerId !== s.drag.pointerId) return;
     const now = performance.now();
     const step = -(event.clientY - s.drag.lastY) / faceHeight();
     s.v = step / Math.max(1, now - s.drag.lastT) * 16;
@@ -165,15 +170,22 @@ export function ThemeIntro({ initial, leaving, onPick, onContinue }: {
     s.pos = s.drag.pos - (event.clientY - s.drag.y) / faceHeight();
     paint();
   }
-  function onPointerUp() {
+  function onPointerUp(event: PointerEvent<HTMLSpanElement>) {
     const s = sim.current;
-    if (s.mode !== 'drag' || !s.drag) return;
+    if (s.mode !== 'drag' || !s.drag || event.pointerId !== s.drag.pointerId) return;
     const moved = Math.abs(s.drag.lastY - s.drag.y) > 4;
     s.drag = null;
     if (!moved) { s.v = 0; snapTo(Math.round(s.pos) + 1); return; } // A tap turns one face.
+    if (prefersReducedMotion()) { snapTo(Math.round(s.pos)); return; }
     s.mode = 'coast';
     s.v = Math.max(-0.8, Math.min(0.8, s.v));
     run();
+  }
+  function onPointerCancel(event: PointerEvent<HTMLSpanElement>) {
+    if (sim.current.mode !== 'drag' || event.pointerId !== sim.current.drag?.pointerId) return;
+    sim.current.drag = null;
+    sim.current.v = 0;
+    snapTo(Math.round(sim.current.pos));
   }
   function onKeyDown(event: KeyboardEvent<HTMLSpanElement>) {
     const delta = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 0;
@@ -183,38 +195,17 @@ export function ThemeIntro({ initial, leaving, onPick, onContinue }: {
 
   return (
     <div ref={scene} className="ob-theme" data-leaving={leaving || undefined} style={{ '--t': initial === 'night' ? 1 : 0 } as CSSProperties}>
-      <div className="ob-theme-sky" aria-hidden="true">
-        {STARS.map((star, index) => <i key={index} style={{ left: `${star.x}%`, top: `${star.y}%`, width: star.s, height: star.s, animationDelay: `${star.d}s` }} />)}
-      </div>
       <div className="ob-theme-glow" aria-hidden="true" />
+      <ThemeSky leaving={leaving} />
 
       <div className="ob-theme-body">
-        <svg className="ob-orb" viewBox="-96 -96 192 192" aria-hidden="true">
-          <defs>
-            <mask id="ob-crescent" maskUnits="userSpaceOnUse" x="-120" y="-120" width="240" height="240">
-              <rect x="-120" y="-120" width="240" height="240" fill="#fff" />
-              <circle className="ob-orb-bite" r="50" fill="#000" />
-            </mask>
-          </defs>
-          <g className="ob-rays">
-            <g className="ob-rays-spin">
-              {Array.from({ length: 12 }, (_, index) => {
-                const angle = (index / 12) * Math.PI * 2;
-                return <line key={index} x1={Math.cos(angle) * 66} y1={Math.sin(angle) * 66} x2={Math.cos(angle) * (index % 2 ? 80 : 88)} y2={Math.sin(angle) * (index % 2 ? 80 : 88)} />;
-              })}
-            </g>
-          </g>
-          <circle className="ob-orb-body" r="48" mask="url(#ob-crescent)" />
-          <g className="ob-craters" mask="url(#ob-crescent)">
-            <circle cx="-18" cy="-10" r="7" /><circle cx="-6" cy="18" r="4.5" /><circle cx="-28" cy="14" r="3" />
-          </g>
-        </svg>
+        <ThemeOrb />
 
         <h1 className="ob-theme-line" aria-label={`You seem more like a ${value} mode person.`}>
           <Words text="You seem more like a" start={0} />{' '}
           <span ref={slot} className="ob-slot" role="slider" tabIndex={0} aria-label="Appearance" aria-valuemin={0} aria-valuemax={1}
             aria-valuenow={value === 'night' ? 1 : 0} aria-valuetext={`${value} mode`}
-            onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onKeyDown={onKeyDown}>
+            onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} onKeyDown={onKeyDown}>
             <span className="ob-slot-window" aria-hidden="true">
               <span ref={drum} className="ob-drum">
                 {Array.from({ length: FACES }, (_, index) => (
