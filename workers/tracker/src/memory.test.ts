@@ -1885,6 +1885,86 @@ describe('authenticated sender link resolution', () => {
 });
 
 
+/**
+ * A sender stays on their own sent message for a minute while drafting a reply.
+ * `render`/`quoted`: the extension saw Gmail (re)render the owned pixel, optionally
+ * observed earlier than the claim lands. `proxy`: Gmail's image proxy fetch for it.
+ */
+type DraftStep = [offsetMs: number, kind: 'render' | 'quoted' | 'inspect' | 'proxy' | 'recipient', observedMs?: number];
+const SENDER_DRAFTING: DraftStep[] = [
+  [0, 'render'], [300, 'proxy'], [400, 'proxy'], // opens the sent message; duplicate burst
+  [5_100, 'proxy'], [5_400, 'quoted', 5_000], // Reply: the quoted pixel loads before its claim lands
+  [17_000, 'quoted'], [17_250, 'proxy'], // autosave rebuilds the quote, more than 10 s apart
+  [20_000, 'render'], [20_200, 'proxy'], // Gmail restores the lazy pixel on the sent copy
+  [29_150, 'proxy'], [29_500, 'quoted', 29_000],
+  [33_000, 'inspect'], // a cache reinspection is not a render
+  [41_000, 'quoted'], [41_300, 'proxy'],
+  [47_200, 'proxy'], [47_600, 'render', 47_000],
+  [53_100, 'proxy'], [53_400, 'quoted', 53_000],
+  [60_000, 'render'], [60_250, 'proxy'],
+];
+
+describe('sender drafting a reply inside their own tracked thread', () => {
+  async function replay(trackingId: string, start: number, steps: DraftStep[]) {
+    const clock = vi.spyOn(Date, 'now');
+    try {
+      for (const [offset, kind, observed = offset] of steps) {
+        clock.mockReturnValue(start + offset);
+        if (kind === 'proxy' || kind === 'recipient') {
+          await worker.fetch(new Request(`http://127.0.0.1:8787/open/${trackingId}`, { headers: proxyHeaders() }), env);
+        } else {
+          await postSelfView(trackingId, {
+            timestamp: new Date(start + observed).toISOString(),
+            source: kind === 'inspect' ? 'CACHE_REINSPECTION' : 'MESSAGE_LOAD',
+            ...(kind === 'inspect' ? { gmailMessageId: 'msg_reload' } : { pixelRender: true, quotedRender: kind === 'quoted' }),
+            selfViewEventId: `sv_${trackingId}_nomessage_${kind}_${start + observed}`,
+          });
+        }
+      }
+    } finally {
+      clock.mockRestore();
+    }
+  }
+
+  it('never counts a minute of sender renders, autosaves and restores, then still counts recipients', async () => {
+    const start = Date.now();
+    const { tracking_id } = await createSentTracked(new Date(start - 3_600_000).toISOString());
+    await replay(tracking_id, start, SENDER_DRAFTING);
+    await replay(tracking_id, start, [[62_000, 'inspect']]);
+    expect(await readOpenCount(tracking_id)).toBe(0);
+    const sender = await readOpenEvents(tracking_id);
+    expect(sender).toHaveLength(SENDER_DRAFTING.filter(([, kind]) => kind === 'proxy').length);
+    expect(sender.every((event) => event.classification === 'SELF_LIKELY')).toBe(true);
+    // Two recipients open through Gmail's proxy after the sender's claims expire.
+    await replay(tracking_id, start, [[95_000, 'recipient'], [130_000, 'recipient']]);
+    expect(await readOpenCount(tracking_id)).toBe(2);
+  });
+
+  it('still counts a real recipient who opens while the sender is drafting', async () => {
+    const start = Date.now();
+    const { tracking_id } = await createSentTracked(new Date(start - 3_600_000).toISOString());
+    await replay(tracking_id, start, [...SENDER_DRAFTING, [35_500, 'recipient'] as DraftStep].sort((a, b) => a[0] - b[0]));
+    expect(await readOpenCount(tracking_id)).toBe(1);
+    const recipient = (await readOpenEvents(tracking_id)).find((event) => event.timestamp === new Date(start + 35_500).toISOString());
+    expect(recipient?.classification).toBe('PROXY_LIKELY');
+  });
+
+  it('does not open a new proxy slot for claims that observed no pixel render', async () => {
+    const start = Date.now();
+    const { tracking_id } = await createSentTracked(new Date(start - 3_600_000).toISOString());
+    await replay(tracking_id, start, [[0, 'render'], [300, 'proxy'], [10_000, 'inspect'], [10_300, 'recipient']]);
+    expect(await readOpenCount(tracking_id)).toBe(1);
+  });
+
+  it('ignores a render report the backend already attributed, so a later recipient within the claim still counts', async () => {
+    const start = Date.now();
+    const { tracking_id } = await createSentTracked(new Date(start - 3_600_000).toISOString());
+    // Fetch consumed the slot after this render was observed: same render, not a new slot.
+    await replay(tracking_id, start, [[0, 'render'], [10_000, 'proxy'], [10_500, 'render', 9_800], [16_000, 'recipient']]);
+    expect(await readOpenCount(tracking_id)).toBe(1);
+  });
+});
+
 it('reconciles a raced delayed sender pixel once and preserves the next recipient proxy', async () => {
   resetMemoryStore();
   const now = Date.now();

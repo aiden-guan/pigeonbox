@@ -1235,4 +1235,72 @@ describe('Convex tracking mutations and self-view suppression', () => {
     );
     expect((await callQuery(tracking.getEmail, ctx, { trackingId })).openCount).toBe(1);
   });
+
+  describe('sender drafting a reply inside their own tracked thread', () => {
+    // Same timeline as the worker's memory test: renders, Gmail proxy fetches racing either way.
+    type DraftStep = [offsetMs: number, kind: 'render' | 'quoted' | 'inspect' | 'proxy' | 'recipient', observedMs?: number];
+    const SENDER_DRAFTING: DraftStep[] = [
+      [0, 'render'], [300, 'proxy'], [400, 'proxy'],
+      [5_100, 'proxy'], [5_400, 'quoted', 5_000],
+      [17_000, 'quoted'], [17_250, 'proxy'],
+      [20_000, 'render'], [20_200, 'proxy'],
+      [29_150, 'proxy'], [29_500, 'quoted', 29_000],
+      [33_000, 'inspect'],
+      [41_000, 'quoted'], [41_300, 'proxy'],
+      [47_200, 'proxy'], [47_600, 'render', 47_000],
+      [53_100, 'proxy'], [53_400, 'quoted', 53_000],
+      [60_000, 'render'], [60_250, 'proxy'],
+    ];
+    const base = Date.parse('2026-10-06T18:00:00.000Z');
+    async function replay(ctx: any, trackingId: string, steps: DraftStep[]) {
+      for (const [offset, kind, observed = offset] of steps) {
+        if (kind === 'proxy' || kind === 'recipient') {
+          await callMutation(tracking.recordOpenEvent, ctx, openArgs(trackingId, `evt_${kind}_${offset}`, new Date(base + offset).toISOString(), proxyUa, 'ip_google'));
+        } else {
+          await callMutation(tracking.recordSelfView, ctx, {
+            eventId: `sv_${kind}_${observed}`,
+            trackingId,
+            timestamp: new Date(base + observed).toISOString(),
+            userAgent: browserUa,
+            ipHash: 'ip_sender',
+            gmailThreadId: null,
+            gmailMessageId: kind === 'inspect' ? 'msg_reload' : null,
+            source: kind === 'inspect' ? 'CACHE_REINSPECTION' : 'MESSAGE_LOAD',
+            ...(kind === 'inspect' ? {} : { pixelRender: true, quotedRender: kind === 'quoted' }),
+          });
+        }
+      }
+    }
+
+    it('never counts a minute of sender renders, autosaves and restores, then still counts recipients', async () => {
+      const { ctx } = createMockDb();
+      const trackingId = 'trk_drafting';
+      await seedReloadEmail(ctx, trackingId, new Date(base - 3_600_000).toISOString());
+      await replay(ctx, trackingId, [...SENDER_DRAFTING, [62_000, 'inspect']]);
+      expect((await callQuery(tracking.getEmail, ctx, { trackingId })).openCount).toBe(0);
+      const opens = (await callQuery(tracking.listEvents, ctx, { trackingId })).filter((event: any) => event.type === 'OPEN');
+      expect(opens).toHaveLength(SENDER_DRAFTING.filter(([, kind]) => kind === 'proxy').length);
+      expect(opens.every((event: any) => event.classification === 'SELF_LIKELY')).toBe(true);
+      await replay(ctx, trackingId, [[95_000, 'recipient'], [130_000, 'recipient']]);
+      expect((await callQuery(tracking.getEmail, ctx, { trackingId })).openCount).toBe(2);
+    });
+
+    it('still counts a real recipient who opens while the sender is drafting', async () => {
+      const { ctx } = createMockDb();
+      const trackingId = 'trk_drafting_recipient';
+      await seedReloadEmail(ctx, trackingId, new Date(base - 3_600_000).toISOString());
+      await replay(ctx, trackingId, [...SENDER_DRAFTING, [35_500, 'recipient'] as DraftStep].sort((a, b) => a[0] - b[0]));
+      expect((await callQuery(tracking.getEmail, ctx, { trackingId })).openCount).toBe(1);
+      const events = await callQuery(tracking.listEvents, ctx, { trackingId });
+      expect(events.find((event: any) => event.eventId === 'evt_recipient_35500').classification).toBe('PROXY_LIKELY');
+    });
+
+    it('does not open a new proxy slot for claims that observed no pixel render', async () => {
+      const { ctx } = createMockDb();
+      const trackingId = 'trk_drafting_inspect';
+      await seedReloadEmail(ctx, trackingId, new Date(base - 3_600_000).toISOString());
+      await replay(ctx, trackingId, [[0, 'render'], [300, 'proxy'], [10_000, 'inspect'], [10_300, 'recipient']]);
+      expect((await callQuery(tracking.getEmail, ctx, { trackingId })).openCount).toBe(1);
+    });
+  });
 });

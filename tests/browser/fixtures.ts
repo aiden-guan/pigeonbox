@@ -187,6 +187,8 @@ export type FixtureApi = {
   calls: { route: string; body: Record<string, unknown> }[];
   baseUrl: string;
   tracker?: { senderLink?: { clickId: string; destination: string }; email: TrackedEmail; events: TrackingEvent[]; holdClaims: boolean; release: () => void };
+  /** Serve tracker routes from a real tracker implementation instead of the synthetic `tracker`. */
+  forward?: (request: Request) => Promise<Response>;
 };
 type App = {
   context: BrowserContext;
@@ -221,6 +223,16 @@ export const test = base.extend<{ app: App }>({
         /* synthetic PDF bytes */
       }
       api.calls.push({ route, body });
+      if (api.forward && (route === '/health' || /^\/(api|open|c)\//.test(route))) {
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(request.headers)) if (typeof value === 'string' && name !== 'host') headers.set(name, value);
+        const forwarded = await api.forward(new Request(`${api.baseUrl}${request.url}`, { method: request.method, headers, body: ['GET', 'HEAD'].includes(request.method!) ? undefined : raw }));
+        response.statusCode = forwarded.status;
+        forwarded.headers.forEach((value, name) => response.setHeader(name, value));
+        response.setHeader('Access-Control-Allow-Origin', '*');
+        response.end(Buffer.from(await forwarded.arrayBuffer()));
+        return;
+      }
       if (route === '/dashboard') {
         // A stand-in for the dashboard (Settings): like the real page, it says HELLO so the extension knows its tab.
         response.setHeader('Content-Type', 'text/html');

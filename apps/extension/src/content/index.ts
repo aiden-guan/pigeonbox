@@ -93,7 +93,8 @@ function reportTrackingSelfView(
   const normMessageId = normalizeGmailId(gmailMessageId);
   const normThreadId = normalizeGmailId(gmailThreadId);
 
-  if (!selfViewDeduplicator.shouldReport(trackingId, normMessageId, observedAt, source)) {
+  // The guard reports each restored pixel once; every such render can cost a proxy fetch.
+  if (!pixelRender && !selfViewDeduplicator.shouldReport(trackingId, normMessageId, observedAt, source)) {
     return Promise.resolve();
   }
 

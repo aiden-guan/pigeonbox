@@ -454,6 +454,7 @@ export const recordSelfView = internalMutation({
               sentAtMs,
               selfViewMs: selfMs,
               proxySlotConsumed: Boolean(claim.proxyConsumedByEventId),
+              proxyConsumedAt: claim.proxyConsumedAt ?? null,
               quotedRender: args.quotedRender === true,
               pixelRender: args.pixelRender === true,
             },

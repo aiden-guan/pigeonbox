@@ -341,17 +341,26 @@ export function planPageReloadProxy(
 }
 
 export const JUST_SENT_SELF_VIEW_MS = 30_000;
-export type JustSentProxyPlan = { reclassifyEventIds: string[]; proxyConsumedByEventId: string; proxyConsumedAt: string };
+/** A null slot reopens the claim's proxy suppression for the render's fetch that has not arrived yet. */
+export type JustSentProxyPlan = { reclassifyEventIds: string[]; proxyConsumedByEventId: string | null; proxyConsumedAt: string | null };
 
 export function planJustSentProxy(
   events: PageReloadProxyEvent[],
-  opts: { sentAtMs: number | null; selfViewMs: number; proxySlotConsumed: boolean; quotedRender?: boolean; pixelRender?: boolean },
+  opts: { sentAtMs: number | null; selfViewMs: number; proxySlotConsumed: boolean; proxyConsumedAt?: string | null; quotedRender?: boolean; pixelRender?: boolean },
 ): JustSentProxyPlan | null {
   const { sentAtMs, selfViewMs } = opts;
-  if (opts.proxySlotConsumed) return null;
   if (sentAtMs == null || !Number.isFinite(sentAtMs) || !Number.isFinite(selfViewMs)) return null;
+  const rendered = opts.quotedRender === true || opts.pixelRender === true;
+  // Each observed render of an owned pixel earns one proxy slot. A slot spent before this render
+  // was observed belongs to an earlier render (and its duplicate burst), so it cannot cover this one.
+  let after = Number.NEGATIVE_INFINITY;
+  if (opts.proxySlotConsumed) {
+    const consumedMs = opts.proxyConsumedAt ? Date.parse(opts.proxyConsumedAt) : Number.NaN;
+    if (!rendered || !Number.isFinite(consumedMs) || consumedMs >= selfViewMs) return null;
+    after = consumedMs + SENDER_PROXY_BURST_MS;
+  }
   const justSent = Math.abs(selfViewMs - sentAtMs) <= JUST_SENT_SELF_VIEW_MS;
-  if (!justSent && !opts.quotedRender && !opts.pixelRender) return null;
+  if (!justSent && !rendered) return null;
   // Gmail renders a just-sent reply at send time, which can be well before the first self-view.
   const windowStart = justSent
     ? Math.min(selfViewMs - SELF_VIEW_PRE_WINDOW_MS, sentAtMs)
@@ -362,11 +371,11 @@ export function planJustSentProxy(
       if (evt.type !== "OPEN" || !pageReloadEventKey(evt)) return false;
       if (detectOpenRequestSource(evt.userAgent ?? evt.user_agent ?? null) !== "google_image_proxy") return false;
       const ts = Date.parse(evt.timestamp);
-      return Number.isFinite(ts) && ts >= windowStart && ts <= windowEnd;
+      return Number.isFinite(ts) && ts > after && ts >= windowStart && ts <= windowEnd;
     })
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
   const first = proxies[0];
-  if (!first) return null;
+  if (!first) return Number.isFinite(after) ? { reclassifyEventIds: [], proxyConsumedByEventId: null, proxyConsumedAt: null } : null;
   // The send-time render was already left uncounted by the delivery window; it still spends the slot.
   if (first.classification === "MACHINE_LIKELY") {
     return { reclassifyEventIds: [], proxyConsumedByEventId: pageReloadEventKey(first), proxyConsumedAt: first.timestamp };

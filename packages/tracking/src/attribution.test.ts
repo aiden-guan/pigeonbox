@@ -90,3 +90,19 @@ it.each([workerRenderPlan, convexRenderPlan])('reconciles one observed old-messa
   expect(plan(events, { ...opts, pixelRender: true })?.reclassifyEventIds).toEqual(['own', 'burst']);
   expect(plan(events, { ...opts, pixelRender: true, proxySlotConsumed: true })).toBeNull();
 });
+
+it.each([workerRenderPlan, convexRenderPlan])('gives each later observed render its own slot, never an earlier spent one', (plan) => {
+  const at = (offset: number) => new Date(now + offset).toISOString();
+  const rows = (...list: Array<[string, number, string]>) => list.map(([id, offset, classification]) => ({ ...event(id, offset, 'sent-1', 'GoogleImageProxy', classification), eventId: id, userAgent: 'GoogleImageProxy' }));
+  const opts = { sentAtMs: now - 3_600_000, selfViewMs: now, proxySlotConsumed: true, proxyConsumedAt: at(-12_000) };
+  const earlier = rows(['spent', -12_000, 'SELF_LIKELY'], ['old-burst', -11_000, 'SELF_LIKELY']);
+  // Fetch for this render beat its claim: reconcile it, plus its burst, but not the earlier render.
+  expect(plan([...earlier, ...rows(['raced', -200, 'PROXY_LIKELY'], ['dup', 600, 'PROXY_LIKELY'], ['recipient', 3_000, 'PROXY_LIKELY'])], { ...opts, pixelRender: true })).toEqual({ reclassifyEventIds: ['raced', 'dup'], proxyConsumedByEventId: 'raced', proxyConsumedAt: at(-200) });
+  // Fetch has not arrived yet: reopen the slot for the live classifier.
+  expect(plan(earlier, { ...opts, quotedRender: true })).toEqual({ reclassifyEventIds: [], proxyConsumedByEventId: null, proxyConsumedAt: null });
+  // An earlier recipient right before this render is outside the window.
+  expect(plan([...earlier, ...rows(['recipient-before', -3_500, 'PROXY_LIKELY'])], { ...opts, pixelRender: true })?.reclassifyEventIds).toEqual([]);
+  // No observed render, or a slot spent after this render was observed: nothing changes.
+  expect(plan(earlier, opts)).toBeNull();
+  expect(plan(earlier, { ...opts, pixelRender: true, proxyConsumedAt: at(150) })).toBeNull();
+});

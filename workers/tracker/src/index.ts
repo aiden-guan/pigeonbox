@@ -632,6 +632,7 @@ async function handleSelfView(
       sentAtMs: existing.sent_at ? Date.parse(existing.sent_at) : null,
       selfViewMs: selfMs,
       proxySlotConsumed: Boolean(claim.proxy_consumed_by_event_id),
+      proxyConsumedAt: claim.proxy_consumed_at ?? null,
       quotedRender: body.quotedRender === true,
       pixelRender: body.pixelRender === true,
     }) : null;
@@ -641,7 +642,11 @@ async function handleSelfView(
         await store.updateEvent(evt.id, { classification: 'SELF_LIKELY', suspected_self_open: true, confidence: 1 });
         reclassifiedEventIds.push(evt.id);
       }
-      await store.updateClaim(claimId, { proxy_consumed_by_event_id: plan.proxyConsumedByEventId, proxy_consumed_at: plan.proxyConsumedAt });
+      // Reopening must not undo a fetch that consumed the slot while this request ran.
+      const latest = plan.proxyConsumedByEventId ? null : await store.getClaim(claimId);
+      if (plan.proxyConsumedByEventId || (latest?.proxy_consumed_by_event_id ?? null) === (claim.proxy_consumed_by_event_id ?? null)) {
+        await store.updateClaim(claimId, { proxy_consumed_by_event_id: plan.proxyConsumedByEventId, proxy_consumed_at: plan.proxyConsumedAt });
+      }
     }
   }
 
