@@ -62,6 +62,7 @@ const SelfViewSchema = z.object({
   reconcileGmailIds: z.boolean().optional(),
   reconcile_gmail_ids: z.boolean().optional(),
   quotedRender: z.boolean().optional(),
+  pixelRender: z.boolean().optional(),
 });
 
 /** Compare secrets without leaking their length or matching prefix through timing. */
@@ -217,6 +218,15 @@ export async function handleTrackerRequest(request: Request, deps: TrackerDeps):
       if (authorized instanceof Response) return authorized;
       store = authorized.store;
 
+      if (request.method === 'GET' && path.startsWith('/api/links/')) {
+        const clickId = path.slice('/api/links/'.length);
+        if (!ID_PATTERN.test(clickId)) return json({ error: 'bad_id' }, 400);
+        const link = await store.getLink(clickId);
+        if (!link || !(await store.getEmail(link.tracking_id))) return json({ error: 'not_found' }, 404);
+        const destination = safeRedirectUrl(link.destination);
+        if (!destination) return json({ error: 'bad_destination' }, 400);
+        return json({ tracking_id: link.tracking_id, destination });
+      }
       if (request.method === 'POST' && path === '/api/emails') {
         return await handleCreateEmail(request, url.origin, store);
       }
@@ -623,6 +633,7 @@ async function handleSelfView(
       selfViewMs: selfMs,
       proxySlotConsumed: Boolean(claim.proxy_consumed_by_event_id),
       quotedRender: body.quotedRender === true,
+      pixelRender: body.pixelRender === true,
     }) : null;
     if (plan && claim) {
       for (const evt of events) {

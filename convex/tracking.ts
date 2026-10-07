@@ -224,6 +224,7 @@ export const recordSelfView = internalMutation({
     ipHash: v.optional(v.union(v.string(), v.null())),
     reconcileGmailIds: v.optional(v.boolean()),
     quotedRender: v.optional(v.boolean()),
+    pixelRender: v.optional(v.boolean()),
     source: v.optional(
       v.union(
         v.literal("ROW_INTERACTION"),
@@ -454,6 +455,7 @@ export const recordSelfView = internalMutation({
               selfViewMs: selfMs,
               proxySlotConsumed: Boolean(claim.proxyConsumedByEventId),
               quotedRender: args.quotedRender === true,
+              pixelRender: args.pixelRender === true,
             },
           )
         : null;

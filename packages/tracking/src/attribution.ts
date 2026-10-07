@@ -8,7 +8,7 @@ export type PendingSelfView = {
   observedAt: number;
   tabId?: number;
   navigation?: boolean;
-  retry?: { source: 'ROW_INTERACTION' | 'MESSAGE_EXPANDED' | 'MESSAGE_LOAD' | 'CACHE_REINSPECTION' | 'PAGE_RELOAD'; gmailThreadId?: string | null; gmailMessageId?: string | null; quotedRender?: boolean; reconcileGmailIds?: boolean };
+  retry?: { source: 'ROW_INTERACTION' | 'MESSAGE_EXPANDED' | 'MESSAGE_LOAD' | 'CACHE_REINSPECTION' | 'PAGE_RELOAD'; gmailThreadId?: string | null; gmailMessageId?: string | null; quotedRender?: boolean; pixelRender?: boolean; reconcileGmailIds?: boolean };
 };
 type Event = { id: string; tracking_id: string; type: string; timestamp: string; user_agent?: string | null; classification?: string | null; suspected_self_open?: boolean };
 export type AttributionSnapshot = { pending: PendingSelfView[]; revisions: Record<string, number>; selfEvents: string[] };

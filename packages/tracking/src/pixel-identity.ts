@@ -112,9 +112,9 @@ function isQuotedImage(el: PixelCandidateElement): boolean {
 /** Unique tracking ids from images that are part of the message itself, not a quote. */
 export function extractTrackingIdsFromMessageBody(body: PixelCandidateRoot, trackerBaseUrl?: TrackerBase): string[] {
   const ids: string[] = [];
-  for (const node of body.querySelectorAll('img[src], img[data-src]')) {
+  for (const node of body.querySelectorAll('img[src], img[data-src], img[data-pb-self-pixel-src]')) {
     if (isQuotedImage(node)) continue;
-    for (const attr of ['src', 'data-src'] as const) {
+    for (const attr of ['src', 'data-src', 'data-pb-self-pixel-src'] as const) {
       const value = node.getAttribute(attr);
       if (!value) continue;
       const id = extractTrackingIdFromCandidateUrl(value, trackerBaseUrl);
@@ -127,9 +127,9 @@ export function extractTrackingIdsFromMessageBody(body: PixelCandidateRoot, trac
 /** Unique tracking ids from images inside a quote in this body (an earlier message this one replies to or forwards). */
 export function extractQuotedTrackingIdsFromMessageBody(body: PixelCandidateRoot, trackerBaseUrl?: TrackerBase): string[] {
   const ids: string[] = [];
-  for (const node of body.querySelectorAll('img[src], img[data-src]')) {
+  for (const node of body.querySelectorAll('img[src], img[data-src], img[data-pb-self-pixel-src]')) {
     if (!isQuotedImage(node)) continue;
-    for (const attr of ['src', 'data-src'] as const) {
+    for (const attr of ['src', 'data-src', 'data-pb-self-pixel-src'] as const) {
       const value = node.getAttribute(attr);
       if (!value) continue;
       const id = extractTrackingIdFromCandidateUrl(value, trackerBaseUrl);

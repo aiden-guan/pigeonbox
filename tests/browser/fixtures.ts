@@ -184,7 +184,7 @@ export type FixtureApi = {
   composeChecks?: boolean;
   calls: { route: string; body: Record<string, unknown> }[];
   baseUrl: string;
-  tracker?: { email: TrackedEmail; events: TrackingEvent[]; holdClaims: boolean; release: () => void };
+  tracker?: { senderLink?: { clickId: string; destination: string }; email: TrackedEmail; events: TrackingEvent[]; holdClaims: boolean; release: () => void };
 };
 type App = {
   context: BrowserContext;
@@ -237,6 +237,9 @@ export const test = base.extend<{ app: App }>({
         }
         if (route.endsWith('/self-view')) {
           if (tracker.holdClaims) await new Promise<void>((resolve) => heldClaims.push(resolve));
+        if (tracker.senderLink && route === `/api/links/${tracker.senderLink.clickId}`) {
+          response.end(JSON.stringify({ tracking_id: tracker.email.tracking_id, destination: tracker.senderLink.destination })); return;
+        }
           const reclassifiedEventIds = tracker.events.filter((event) => event.classification === 'PROXY_LIKELY').map((event) => event.id);
           tracker.events.forEach((event) => { if (reclassifiedEventIds.includes(event.id)) { event.classification = 'SELF_LIKELY'; event.suspected_self_open = true; } });
           const opens = tracker.events.filter((event) => event.type === 'OPEN' && event.classification === 'RECIPIENT_LIKELY');

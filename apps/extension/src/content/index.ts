@@ -52,6 +52,7 @@ import {
 } from './tracking/message-self-view';
 import { installSentStatus, type SentStatusController } from './tracking/sent-status';
 import { observeDomSelfViews } from './tracking/dom-self-view';
+import { installSenderTrackingGuard } from './tracking/sender-tracking-guard';
 import { ensureSurface } from './shell/surface';
 import { type LocalThreadIntel } from './thread/ThreadPanel';
 import { showBusyToast, showToast } from './shell/toasts';
@@ -65,6 +66,7 @@ let sdkOwnsCompose = false;
 let sentStatus: SentStatusController | null = null;
 let messageSelfView: MessageSelfViewController | null = null;
 let domSelfView: ReturnType<typeof observeDomSelfViews> | null = null;
+let senderTrackingGuard: ReturnType<typeof installSenderTrackingGuard> | null = null;
 let booted = false;
 let pageReload: PageReloadContext | null = null;
 let paletteBound = false;
@@ -86,6 +88,7 @@ function reportTrackingSelfView(
   source: SelfViewSource = 'MESSAGE_EXPANDED',
   reconcileGmailIds = false,
   quotedRender = false,
+  pixelRender = false,
 ): Promise<void> {
   const normMessageId = normalizeGmailId(gmailMessageId);
   const normThreadId = normalizeGmailId(gmailThreadId);
@@ -106,6 +109,7 @@ function reportTrackingSelfView(
     selfViewEventId,
     reconcileGmailIds,
     quotedRender,
+    pixelRender,
   }).then(() => undefined);
 }
 
@@ -197,6 +201,7 @@ function reportRuntime(lastAction?: { success: boolean; action: string; reason?:
 
 function updateCachedEmails(emails: TrackedEmailSummary[]): void {
   cachedTrackedEmails = emails;
+  senderTrackingGuard?.refresh();
   sentStatus?.setEmails(emails);
   if (domSelfView) domSelfView.refresh();
   else if (messageSelfView && (messageSelfView.getActiveCount() > 0 || !isOpenThreadRoute(location.hash))) void messageSelfView.reinspectActive().then(() => send({ type: 'TRACKING_INSPECTION_READY' }));
@@ -220,6 +225,18 @@ async function boot(): Promise<void> {
     if (currentNormalizedThread) void summarizeOpenThread(currentNormalizedThread);
   });
   await refreshSettings();
+  senderTrackingGuard = installSenderTrackingGuard({
+    getOwnedTrackingIds: () => new Set(cachedTrackedEmails.map((email) => email.trackingId)),
+    getTrackerBases: () => settings.trackingEnabled ? (settings.trackerUrls?.length ? settings.trackerUrls : settings.trackerBaseUrl) : null,
+    resolveLink: async (origin, clickId) => {
+      const result = await send<{ destination?: string }>({ type: 'RESOLVE_SENDER_TRACKING_LINK', origin, clickId });
+      return result?.destination || null;
+    },
+    onPixelRender: (trackingId, quoted) => {
+      void reportTrackingSelfView(trackingId, null, null, Date.now(), 'MESSAGE_LOAD', false, quoted, true);
+    },
+  });
+  window.addEventListener('pagehide', senderTrackingGuard.destroy, { once: true });
 
   sentStatus = installSentStatus({
     trackerBaseUrl: settings.trackerBaseUrl,

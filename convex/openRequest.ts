@@ -309,13 +309,13 @@ export type JustSentProxyPlan = {
  */
 export function planJustSentProxy(
   events: PageReloadProxyEvent[],
-  opts: { sentAtMs: number | null; selfViewMs: number; proxySlotConsumed: boolean; quotedRender?: boolean },
+  opts: { sentAtMs: number | null; selfViewMs: number; proxySlotConsumed: boolean; quotedRender?: boolean; pixelRender?: boolean },
 ): JustSentProxyPlan | null {
   const { sentAtMs, selfViewMs } = opts;
   if (opts.proxySlotConsumed) return null;
   if (sentAtMs == null || !Number.isFinite(sentAtMs) || !Number.isFinite(selfViewMs)) return null;
   const justSent = Math.abs(selfViewMs - sentAtMs) <= JUST_SENT_SELF_VIEW_MS;
-  if (!justSent && !opts.quotedRender) return null;
+  if (!justSent && !opts.quotedRender && !opts.pixelRender) return null;
   // Gmail renders a just-sent reply at send time, which can be well before the first self-view.
   const windowStart = justSent
     ? Math.min(selfViewMs - SELF_VIEW_PRE_WINDOW_MS, sentAtMs)

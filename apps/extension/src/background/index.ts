@@ -1593,6 +1593,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       if (message?.type === 'GET_TRACKING_TIMELINE') {
+      if (message?.type === 'RESOLVE_SENDER_TRACKING_LINK') {
+        const clickId = String(message.clickId || '');
+        const origin = String(message.origin || '');
+        const allowed = [settings.trackerBaseUrl, ...cloudTrackerUrls(settings)].some((base) => {
+          try { return new URL(base).origin === origin; } catch { return false; }
+        });
+        const target = allowed && /^clk_[\w-]{1,80}$/.test(clickId) && settings.trackingEnabled ? await trackerTarget() : null;
+        if (!target) { sendResponse({}); return; }
+        try {
+          sendResponse(await new TrackingClient(target.baseUrl, target.credential).getLinkDestination(clickId));
+        } catch { sendResponse({}); }
+        return;
+      }
         // Every counted open and click for one email, for the side panel's Waiting view.
         const trackingId = String(message.trackingId || '');
         const target = /^[\w-]{1,80}$/.test(trackingId) && settings.trackingEnabled ? await trackerTargetFor(trackingId) : null;
@@ -1852,7 +1865,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         try {
         await persistAttribution();
 
-        const retryPayload = { source, gmailThreadId: normThreadId, gmailMessageId: normMessageId, quotedRender: msg.quotedRender === true, reconcileGmailIds: msg.reconcileGmailIds === true };
+        const retryPayload = { source, gmailThreadId: normThreadId, gmailMessageId: normMessageId, quotedRender: msg.quotedRender === true, pixelRender: msg.pixelRender === true, reconcileGmailIds: msg.reconcileGmailIds === true };
         // Also retry a successful legacy claim whose canonical detail lookup fails.
         attribution.retry(pendingClaim, retryPayload);
         await persistAttribution();
@@ -1875,6 +1888,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               reconcileGmailIds: msg.reconcileGmailIds === true,
               quotedRender: msg.quotedRender === true,
             });
+              pixelRender: msg.pixelRender === true,
             lastErr = null;
             break;
           } catch (err) {

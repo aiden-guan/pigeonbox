@@ -1859,3 +1859,44 @@ describe('local memory tracker', () => {
     }
   });
 });
+
+
+describe('authenticated sender link resolution', () => {
+  it('resolves without counting a click and leaves subsequent recipient clicks countable', async () => {
+    resetMemoryStore();
+    const created = await worker.fetch(new Request('https://tracker.example/api/emails', {
+      method: 'POST', headers: authHeaders(), body: JSON.stringify({ subject: 'Link', sender: 'me@example.com', recipients: ['you@example.com'], links: [{ url: 'https://example.com/article' }] }),
+    }), env);
+    const email = await created.json() as { tracking_id: string; rewritten_links: Array<{ click_id: string; tracked_url: string }> };
+    await worker.fetch(new Request(`https://tracker.example/api/emails/${email.tracking_id}`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ status: 'SENT', sent_at: new Date(Date.now() - 3_600_000).toISOString() }) }), env);
+    const link = email.rewritten_links[0]!;
+    const path = `https://tracker.example/api/links/${link.click_id}`;
+    expect((await worker.fetch(new Request(path), env)).status).toBe(401);
+    const resolved = await worker.fetch(new Request(path, { headers: authHeaders() }), env);
+    expect(await resolved.json()).toEqual({ tracking_id: email.tracking_id, destination: 'https://example.com/article' });
+    const events = await worker.fetch(new Request(`https://tracker.example/api/emails/${email.tracking_id}/events`, { headers: authHeaders() }), env);
+    expect(await events.json()).toEqual([]);
+    const click = await worker.fetch(new Request(link.tracked_url, { headers: recipientHeaders() }), env);
+    expect(click.status).toBe(302);
+    const row = await worker.fetch(new Request(`https://tracker.example/api/emails/${email.tracking_id}`, { headers: authHeaders() }), env);
+    expect((await row.json() as { click_count: number }).click_count).toBe(1);
+    expect((await worker.fetch(new Request('https://tracker.example/api/links/clk_missing', { headers: authHeaders() }), env)).status).toBe(404);
+  });
+});
+
+
+it('reconciles a raced delayed sender pixel once and preserves the next recipient proxy', async () => {
+  resetMemoryStore();
+  const now = Date.now();
+  const email = await createSentTracked(new Date(now - 3_600_000).toISOString());
+  await worker.fetch(new Request(`http://127.0.0.1:8787/open/${email.tracking_id}`, { headers: proxyHeaders() }), env);
+  expect(await readOpenCount(email.tracking_id)).toBe(1);
+  const claim = await postSelfView(email.tracking_id, { timestamp: new Date(now).toISOString(), source: 'MESSAGE_LOAD', pixelRender: true, selfViewEventId: `sv_delayed_${email.tracking_id}` });
+  expect(claim.reclassifiedEventIds).toHaveLength(1);
+  expect(await readOpenCount(email.tracking_id)).toBe(0);
+  vi.spyOn(Date, 'now').mockReturnValue(now + 4_000);
+  try {
+    await worker.fetch(new Request(`http://127.0.0.1:8787/open/${email.tracking_id}`, { headers: proxyHeaders() }), env);
+    expect(await readOpenCount(email.tracking_id)).toBe(1);
+  } finally { vi.restoreAllMocks(); }
+});

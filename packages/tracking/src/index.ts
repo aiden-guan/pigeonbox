@@ -148,6 +148,11 @@ export class TrackingClient {
     return this.request('get', `/api/emails/${encodeURIComponent(id)}`);
   }
 
+  /** Resolve an owned link without visiting the public click recorder. */
+  async getLinkDestination(clickId: string): Promise<{ tracking_id: string; destination: string }> {
+    return this.request('link-destination', `/api/links/${encodeURIComponent(clickId)}`);
+  }
+
   async getEvents(id: string): Promise<TrackingEvent[]> {
     return this.request('events', `/api/emails/${encodeURIComponent(id)}/events`);
   }
@@ -175,6 +180,8 @@ export class TrackingClient {
       reconcileGmailIds?: boolean;
       /** The pixel was rendered inside another message's quote, not its own sent message. */
       quotedRender?: boolean;
+      /** A tracker pixel was observed on this render, including a delayed reload. */
+      pixelRender?: boolean;
     },
   ): Promise<{
     ok: boolean;

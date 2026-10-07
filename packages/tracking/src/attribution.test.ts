@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { SelfViewAttribution } from './attribution';
 import { pageReloadProxyReclassifications, planPageReloadProxy, senderProxySuppressionMode, deriveTrackingStats, deriveTrackingTimeline, type TrackingEvent } from './index';
 import { TrackingNotificationHistory, groupTrackingAlerts } from '../../../apps/extension/src/background/tracking/notifications';
-import { planPageReloadProxy as workerPlan, pageReloadProxyReclassifications as workerIds } from '../../../workers/tracker/src/helpers';
-import { planPageReloadProxy as convexPlan, pageReloadProxyReclassifications as convexIds } from '../../../convex/openRequest';
+import { planPageReloadProxy as workerPlan, pageReloadProxyReclassifications as workerIds, planJustSentProxy as workerRenderPlan } from '../../../workers/tracker/src/helpers';
+import { planPageReloadProxy as convexPlan, pageReloadProxyReclassifications as convexIds, planJustSentProxy as convexRenderPlan } from '../../../convex/openRequest';
 const now = Date.parse('2026-10-02T12:00:00Z');
 const claim = { issuer: 'tracker-A', trackingId: 'sent-1', eventId: 'reload-1', tabId: 1, observedAt: now };
 const event = (id: string, offset = 100, trackingId = 'sent-1', ua = 'GoogleImageProxy', classification = 'PROXY_LIKELY'): TrackingEvent => ({ id, tracking_id: trackingId, type: 'OPEN', timestamp: new Date(now + offset).toISOString(), user_agent: ua, classification: classification as TrackingEvent['classification'] });
@@ -80,4 +80,13 @@ describe('settled tracking attribution', () => {
     expect(stats.openCount).toBe(1);
     expect(stats.firstOpenedAt).toBe(events[2]!.timestamp);
   });
+});
+
+
+it.each([workerRenderPlan, convexRenderPlan])('reconciles one observed old-message pixel render, without treating an idle cache refresh as a render', (plan) => {
+  const events = [event('own', -500), event('burst', 500), event('recipient', 2200)].map((row) => ({ ...row, eventId: row.id, userAgent: row.user_agent }));
+  const opts = { sentAtMs: now - 3_600_000, selfViewMs: now, proxySlotConsumed: false };
+  expect(plan(events, opts)).toBeNull();
+  expect(plan(events, { ...opts, pixelRender: true })?.reclassifyEventIds).toEqual(['own', 'burst']);
+  expect(plan(events, { ...opts, pixelRender: true, proxySlotConsumed: true })).toBeNull();
 });

@@ -380,6 +380,22 @@ http.route({
   }),
 });
 
+// Authenticated sender lookup: resolving a link never records recipient activity.
+http.route({
+  pathPrefix: "/api/links/",
+  method: "GET",
+  handler: apiHttpAction(async (ctx, request) => {
+    if (!authorized(request)) return json({ error: "unauthorized" }, 401);
+    const clickId = new URL(request.url).pathname.slice("/api/links/".length);
+    if (!validId(clickId)) return json({ error: "bad_id" }, 400);
+    const link = await ctx.runQuery(internal.tracking.getLink, { clickId });
+    if (!link) return json({ error: "not_found" }, 404);
+    const destination = safeRedirectUrl(link.destination);
+    if (!destination) return json({ error: "bad_destination" }, 400);
+    return json({ tracking_id: link.trackingId, destination });
+  }),
+});
+
 http.route({
   pathPrefix: "/api/emails/",
   method: "POST",
@@ -401,6 +417,7 @@ http.route({
       reconcileGmailIds?: boolean;
       reconcile_gmail_ids?: boolean;
       quotedRender?: boolean;
+      pixelRender?: boolean;
     };
     const ts = body.timestamp && !Number.isNaN(Date.parse(body.timestamp))
       ? new Date(body.timestamp).toISOString()
@@ -422,6 +439,7 @@ http.route({
       ipHash: await hashIp(clientIp(request)),
       reconcileGmailIds: body.reconcileGmailIds === true || body.reconcile_gmail_ids === true,
       quotedRender: body.quotedRender === true,
+      pixelRender: body.pixelRender === true,
       source: body.source,
     });
 
