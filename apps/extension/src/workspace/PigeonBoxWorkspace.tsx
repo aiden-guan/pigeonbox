@@ -1,6 +1,6 @@
 import { trackProductEvent } from '../ui/analytics';
 import { Brand, Pigeon } from '../ui/Pigeon';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { ExtensionSettings } from '@pigeonbox/shared';
 import { DEFAULT_SETTINGS } from '@pigeonbox/shared';
 import { useDispatchLayout } from '../ui/dispatch-motion';
@@ -64,6 +64,7 @@ type StoredPanelState = {
   askQuery?: string;
   askRequestId?: string;
   cloudSection?: string;
+  inboxSection?: 'mail' | 'sent' | 'waiting';
 };
 
 type AskResult = {
@@ -85,6 +86,7 @@ const CATEGORIES: Array<[SplitCategory, string]> = [
   ['NEWS', 'News'],
   ['FOLLOW_UPS', 'Follow-ups'],
 ];
+const ActivityView = lazy(() => import('../sidepanel/ActivityView').then((module) => ({ default: module.ActivityView })));
 
 export function PigeonBoxWorkspace() {
   const [active, setActive] = useState<boolean | null>(null);
@@ -106,7 +108,10 @@ function WorkspaceContent() {
   const [cloudSection, setCloudSection] = useState('overview');
   const [, setApprovalCount] = useState(0);
   const [category, setCategory] = useState<SplitCategory>('RESPOND');
+  const [inboxSection, setInboxSection] = useState<'mail' | 'sent' | 'waiting'>('mail');
   const [threads, setThreads] = useState<SplitThread[]>([]);
+  const [splitLoading, setSplitLoading] = useState(true);
+  const [splitError, setSplitError] = useState('');
   const [coverage, setCoverage] = useState('');
   const [query, setQuery] = useWorkspaceInput('local:ask', '');
   const [displayError, setDisplayError] = useState('');
@@ -126,8 +131,13 @@ function WorkspaceContent() {
   const splitRequest = useRef(0);
   const loadSplit = useCallback((next: SplitCategory) => {
     const request = ++splitRequest.current;
+    setSplitLoading(true); setSplitError('');
     chrome.runtime.sendMessage({ type: 'LIST_SPLIT', category: next }, (res?: { threads?: SplitThread[] }) => {
-      if (request === splitRequest.current) setThreads(res?.threads || []);
+      const failed = Boolean(chrome.runtime.lastError || !res?.threads);
+      if (request !== splitRequest.current) return;
+      setSplitLoading(false);
+      if (failed) { setSplitError('Could not load mail. Try again.'); return; }
+      setThreads(res!.threads!);
     });
   }, []);
 
@@ -161,6 +171,7 @@ function WorkspaceContent() {
       const nextCategory = state?.splitCategory || 'RESPOND';
       setMode(nextMode);
       setCategory(nextCategory);
+      setInboxSection(state?.inboxSection || (nextCategory === 'WAITING' ? 'waiting' : 'mail'));
       setCloudSection(state?.cloudSection || 'overview');
       if (navigation.current.mode !== nextMode || navigation.current.category !== nextCategory) loadSplit(nextMode === 'home' ? 'RESPOND' : nextCategory);
       navigation.current = { mode: nextMode, category: nextCategory, section: state?.cloudSection || 'overview' };
@@ -212,18 +223,18 @@ function WorkspaceContent() {
   function navigate(next: 'home' | 'inbox' | 'ask' | 'cloud', section = 'overview') {
     const destination = next === 'cloud' ? 'home' : next;
     setMode(destination); setCloudSection(section);
-    void chrome.runtime.sendMessage({ type: 'WORKSPACE_NAVIGATE', mode: destination, splitCategory: category, cloudSection: section });
+    void chrome.runtime.sendMessage({ type: 'WORKSPACE_NAVIGATE', mode: destination, splitCategory: category, inboxSection, cloudSection: section });
   }
   const commands: WorkspaceCommand[] = [
     { id: 'home', label: 'Home', detail: 'Current conversation and work that needs you', icon: 'inbox', run: () => navigate('home') },
-    { id: 'inbox', label: 'Inbox insights', detail: 'Mail indexed on this computer', icon: 'inbox', run: () => navigate('inbox') },
+    { id: 'inbox', label: 'Inbox', detail: 'Sorted mail, sent emails and follow-ups', icon: 'inbox', run: () => navigate('inbox') },
     { id: 'ask', label: 'Ask Pigeon', detail: cloudMode ? 'Your synced mailbox' : 'Mail on this computer', icon: 'sparkles', run: () => navigate('ask') },
     ...(context ? [
       { id: 'summarize', label: 'Summarize this thread', detail: context.subject, icon: 'document' as const, run: () => chrome.runtime.sendMessage({ type: 'WORKSPACE_THREAD_ACTION', id: 'summarize', threadId: context.threadId }) },
       { id: 'draft-reply', label: 'Draft a reply', detail: context.subject, icon: 'edit' as const, run: () => chrome.runtime.sendMessage({ type: 'WORKSPACE_THREAD_ACTION', id: 'draft', threadId: context.threadId }) },
       ...(['remind', 'archive', 'mark_respond', 'mark_waiting', 'mark_fyi'] as const).map((id) => ({ id, label: ({ remind: 'Remind me', archive: 'Archive thread', mark_respond: 'Mark Respond', mark_waiting: 'Mark Waiting', mark_fyi: 'Mark FYI' })[id], detail: context.subject, icon: 'inbox' as const, run: () => chrome.runtime.sendMessage({ type: 'WORKSPACE_THREAD_ACTION', id, threadId: context.threadId }) })),
     ] : []),
-    { id: 'tracking', label: 'Tracking activity', detail: 'Sent mail and follow-ups', icon: 'tracking', run: () => choose('WAITING') },
+    { id: 'tracking', label: 'Tracking activity', detail: 'Sent mail, opens and clicks', icon: 'tracking', run: () => chooseInbox('sent') },
     { id: 'settings', label: 'Settings', detail: 'Execution mode, privacy and preferences', icon: 'settings', run: () => openSettings('command_palette', cloudMode ? 'cloud' : 'local') },
     ...(['light', 'dark', 'system'] as const).filter((value) => value !== theme.appearance).map((value) => ({ id: `appearance-${value}`, label: value === 'system' ? 'Match system appearance' : `Switch to ${value} appearance`, detail: `Appearance is ${theme.appearance} now`, icon: 'settings' as const, run: () => theme.change(value) })),
     ...(cloudMode ? [
@@ -239,10 +250,19 @@ function WorkspaceContent() {
   ];
 
   function choose(next: SplitCategory) {
+    const section = next === 'WAITING' ? 'waiting' : 'mail';
     setCategory(next);
+    setInboxSection(section);
     setMode('inbox');
-    void chrome.runtime.sendMessage({ type: 'WORKSPACE_NAVIGATE', mode: 'inbox', splitCategory: next });
+    void chrome.runtime.sendMessage({ type: 'WORKSPACE_NAVIGATE', mode: 'inbox', splitCategory: next, inboxSection: section });
     loadSplit(next);
+  }
+
+  function chooseInbox(section: 'mail' | 'sent' | 'waiting') {
+    const next = section === 'waiting' ? 'WAITING' : category === 'WAITING' ? 'RESPOND' : category;
+    setInboxSection(section); setCategory(next); setMode('inbox');
+    void chrome.runtime.sendMessage({ type: 'WORKSPACE_NAVIGATE', mode: 'inbox', splitCategory: next, inboxSection: section });
+    if (section !== 'sent') loadSplit(next);
   }
 
   function ask() {
@@ -268,8 +288,8 @@ function WorkspaceContent() {
           {palette ? <CommandPalette inline commands={commands} cloud={cloudMode} onClose={() => setPalette(false)} onAskQuery={(question) => { navigate('ask'); setPendingAsk({ id: crypto.randomUUID(), query: question }); }} /> : null}
         </div>
         <div className="pb-workspace-navigation"><nav className="pb-panel-nav" aria-label="Workspace">
-          {/* Gmail is already the inbox: Inbox insights live in the command palette and Home's links, not in the chrome. */}
-          <Tab active={mode !== 'ask'} onClick={() => navigate('home')}>Home</Tab>
+          <Tab active={mode === 'home'} onClick={() => navigate('home')}>Home</Tab>
+          <Tab active={mode === 'inbox'} onClick={() => navigate('inbox')}>Inbox</Tab>
           <Tab active={mode === 'ask'} onClick={() => navigate('ask')}>Ask</Tab>
         </nav><div className="pb-window-controls"><IconButton label="Open PigeonBox Settings" data-settings-entry onClick={() => openSettings('workspace_header', cloudMode ? 'cloud' : 'local')}><WorkspaceIcon name="settings" size={16} /></IconButton><button type="button" className="pb-icon-btn" aria-label={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} title={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} onClick={() => { setDisplayError(''); void requestWorkspaceDisplay(location.pathname.includes('sidepanel') ? 'float' : 'dock').catch(() => setDisplayError('Could not move the workspace. Try again.')); }}><WorkspaceIcon name="dock" size={16} /></button></div></div>
       </header>
@@ -283,15 +303,19 @@ function WorkspaceContent() {
         </div>
       ) : mode === 'inbox' ? (
         <div className="pb-inbox flex min-h-0 flex-1 flex-col">
-          <label className="pb-inbox-select"><span>Inbox</span><select aria-label="Inbox category" value={category} onChange={(event) => choose(event.target.value as SplitCategory)}>{CATEGORIES.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>{threads.length ? <span className="pb-meta">{threads.length}</span> : null}</label>
+          <div className="pb-inbox-sections" role="group" aria-label="Inbox views">{(['mail', 'sent', 'waiting'] as const).map((section) => <button key={section} type="button" aria-pressed={inboxSection === section} onClick={() => chooseInbox(section)}>{section === 'mail' ? 'Mail' : section === 'sent' ? 'Sent & tracking' : 'Waiting'}</button>)}</div>
+          {inboxSection === 'mail' ? <label className="pb-inbox-select"><span>Show</span><select aria-label="Inbox category" value={category} onChange={(event) => choose(event.target.value as SplitCategory)}>{CATEGORIES.filter(([id]) => id !== 'WAITING').map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>{threads.length ? <span className="pb-meta">{threads.length}</span> : null}</label> : <p className="pb-inbox-purpose">{inboxSection === 'sent' ? 'Sent emails, with opens and clicks when tracking is on.' : 'Conversations where the next reply is theirs.'}</p>}
           <main className="min-h-0 flex-1 overflow-auto">
-            {category === 'WAITING' ? (
-              <WaitingView threads={threads} onOpenThread={(id, folder) => void openThread(id, folder)} onCount={setWaitingCount} />
-            ) : threads.length === 0 ? (
+            {inboxSection === 'sent' ? (
+              <WaitingView purpose="sent" owner={mailbox ?? context?.owner} threads={[]} onOpenThread={(id, folder) => void openThread(id, folder)} onCount={setWaitingCount} />
+            ) : inboxSection === 'waiting' ? (
+              cloudMode && product.has('cloud_mail_sync') ? <Suspense fallback={<p className="gi-muted px-4" role="status">Loading waiting conversations…</p>}><ActivityView waitingOnly capabilities={product.state.capabilities} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} /></Suspense> : splitLoading ? <p className="gi-muted px-4" role="status">Loading waiting conversations…</p> : splitError ? <div className="px-4"><p className="gi-warn" role="alert">{splitError}</p><button type="button" className="gi-text-btn" onClick={() => loadSplit('WAITING')}>Try again</button></div> : threads.length ? <DispatchThreads threads={threads} category="WAITING" onOpen={(id) => void openThread(id)} onAsk={(question) => { navigate('ask'); setPendingAsk({ id: crypto.randomUUID(), query: question }); }} /> : <p className="gi-muted px-4">No conversations waiting for a reply.</p>
+            ) : splitLoading ? <p className="gi-muted px-4" role="status">Loading mail…</p> : splitError ? <div className="px-4"><p className="gi-warn" role="alert">{splitError}</p><button type="button" className="gi-text-btn" onClick={() => loadSplit(category)}>Try again</button></div> : threads.length === 0 ? (
               <div className="gi-empty"><Pigeon size={32} state="idle" /><h2>Nothing needs you here.</h2><p>No threads in this view yet.</p></div>
             ) : (
               <DispatchThreads threads={threads} category={category} onOpen={(id) => void openThread(id)} onAsk={(question) => { navigate('ask'); setPendingAsk({ id: crypto.randomUUID(), query: question }); }} />
             )}
+            {inboxSection === 'mail' ? <p className="pb-inbox-purpose">Mail indexed from Gmail on this computer.</p> : null}
           </main>
         </div>
       ) : cloudMode ? (product.has('cloud_semantic_search') ? <CloudAsk key={`${product.state.cloudOrigins.join('|')}:${product.state.cloud.email}`} context={context} mailbox={mailbox?.email} pendingQuery={pendingAsk} onQueryConsumed={() => setPendingAsk(null)} capabilities={product.state.capabilities} onContextQuestion={(question) => answerThreadQuestion(question, context, product.has('cloud_mail_sync'))} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} /> : <div className="px-4"><p className="gi-warn">Cloud Ask is unavailable for this connection. Sign in or check your plan on the dashboard.</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => void chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD', section: 'cloud', setup: 'cloud' })}>Open dashboard</button></div>) : (

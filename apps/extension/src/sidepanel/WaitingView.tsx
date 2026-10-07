@@ -8,6 +8,7 @@ import {
 } from '@pigeonbox/tracking';
 import { Orb } from '../ui/Orb';
 import { Pigeon } from '../ui/Pigeon';
+import type { MailboxIdentity } from '@pigeonbox/shared';
 
 export type WaitingThread = {
   threadId: string;
@@ -20,6 +21,7 @@ export type WaitingThread = {
 type Filter = 'all' | 'opened' | 'unopened';
 
 type TimelineState = { loading: boolean; entries?: TrackingTimelineEntry[]; error?: string };
+type SentItem = { threadId: string | null; subject: string; who: string; timestamp: string | null };
 
 /**
  * Every email sent with tracking on, newest first, with whether and when it was
@@ -29,16 +31,39 @@ export function WaitingView(props: {
   threads: WaitingThread[];
   onOpenThread: (threadId: string, folder?: 'sent' | 'inbox') => void;
   onCount: (label: string) => void;
+  purpose?: 'waiting' | 'sent';
+  owner?: MailboxIdentity | null;
 }) {
   const { threads, onOpenThread, onCount } = props;
   const [emails, setEmails] = useState<TrackedEmailSummary[] | null>(null);
+  const [trackingError, setTrackingError] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [visibleCount, setVisibleCount] = useState(20);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [timelines, setTimelines] = useState<Record<string, TimelineState>>({});
+  const [recent, setRecent] = useState<SentItem[] | null>(null);
+  const [sentError, setSentError] = useState('');
+  const [coverage, setCoverage] = useState('');
+  const [revision, refresh] = useState(0);
+  const purpose = props.purpose ?? 'waiting';
+  const ownerEmail = props.owner?.email;
+  useEffect(() => {
+    if (purpose !== 'sent') return;
+    let active = true;
+    setRecent(null); setSentError(''); setCoverage('');
+    // This fixed list query uses the local index without model inference.
+    chrome.runtime.sendMessage({ type: 'ASK_INBOX', query: 'my last 50 sent emails', owner: ownerEmail ? { email: ownerEmail } : undefined }, (result?: { items?: SentItem[]; coverageNote?: string; error?: string }) => {
+      if (!active) return;
+      if (chrome.runtime.lastError || !result || result.error) { setSentError(result?.error || 'Could not load sent mail. Try again.'); return; }
+      setRecent(result.items ?? []); setCoverage(result.coverageNote ?? '');
+    });
+    return () => { active = false; };
+  }, [purpose, ownerEmail, revision]);
 
   const load = useCallback(() => {
     chrome.runtime.sendMessage({ type: 'GET_TRACKED_EMAILS' }, (res?: { emails?: TrackedEmailSummary[] }) => {
-      setEmails(res?.emails || []);
+      if (chrome.runtime.lastError || !res?.emails) { setTrackingError('Could not load tracked mail. Try again.'); return; }
+      setTrackingError(''); setEmails(res.emails);
     });
   }, []);
 
@@ -62,8 +87,11 @@ export function WaitingView(props: {
   );
   const openedCount = sent.filter(isEngaged).length;
   const shown = sent.filter((email) => (filter === 'all' ? true : filter === 'opened' ? isEngaged(email) : !isEngaged(email)));
+  const visible = purpose === 'sent' ? shown.slice(0, visibleCount) : shown;
+  function chooseFilter(next: Filter) { setFilter(next); setVisibleCount(20); }
   const trackedThreads = useMemo(() => new Set(sent.map((email) => normalizeGmailId(email.gmailThreadId)).filter(Boolean)), [sent]);
   const others = threads.filter((thread) => !trackedThreads.has(normalizeGmailId(thread.threadId)));
+  const untracked = (recent ?? []).filter((item) => item.threadId && !trackedThreads.has(normalizeGmailId(item.threadId)));
 
   useEffect(() => {
     if (emails == null) return;
@@ -93,11 +121,11 @@ export function WaitingView(props: {
     if (email) loadTimeline(email);
   }, [expanded, sent, loadTimeline]);
 
-  if (emails == null) {
+  if (emails == null && !trackingError) {
     return <p className="gi-muted gi-orb-line px-4" role="status"><Orb size={20} />Checking tracked mail…</p>;
   }
 
-  if (!sent.length && !others.length) {
+  if (purpose !== 'sent' && !trackingError && !sent.length && !others.length) {
     return (
       <div className="gi-empty">
         <Pigeon size={138} />
@@ -109,16 +137,18 @@ export function WaitingView(props: {
 
   return (
     <div>
+      {trackingError ? <div className="px-4"><p className="gi-warn" role="alert">{trackingError}</p><button type="button" className="gi-text-btn" onClick={load}>Try again</button></div> : null}
+      {purpose === 'sent' ? <div className="pb-sent-tools"><button type="button" className="gi-text-btn" onClick={() => { load(); refresh((value) => value + 1); chrome.runtime.sendMessage({ type: 'TRACKING_POLL' }, () => void chrome.runtime.lastError); }}>Refresh</button><button type="button" className="gi-text-btn" onClick={() => void openSentSearch('', ownerEmail)}>All sent in Gmail ↗</button></div> : null}
       {sent.length ? (
         <>
           <div className="gi-filter" role="group" aria-label="Filter tracked mail">
-            <FilterButton active={filter === 'all'} onClick={() => setFilter('all')} label="All" count={sent.length} />
-            <FilterButton active={filter === 'opened'} onClick={() => setFilter('opened')} label="Opened" count={openedCount} />
-            <FilterButton active={filter === 'unopened'} onClick={() => setFilter('unopened')} label="Not opened" count={sent.length - openedCount} />
+            <FilterButton active={filter === 'all'} onClick={() => chooseFilter('all')} label="All" count={sent.length} />
+            <FilterButton active={filter === 'opened'} onClick={() => chooseFilter('opened')} label="Opened" count={openedCount} />
+            <FilterButton active={filter === 'unopened'} onClick={() => chooseFilter('unopened')} label="Not opened" count={sent.length - openedCount} />
           </div>
           {shown.length ? (
             <ul className="gi-list">
-              {shown.map((email) => (
+              {visible.map((email) => (
                 <TrackedRow
                   key={email.trackingId}
                   email={email}
@@ -132,10 +162,19 @@ export function WaitingView(props: {
           ) : (
             <p className="gi-muted px-4 py-6 text-center text-[12px]">{filter === 'opened' ? 'None opened yet.' : 'Every tracked email has been opened.'}</p>
           )}
+          {shown.length > visible.length ? <button type="button" className="gi-text-btn pb-sent-more" onClick={() => setVisibleCount((value) => value + 20)}>Show more tracked mail · {shown.length - visible.length} remaining</button> : null}
         </>
-      ) : (
+      ) : !trackingError ? (
         <p className="gi-muted px-4 pb-2 text-[12px] leading-relaxed">No tracked emails yet. Turn on tracking when you send and opens show up here.</p>
-      )}
+      ) : null}
+      {purpose === 'sent' ? <section className="pb-sent-untracked">
+        <h2 className="gi-section-label px-4 pb-1 pt-3">{sent.length ? 'Other sent mail' : 'Recent sent mail'}</h2>
+        {sentError ? <p className="gi-warn px-4" role="alert">{sentError}</p> : recent === null ? <p className="gi-muted px-4" role="status">Loading sent mail…</p> : untracked.length ? <ul className="gi-list">{untracked.map((item) => <li key={item.threadId}><button type="button" className="gi-mail" onClick={() => onOpenThread(item.threadId!, 'sent')}>
+          <div className="flex items-baseline justify-between gap-3"><span className="truncate text-[13px] font-semibold">{item.who}</span><span className="gi-time shrink-0">{item.timestamp ? relative(item.timestamp) : ''}</span></div>
+          <div className="mt-0.5 truncate text-[13px]">{item.subject || '(no subject)'}</div><span className="gi-muted text-[11px]">Not tracked</span>
+        </button></li>)}</ul> : <p className="gi-muted px-4 text-[12px]">{sent.length ? 'No other sent mail in the local index.' : 'No sent mail indexed yet. Browse Sent in Gmail to add it here.'}</p>}
+        {coverage ? <p className="gi-muted px-4 pb-4 text-[11px]">{coverage}</p> : null}
+      </section> : null}
       {others.length ? (
         <section className="mt-3">
           <h2 className="gi-section-label px-4 pb-1 pt-3">Also waiting on a reply</h2>
@@ -290,10 +329,11 @@ export function relative(value: string, long = false): string {
   return `${Math.round(hours / 24)}d${suffix}`;
 }
 
-async function openSentSearch(subject: string): Promise<void> {
-  const url = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(`in:sent "${subject}"`)}`;
+async function openSentSearch(subject: string, ownerEmail?: string): Promise<void> {
+  const hash = subject ? `search/${encodeURIComponent(`in:sent "${subject}"`)}` : 'sent';
+  let url = ownerEmail ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(ownerEmail)}#${hash}` : `https://mail.google.com/mail/u/0/#${hash}`;
   const gmail = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
   const tab = gmail.find((item) => item.active && !item.pinned) || gmail.find((item) => !item.pinned);
-  if (tab?.id) await chrome.tabs.update(tab.id, { url, active: true });
+  if (tab?.id) { if (!ownerEmail && tab.url) { const current = new URL(tab.url); current.hash = hash; url = current.href; } await chrome.tabs.update(tab.id, { url, active: true }); }
   else await chrome.tabs.create({ url });
 }

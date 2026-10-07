@@ -58,6 +58,8 @@ test('Workspace: launcher morph, focus, category geometry, brief and responsive 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(launcher).toBeFocused();
   for (const category of ['Waiting', 'FYI', 'Follow-ups', 'Respond']) {
+    if (category === 'Waiting') { await page.getByRole('button', { name: 'Waiting', exact: true }).click(); await expect(page.getByRole('button', { name: 'Waiting', exact: true })).toHaveAttribute('aria-pressed', 'true'); continue; }
+    await page.getByRole('button', { name: 'Mail', exact: true }).click();
     await page.getByLabel('Inbox category').selectOption(category === 'Follow-ups' ? 'FOLLOW_UPS' : category.toUpperCase());
     await page.waitForTimeout(450); // Normal-speed capture after authored choreography settles.
     await expect(page.getByLabel('Inbox category')).toHaveValue(category === 'Follow-ups' ? 'FOLLOW_UPS' : category.toUpperCase());
@@ -174,6 +176,7 @@ test('Workspace hides zero statistics and retains access to a large local index'
   await expect(page.getByText(/threads indexed|threads analyzed/)).toHaveCount(0);
   await seedDispatch(page, 347);
   await page.getByRole('button', { name: 'Waiting & follow-ups →' }).click();
+  await page.getByRole('button', { name: 'Mail', exact: true }).click();
   await page.getByRole('combobox', { name: 'Inbox category' }).selectOption('RESPOND');
   await expect(page.getByRole('button', { name: 'Read brief: Final review on the launch note' })).toBeVisible();
   await page.locator('[data-command-launcher]').click();

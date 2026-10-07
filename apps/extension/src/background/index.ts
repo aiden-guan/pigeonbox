@@ -1149,7 +1149,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ state: await updateWorkspace(patch) }); return;
     }
     if (message?.type === 'WORKSPACE_NAVIGATE' || message?.type === 'WORKSPACE_DISPLAY') {
-      const state = await updateWorkspace(message.type === 'WORKSPACE_DISPLAY' ? { display: message.display, open: message.open ?? true } : { mode: message.mode, splitCategory: message.splitCategory || (await readWorkspace()).splitCategory, cloudSection: message.cloudSection || 'overview' });
+      const current = await readWorkspace();
+      const state = await updateWorkspace(message.type === 'WORKSPACE_DISPLAY' ? { display: message.display, open: message.open ?? true } : { mode: message.mode, splitCategory: message.splitCategory || current.splitCategory, inboxSection: message.inboxSection || current.inboxSection, cloudSection: message.cloudSection || 'overview' });
       sendResponse({ state }); return;
     }
     if (message?.type === 'OPEN_WORKSPACE_COMMANDS') {

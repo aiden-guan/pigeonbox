@@ -13,6 +13,7 @@ const at = '2026-10-01T12:00:00.000Z';
 const dashboardFixture = '<!doctype html><title>PigeonBox</title><h1>PigeonBox dashboard</h1><script>const id = new URLSearchParams(location.search).get("ext"); chrome.runtime.sendMessage(id, { type: "HELLO" }, (reply) => { document.body.dataset.hello = reply?.ok === true ? "1" : "0"; });</script>';
 const capabilities = [
   'cloud_ai',
+  'cloud_tracking',
   'cloud_mail_sync',
   'cloud_auto_drafts',
   'cloud_automations',
@@ -182,6 +183,7 @@ export type FixtureApi = {
   syncMode: 'idle' | 'analyzing' | 'reauth';
   /** Serve Cloud preferences with Real-time Pidgy checks on or off. Unset: no preferences route, as before. */
   composeChecks?: boolean;
+  engagement?: boolean;
   calls: { route: string; body: Record<string, unknown> }[];
   baseUrl: string;
   tracker?: { senderLink?: { clickId: string; destination: string }; email: TrackedEmail; events: TrackingEvent[]; holdClaims: boolean; release: () => void };
@@ -336,7 +338,8 @@ export const test = base.extend<{ app: App }>({
       else if (def === 'taskCreate') { tasks.push({ id: String(body.id), title: String(body.title), threadId: body.threadId ? String(body.threadId) : null, accountId: body.threadId ? accountId : null, dueAt: null, status: 'open', createdAt: at }); data = { tasks }; }
       else if (def === 'taskUpdate') { tasks = tasks.map((task) => task.id === body.id ? { ...task, status: body.status as SavedTask['status'] } : task); data = { tasks }; }
       else if (def === 'approvals') data = { approvals: [], pending: 0 };
-      else if (def === 'followUps') data = { followUps: [], generatedAt: at };
+      else if (def === 'followUps') data = { followUps: api.engagement ? [{ subject: 'Waiting on pricing', who: 'Maya', followUp: { id: uuid(80), threadId: 'abc123', accountId, stage: 'waiting', expectedFrom: ['maya@fixture.test'], dueAt: at, reason: 'You asked for confirmation.', rule: 'manual', lastOutboundAt: at, lastInboundAt: null, engagement: null, draftId: null, snoozedUntil: null } }] : [] };
+      else if (def === 'threadSignals') data = { signals: [], events: [{ at, type: 'open', eventClass: 'RECIPIENT_LIKELY', confidence: 0.9, explanation: 'A recipient open was observed.' }], attributionNote: 'Opens are observations, not proof of reading.' };
       else if (def === 'auditList') data = { events: [], nextCursor: null };
       else if (def === 'automationRuns') data = { runs: [] };
       else if (def === 'briefings') data = { briefings: [briefing] };

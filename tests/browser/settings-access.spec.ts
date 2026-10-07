@@ -35,6 +35,7 @@ test('the floating Gmail workspace opens Settings from its gear without disturbi
   expect(box!.width).toBeGreaterThanOrEqual(24); expect(box!.height).toBeGreaterThanOrEqual(24);
 
   await frame.getByRole('button', { name: 'Waiting & follow-ups →' }).click();
+  await frame.getByRole('button', { name: 'Mail', exact: true }).click();
   await frame.getByRole('combobox', { name: 'Inbox category' }).selectOption('FYI');
   await frame.getByRole('button', { name: 'Ask', exact: true }).click();
   await frame.getByRole('textbox', { name: 'Ask about mail on this computer' }).fill('Unfinished question');

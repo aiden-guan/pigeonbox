@@ -5,13 +5,12 @@ test('MV3 worker boots; Local starts first and survives a failed Cloud', async (
   app.api.fail = true;
   const page = await app.page('sidepanel');
   expect(app.worker.url()).toContain('/background.js');
-  // Gmail is the inbox: the chrome has Home and Ask only; Inbox insights are a command.
-  await expect(page.getByRole('navigation', { name: 'Workspace' }).getByRole('button')).toHaveText(['Home', 'Ask']);
+  await expect(page.getByRole('navigation', { name: 'Workspace' }).getByRole('button')).toHaveText(['Home', 'Inbox', 'Ask']);
   await expect(page.getByRole('button', { name: 'Cloud', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await expect(page.getByText('Needs your reply', { exact: true })).toBeVisible();
   await page.locator('[data-command-launcher]').click();
-  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Inbox insights');
+  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Inbox');
   await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
   await expect(page.getByRole('heading', { name: 'Nothing needs you here.' })).toBeVisible();
 });

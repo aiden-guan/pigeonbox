@@ -19,6 +19,12 @@ describe('canonical workspace state and toolbar', () => {
     await showWorkspace(gmail, true); expect((await readWorkspace()).open).toBe(false);
     await showWorkspace(gmail, true); expect(await readWorkspace()).toMatchObject({ open: true, mode: 'ask', position: { right: 21, top: 77 }, size: { width: 410, height: 590 } });
   });
+  it('preserves the Inbox view through docking and migrates the old Waiting category', async () => {
+    expect(workspaceState(null, { mode: 'inbox', splitCategory: 'WAITING' }).inboxSection).toBe('waiting');
+    await updateWorkspace({ mode: 'inbox', inboxSection: 'sent' });
+    await updateWorkspace({ display: 'dock' });
+    expect(await readWorkspace()).toMatchObject({ mode: 'inbox', inboxSection: 'sent', display: 'dock' });
+  });
   it('focuses the appropriate existing Gmail account when invoked from another tab', async () => {
     await showWorkspace({ id: 1, windowId: 1, url: 'https://example.com' }, true);
     expect(chrome.tabs.update).toHaveBeenCalledWith(2, { active: true });
