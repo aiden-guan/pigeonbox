@@ -119,3 +119,24 @@ test('real-time Pidgy check: Tab applies the fix to just the time while presente
   await page.waitForTimeout(1_500);
   await expect(notice).toHaveCount(0);
 });
+
+test('ambient Brain underlines the exact self-context phrase and keeps the advisory closed until requested', async ({ app }) => {
+  app.api.composeChecks=true; app.api.composeAmbient=true;
+  await (await app.page('settings',true)).close();
+  const page=await app.context.newPage();await page.goto(`chrome-extension://${app.id}/brain-fixture.html`);
+  const body=page.locator('#brain-compose [aria-label="Message Body"]');
+  await body.click();await page.keyboard.type("i don't think i have any upcoming hackathons");
+  const notice=page.locator('[data-gi-ui="brain-notice"]');await expect(notice.locator('.pb-dot')).toBeVisible();
+  await expect(notice.getByRole('dialog',{name:'Pidgy'})).toBeHidden();
+  const selected=await page.evaluate(()=>{
+    const registry=(CSS as unknown as {highlights:Map<string,Iterable<Range>>}).highlights;
+    return Array.from(registry.get('pigeonbox-advisory') ?? []).map(range=>range.toString());
+  });
+  expect(selected).toEqual(['any upcoming hackathons']);
+  expect(checks(app.api.calls)).toHaveLength(1);
+  expect(checks(app.api.calls)[0]!.body).toMatchObject({claim:"i don't think i have any upcoming hackathons",hint:'existence'});
+  await notice.locator('.pb-dot').click();await expect(notice).toContainText('You have CalHacks Oct 23–25.');
+  await expect(notice.getByRole('button',{name:'View source'})).toBeVisible();
+  await expect(notice.getByRole('button',{name:/Fix/})).toHaveCount(0);
+  expect(await body.evaluate(node=>node.querySelectorAll('[data-gi-ui]').length)).toBe(0);
+});

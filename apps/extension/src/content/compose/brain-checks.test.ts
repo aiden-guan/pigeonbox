@@ -447,3 +447,38 @@ describe('real-time Pidgy checks in compose', () => {
       expect(sourceHref({ kind: 'web', title: 'w', url }, null)).toBeNull();
   });
 });
+
+describe('ambient context transport and phrase highlights', () => {
+  it('sends a newly edited self statement only after idle, then highlights a validated phrase', async () => {
+    const c=compose();
+    const claim="i don't think i have any upcoming hackathons";
+    const {deps, requests}=brain({ok:true,status:'notice',notice:{kind:'overlooked_context',severity:'info',message:'You have CalHacks Oct 23–25.',highlightText:'any upcoming hackathons',sources:[]}});
+    attachComposeBrainChecks(c.harness.view(),deps);
+    c.type(claim);
+    expect(requests).toHaveLength(0);
+    await settle();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({claim,hint:'existence'});
+    expect(c.notice()?.textContent).toContain('You have CalHacks Oct 23–25.');
+    expect(claimRange(c.body,claim,null,'any upcoming hackathons')?.toString()).toBe('any upcoming hackathons');
+    expect(claimRange(c.body,claim,null,'invented phrase')?.toString()).toBe(claim);
+    expect(claimRange(c.body,"i don't think i have any upcoming hackathons",'i do think i have any upcoming hackathons','any upcoming hackathons')?.toString()).toBe("don't");
+  });
+  it('invalidates answers immediately on input or recipient changes, even before the next idle check', async () => {
+    let resolve!: (reply: BrainCheckReply) => void;
+    const c=compose();
+    const {deps}=brain(()=>new Promise(r=>{resolve=r;}));
+    attachComposeBrainChecks(c.harness.view(),deps);
+    c.type("I'm free tomorrow at 3."); await settle();
+    c.emit('recipientsChanged');
+    resolve(busy); await vi.advanceTimersByTimeAsync(1);
+    expect(c.notice()).toBeNull();
+  });
+});
+
+it('highlights a literal phrase across Gmail inline formatting without changing the editor', () => {
+  const body=document.createElement('div');body.innerHTML="i don't think i have any upcoming <b>hackathons</b>";
+  const before=body.innerHTML;
+  expect(claimRange(body,"i don't think i have any upcoming hackathons",null,'any upcoming hackathons')?.toString()).toBe('any upcoming hackathons');
+  expect(body.innerHTML).toBe(before);
+});

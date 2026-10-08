@@ -14,11 +14,13 @@ export function CurrentThread({ context, onAsk }: { context: WorkspaceContext | 
   const [tracked, setTracked] = useState<TrackedEmailSummary | null>(null);
   const [error, setError] = useState('');
   const product = useProductState();
-  const contextRef = context;
+  const contextRef = useRef(context);
+  contextRef.current = context;
+  const contextKey = `${context?.tabId}:${context?.threadId}:${JSON.stringify(context?.owner)}`;
   const canSync = product.has('cloud_mail_sync');
   const cloudOrigin = product.state.cloudOrigins.join('|');
   useEffect(() => {
-    const context = contextRef;
+    const context = contextRef.current;
     let active = true;
     setIntel(undefined); setCloud(null); setTracked(null); setError('');
     if (!context) return;
@@ -31,7 +33,9 @@ export function CurrentThread({ context, onAsk }: { context: WorkspaceContext | 
     const change = (changes: Record<string, chrome.storage.StorageChange>) => { if (changes.intelPulse || changes.trackedEmails) update(); };
     chrome.storage.onChanged.addListener(change);
     return () => { active = false; chrome.storage.onChanged.removeListener(change); };
-  }, [contextRef, cloudOrigin, canSync]);
+  // Drafting/pending notifications are progress updates, not a new conversation.
+  // Clearing the reader on those updates collapses the scroller before it refills.
+  }, [contextKey, cloudOrigin, canSync]);
   if (!context) return null;
   const displayIntel: LocalThreadIntel | undefined = cloud?.summary && context.owner ? { ...intel, summary: { source: 'model', aiStatus: 'success', summary: cloud.summary } } : intel;
   const badge = tracked ? describeTrackingStatus(tracked) : null;

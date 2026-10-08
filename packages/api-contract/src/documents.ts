@@ -71,6 +71,10 @@ export const DocumentLinkStatsSchema = z.object({
    */
   precision: z.enum(['pages_observed', 'session_only', 'download_only', 'none']),
 });
+/** Authenticated owner lookup. Resolving a preview never records activity. */
+export const DocumentPreviewRequestSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{32}$/) }).strict();
+export const DocumentPreviewResponseSchema = z.object({ url: z.string().url().max(4000).nullable() });
+
 export const DocumentAnalyticsRequestSchema = z.object({ documentId: IdSchema });
 export const DocumentAnalyticsResponseSchema = z.object({
   document: DocumentSummarySchema,

@@ -62,3 +62,9 @@ describe('compose check contract', () => {
     expect(learning.preferences.memory).toEqual({ enabled: false });
   });
 });
+
+it('accepts broad routing hints while bounding semantic notice fields', () => {
+  expect(ComposeCheckRequestSchema.safeParse({claim:"i don't think i have any upcoming hackathons",subject:'Plans',recipientEmails:[],hint:'existence'}).success).toBe(true);
+  expect(ComposeCheckResponseSchema.safeParse({status:'notice',kind:'overlooked_context',severity:'info',message:'You have CalHacks Oct 23–25.',confidence:0.96,highlightText:'any upcoming hackathons',sources:[]}).success).toBe(true);
+  expect(ComposeCheckResponseSchema.safeParse({status:'notice',kind:'context',severity:'info',message:'A fact.',confidence:0.96,highlightText:'x'.repeat(161),sources:[]}).success).toBe(false);
+});

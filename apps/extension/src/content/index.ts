@@ -53,6 +53,8 @@ import {
 import { installSentStatus, type SentStatusController } from './tracking/sent-status';
 import { observeDomSelfViews } from './tracking/dom-self-view';
 import { installSenderTrackingGuard } from './tracking/sender-tracking-guard';
+import { installSenderDocumentGuard } from './tracking/sender-document-guard';
+import { cloudApiUrl } from '../config';
 import { ensureSurface } from './shell/surface';
 import { type LocalThreadIntel } from './thread/ThreadPanel';
 import { showBusyToast, showToast } from './shell/toasts';
@@ -238,6 +240,11 @@ async function boot(): Promise<void> {
     },
   });
   window.addEventListener('pagehide', senderTrackingGuard.destroy, { once: true });
+  const documentGuard = installSenderDocumentGuard({
+    getApiBase: () => cloudApiUrl(settings),
+    resolve: async (url) => (await send<{ destination?: string | null }>({ type: 'RESOLVE_SENDER_DOCUMENT_LINK', url }))?.destination ?? null,
+  });
+  window.addEventListener('pagehide', documentGuard.destroy, { once: true });
 
   sentStatus = installSentStatus({
     trackerBaseUrl: settings.trackerBaseUrl,

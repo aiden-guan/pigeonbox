@@ -70,3 +70,15 @@ export const MemorySubjectsResponseSchema = z.object({
   /** True while older facts are still being merged into pages. */
   organizing: z.boolean(),
 });
+
+/** Chat stays ephemeral. Only an explicitly requested change becomes a memory. */
+export const MemoryChatRequestSchema = z.object({
+  message: z.string().trim().min(1).max(2_000),
+  subject: MemorySubjectIdSchema.optional(),
+  history: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(2_000) })).max(8).default([]),
+});
+export const MemoryChatResponseSchema = z.object({
+  answer: z.string().min(1).max(2_000),
+  memories: z.array(PersonalMemorySchema).max(12),
+  changes: z.array(z.object({ kind: z.enum(['saved', 'updated', 'forgotten']), memoryId: z.string().uuid(), text: z.string().max(600) })).max(3),
+});

@@ -1,6 +1,35 @@
-import { test, expect } from './fixtures';
+import { test, expect, fixtureIntel } from './fixtures';
 
 const shortcut = process.platform === 'darwin' ? 'Meta+k' : 'Control+k';
+test('draft and progress updates preserve the scrolled conversation', async ({ app }) => {
+  const original = fixtureIntel.summary;
+  const originalDraft = fixtureIntel.draft;
+  fixtureIntel.summary = { oneLine: 'Maya asks for pricing.', keyPoints: Array.from({length:8}, (_,i) => `Detail ${i + 1}: ${'The proposal includes the requested context and delivery plan. '.repeat(4)}`) };
+  fixtureIntel.draft = { ...originalDraft!, status: 'failed' };
+  try {
+    await app.page('workspace', true);
+    const gmail = await app.gmail();
+    const frame = gmail.frameLocator('iframe[title="PigeonBox"]');
+    const scroller = frame.locator('.pb-home-content');
+    await expect(frame.getByText(/^Detail 8:/)).toBeVisible();
+    const draft = frame.getByRole('button', { name: 'Draft reply', exact: true });
+    await draft.scrollIntoViewIfNeeded();
+    const before = await scroller.evaluate((node) => node.scrollTop);
+    expect(before).toBeGreaterThan(100);
+    app.api.delay = 600;
+    await draft.click();
+    await expect(frame.getByText(/^Detail 8:/)).toBeVisible();
+    await expect.poll(() => scroller.evaluate((node) => node.scrollTop)).toBeGreaterThan(before - 4);
+    // A pending update of the same account/thread must also keep the reader.
+    await app.worker.evaluate(async () => {
+      const stored = await chrome.storage.session.get('workspaceContexts');
+      const contexts = Object.fromEntries(Object.entries(stored.workspaceContexts).map(([id, value]) => [id, value ? { ...value as object, pending: 'Reading…' } : value]));
+      await chrome.storage.session.set({ workspaceContexts: contexts });
+    });
+    await expect.poll(() => scroller.evaluate((node) => node.scrollTop)).toBeGreaterThan(before - 4);
+    await expect(frame.getByText(/^Detail 8:/)).toBeVisible();
+  } finally { fixtureIntel.summary = original; fixtureIntel.draft = originalDraft; }
+});
 test('floating workspace preserves bounds, geometry, navigation and keyboard control across Gmail routes', async ({ app }) => {
   const setup = await app.page('workspace'); const gmail = await app.gmail();
   const host = gmail.locator('[data-gi-ui="workspace"]'); const shell = host.locator('.gi-shell');

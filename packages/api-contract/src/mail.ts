@@ -27,6 +27,7 @@ export const CommitmentSchema = z.object({
   text: z.string().max(300),
   dueAt: IsoSchema.nullable(),
   status: z.enum(['open', 'done', 'cancelled']),
+  resolution: z.object({ at: IsoSchema, source: SourceRefSchema }).nullable().optional(),
   source: SourceRefSchema,
 });
 export type Commitment = z.infer<typeof CommitmentSchema>;

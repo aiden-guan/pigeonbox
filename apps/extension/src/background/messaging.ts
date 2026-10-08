@@ -44,6 +44,7 @@ const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   'GET_TRACKING_TIMELINE',
   // Owned link destination only; the tracker credential stays in the worker.
   'RESOLVE_SENDER_TRACKING_LINK',
+  'RESOLVE_SENDER_DOCUMENT_LINK',
   'SET_CATEGORY',
   'REMIND_THREAD',
   'FOCUS_SIDEPANEL',

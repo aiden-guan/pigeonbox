@@ -12,6 +12,7 @@
  * content script never receives tokens or other credentials.
  */
 import { ComposeCheckRequestSchema, type ComposeCheckNotice, type ComposeCheckRequest, type SourceRef } from '@pigeonbox/api-contract';
+import { validComposeHighlight } from '@pigeonbox/shared';
 import type { PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
 import type { CloudState } from '@pigeonbox/core';
 import { cloudThreadStateAvailable } from './thread-state';
@@ -20,7 +21,7 @@ import { cloudThreadStateAvailable } from './thread-state';
 export type ComposeCheckSource = Pick<SourceRef, 'kind' | 'title' | 'at' | 'gmailThreadId' | 'url'>;
 export type ComposeCheckReply =
   | { ok: true; status: 'none' | 'disabled' }
-  | { ok: true; status: 'notice'; notice: Pick<ComposeCheckNotice, 'kind' | 'severity' | 'message' | 'suggestedText'> & { sources: ComposeCheckSource[] } };
+  | { ok: true; status: 'notice'; notice: Pick<ComposeCheckNotice, 'kind' | 'severity' | 'message' | 'suggestedText' | 'highlightText'> & { sources: ComposeCheckSource[] } };
 
 type Deps = { state: CloudState; runMode: string; client: () => Promise<PigeonBoxCloudClient | null>; now?: () => number };
 
@@ -119,6 +120,7 @@ export async function handleComposeCheck(input: unknown, deps: Deps): Promise<Co
         severity: response.severity,
         message: response.message,
         ...(response.suggestedText ? { suggestedText: response.suggestedText } : {}),
+        ...(validComposeHighlight(request.claim, response.highlightText) ? { highlightText: response.highlightText } : {}),
         sources: response.sources.slice(0, 4).map(safeSource),
       },
     };

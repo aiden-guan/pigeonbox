@@ -86,7 +86,7 @@ export function showFloatingWorkspace(open: boolean, focus = false) {
   ensureWorkspace();
   if (open && focus) restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   persist({ open, display: 'float' });
-  if (focus) host?.shadowRoot?.querySelector<HTMLElement>(open ? 'iframe' : '.gi-pill')?.focus();
+  if (focus) host?.shadowRoot?.querySelector<HTMLElement>(open ? 'iframe' : '.gi-pill')?.focus({ preventScroll: true });
 }
 export function updateFloatingWorkspace(value: unknown) { state = workspaceState(value); render(); }
 export function ensureWorkspace() {

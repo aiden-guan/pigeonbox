@@ -3,7 +3,7 @@
  *
  * Quiet by design: typing only (re)starts an idle timer. After the user pauses,
  * the controller reads the message body once, finds the clause that changed,
- * and runs the cheap local gate (@pigeonbox/shared classifyComposeClaim). Most
+ * and runs the cheap local gate (@pigeonbox/shared detectComposeContext). Most
  * pauses end there with no message to the worker. A clause that passes is sent
  * to the extension worker (never to Cloud directly), which decides whether it
  * may leave the extension at all.
@@ -15,7 +15,7 @@
  * Tracking, the placeholder guard and sending are untouched: this module never
  * listens to presending or sending.
  */
-import { boundClaim, classifyComposeClaim, normalizeClaim, splitComposeClauses, stripQuotedHistory, type ComposeClaimKind } from '@pigeonbox/shared';
+import { boundClaim, detectComposeContext, normalizeClaim, splitComposeClauses, stripQuotedHistory, validComposeHighlight, type ComposeContextHint } from '@pigeonbox/shared';
 import type { SdkComposeView } from '../tracking/compose-tracking';
 import { renderNotice, type NoticeHandle, type NoticeSource } from './brain-notice';
 
@@ -36,11 +36,11 @@ export type BrainCheckRequest = {
   recipientEmails: string[];
   threadId?: string;
   mailbox?: string;
-  hint: ComposeClaimKind;
+  hint: ComposeContextHint;
 };
 export type BrainCheckReply =
   | { ok: true; status: 'none' | 'disabled' }
-  | { ok: true; status: 'notice'; notice: { kind: string; severity: 'info' | 'warning'; message: string; suggestedText?: string; sources: NoticeSource[] } };
+  | { ok: true; status: 'notice'; notice: { kind: string; severity: 'info' | 'warning'; message: string; suggestedText?: string; highlightText?: string; sources: NoticeSource[] } };
 
 export type ComposeBrainDeps = {
   /** Cheap and synchronous: false in Local mode, so nothing is even handed to the worker. */
@@ -53,7 +53,7 @@ export type ComposeBrainDeps = {
 };
 
 type View = SdkComposeView & { getBodyElement?: () => HTMLElement | null };
-type Candidate = { claim: string; norm: string; hint: ComposeClaimKind };
+type Candidate = { claim: string; norm: string; hint: ComposeContextHint };
 type ShownNotice = { norm: string; claim: string; generation: number; suggestion: string | null; handle: NoticeHandle };
 
 const controllers = new Map<string, { destroy: () => void }>();
@@ -200,13 +200,32 @@ export function claimDiff(claim: string, replacement: string): { start: number; 
 }
 
 /** A live Range over the words an advisory is about: what its fix would change, or else the whole clause. */
-export function claimRange(body: HTMLElement, claim: string, suggestion: string | null): Range | null {
-  const found = uniqueClaimLocation(body, claim);
-  if (!found) return null;
+export function claimRange(body: HTMLElement, claim: string, suggestion: string | null, highlightText?: string): Range | null {
+  const text = readComposeText(body, null).text;
+  const first = text.indexOf(claim);
+  if (first < 0 || text.indexOf(claim, first + 1) >= 0) return null;
+  const nodes = ownTextNodes(body);
+  const joined = nodes.map(node => (node.nodeValue ?? '').replace(/\u00a0/g, ' ')).join('');
+  const offset = joined.indexOf(claim);
+  if (offset < 0 || joined.indexOf(claim, offset + 1) >= 0) return null;
   const diff = suggestion ? claimDiff(claim, suggestion) : null;
+  const highlight = validComposeHighlight(claim, highlightText);
+  const start = diff?.start ?? (highlight ? claim.indexOf(highlight) : 0);
+  const end = diff?.end ?? (highlight ? start + highlight.length : claim.length);
+  const point = (position: number) => {
+    let cursor = 0;
+    for (const node of nodes) {
+      const length = node.nodeValue?.length ?? 0;
+      if (position <= cursor + length) return { node, offset: position - cursor };
+      cursor += length;
+    }
+    return null;
+  };
+  const from = point(offset + start), to = point(offset + end);
+  if (!from || !to) return null;
   const range = document.createRange();
-  range.setStart(found.node, found.index + (diff?.start ?? 0));
-  range.setEnd(found.node, found.index + (diff?.end ?? claim.length));
+  range.setStart(from.node, from.offset);
+  range.setEnd(to.node, to.offset);
   return range;
 }
 
@@ -282,14 +301,14 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   let pending: Candidate | null = null;
   let lastChecked: Candidate | null = null;
   let generation = 0;
-  let inflight: { key: string; generation: number } | null = null;
+  const inflight = new Map<string, number>();
   let cooldownUntil = 0;
   let pausedUntil = 0;
   let notice: ShownNotice | null = null;
   const cache = new Map<string, { reply: BrainCheckReply; at: number; candidate: Candidate }>();
   const dismissed = new Set<string>();
 
-  const onInput = () => schedule();
+  const onInput = () => { generation += 1; schedule(); };
   const bind = () => {
     const next = view.getBodyElement?.() ?? null;
     if (next === body && next?.isConnected) return;
@@ -311,6 +330,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
 
   function schedule(details = false) {
     if (destroyed) return;
+    if (details) { generation += 1; hideNotice(); }
     detailsChanged ||= details;
     window.clearTimeout(idleTimer);
     idleTimer = window.setTimeout(evaluate, BRAIN_IDLE_MS);
@@ -338,7 +358,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     // Nearest the caret first: that is what the user just wrote.
     const ordered = caret === null ? [...fresh].reverse() : [...fresh].sort((a, b) => distance(a, caret) - distance(b, caret));
     for (const clause of ordered) {
-      const hint = classifyComposeClaim(clause.text);
+      const hint = detectComposeContext(clause.text);
       if (!hint) continue;
       candidate = { claim: boundClaim(clause.text), norm: clause.norm, hint };
       break;
@@ -350,7 +370,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
       return;
     }
     pending = candidate;
-    dispatch();
+    dispatch(true);
   }
 
   function request(candidate: Candidate): BrainCheckRequest {
@@ -372,7 +392,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     return JSON.stringify([normalizeClaim(check.claim), subject, [...check.recipientEmails].sort(), check.threadId ?? '', check.mailbox ?? '']);
   }
 
-  function dispatch() {
+  function dispatch(alreadyPresent = false) {
     window.clearTimeout(retryTimer);
     retryTimer = undefined;
     const candidate = pending;
@@ -383,7 +403,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
       return;
     }
     // Held back by the cooldown: only send it if the words are still in the message.
-    if (!body || !locateClauses(readComposeText(body, null).text).some((clause) => clause.norm === candidate.norm)) {
+    if (!body || (!alreadyPresent && !locateClauses(readComposeText(body, null).text).some((clause) => clause.norm === candidate.norm))) {
       pending = null;
       return;
     }
@@ -396,7 +416,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
       apply(cached.reply, candidate, generation);
       return;
     }
-    if (inflight?.key === key) {
+    if (inflight.has(key)) {
       pending = null;
       return;
     }
@@ -407,13 +427,13 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     pending = null;
     lastChecked = candidate;
     const mine = ++generation;
-    inflight = { key, generation: mine };
+    inflight.set(key, mine);
     cooldownUntil = now + BRAIN_COOLDOWN_MS;
     void deps
       .check(check)
       .catch(() => undefined)
       .then((reply) => {
-        if (inflight?.generation === mine) inflight = null;
+        if (inflight.get(key) === mine) inflight.delete(key);
         if (destroyed) return;
         if (!reply) {
           cooldownUntil = Math.max(cooldownUntil, clock() + BRAIN_FAILURE_BACKOFF_MS);
@@ -427,7 +447,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
         cache.set(key, { reply, at: clock(), candidate });
         if (cache.size > 50) cache.delete(cache.keys().next().value!);
         // A newer check was sent while this one was out: its answer wins.
-        if (mine !== generation) return;
+        if (mine !== generation || cacheKey(request(candidate)) !== key) return;
         apply(reply, candidate, mine);
       });
   }
@@ -459,7 +479,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     const suggestion = reply.notice.suggestedText && reply.notice.suggestedText !== candidate.claim && uniqueClaimLocation(body, candidate.claim) ? reply.notice.suggestedText : null;
     const handle = renderNotice(
       body,
-      claimRange(body, candidate.claim, suggestion),
+      claimRange(body, candidate.claim, suggestion, reply.notice.highlightText),
       { severity: reply.notice.severity, message: reply.notice.message, suggestion, source },
       {
         onSource: () => source && (deps.openSource ?? defaultOpenSource)(source, mailbox),
@@ -497,6 +517,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     observer?.disconnect();
     hideNotice(false);
     cache.clear();
+    inflight.clear();
     dismissed.clear();
     seen.clear();
     pending = null;

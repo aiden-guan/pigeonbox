@@ -512,7 +512,7 @@ export class InboxSdkAdapter implements GmailAdapter {
       const body = view.getBodyElement?.() ?? (targetHandle?.element && targetHandle.element.isContentEditable ? targetHandle.element : null);
       if (body && typeof view.insertHTMLIntoBodyAtCursor === 'function') {
         try {
-          body.focus();
+          body.focus({ preventScroll: true });
           const selection = window.getSelection();
           const range = document.createRange();
           range.selectNodeContents(body);

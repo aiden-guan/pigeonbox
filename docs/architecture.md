@@ -207,3 +207,14 @@ These predate the PigeonBox name and are kept because renaming them would break 
 | `ask_inbox` | capability in `packages/api-contract` | Wire value Cloud grants; the feature is called Ask Pigeon. |
 | `ASK_INBOX`, `CLOUD_THREAD_INTEL`, `CLOUD_INTEL_STATE`, `GET_THREAD_INTEL*`, `THREAD_INTELLIGENCE_UPDATED` | extension runtime messages | Message protocol names; `ThreadIntel` is the contract's thread-state DTO. |
 | `threadsIntel`, `ThreadIntel*` schemas | `packages/api-contract` | Cloud API route and DTO names. |
+
+
+## Ambient compose Brain
+
+`shared/compose-context.ts` is a pure, synchronous routing detector. It preserves `classifyComposeClaim` for deterministic claims and adds checkable personal existence, status, uncertainty, prior-reference and relationship statements without requiring numbers or dates. Pure questions, opinions, current preferences, quoted history, URLs and boilerplate stay local. The server re-derives the hint.
+
+The compose controller keeps the 900 ms idle delay, 2.8 s cooldown and five-minute in-memory cache keyed by clause, recipients, subject, thread and mailbox. Input handling only restarts the timer and increments a generation. The idle pass reads the body and chooses a fresh clause near the caret; per-key in-flight requests are deduplicated. Input and metadata changes invalidate old generations immediately. Quotes/signatures/reopened draft text remain excluded. No sending hooks change.
+
+Cloud reuses `getRelevantContext`: structured checks first, then bounded exact context and optional existing semantic retrieval. Individual owner/person/topic facts retain provenance; weak/self-only matches do not warrant notices. The Cloud implementation bounds evidence to eight items and 1,400 conservative wire tokens, then permits one Luna judgment with reasoning none, Standard tier, 200 output tokens, no repair/fallback, and source revalidation. Opt-in, capability, request/AI rates and budgets remain enforced.
+
+Semantic messages must copy complete selected evidence assertions or server-rendered event messages, preventing factual invention from passing on a valid citation alone. Suggestions replace one supported objective value. Underlines prioritize correction diffs, then a validated unique literal highlight (at most 160 characters), then the full clause. CSS Highlight ranges can span inline formatting; the editor DOM is unchanged. Sources remain restricted to Gmail and Google Calendar. Local mode remains independent.

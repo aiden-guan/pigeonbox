@@ -1,6 +1,6 @@
 import { TasksSchema, TaskCreateSchema, TaskUpdateSchema } from './tasks.js';
 import { ComposeCheckRequestSchema, ComposeCheckResponseSchema } from './compose.js';
-import { MemoryListRequestSchema, MemoryListResponseSchema, MemoryIdRequestSchema, MemoryResponseSchema, MemoryUpdateRequestSchema, MemoryPurgeRequestSchema, MemoryPurgeResponseSchema, MemorySubjectsRequestSchema, MemorySubjectsResponseSchema } from './memory.js';
+import { MemoryChatRequestSchema, MemoryChatResponseSchema, MemoryListRequestSchema, MemoryListResponseSchema, MemoryIdRequestSchema, MemoryResponseSchema, MemoryUpdateRequestSchema, MemoryPurgeRequestSchema, MemoryPurgeResponseSchema, MemorySubjectsRequestSchema, MemorySubjectsResponseSchema } from './memory.js';
 import type { z } from 'zod';
 import {
   AccountDeleteRequestSchema,
@@ -95,6 +95,8 @@ import {
 import {
   DocumentAnalyticsRequestSchema,
   DocumentCreateRequestSchema,
+  DocumentPreviewRequestSchema,
+  DocumentPreviewResponseSchema,
   DocumentResponseSchema,
   DocumentAnalyticsResponseSchema,
   DocumentLinkCreateRequestSchema,
@@ -234,6 +236,7 @@ export const ROUTES = {
   memoryUpdate: { method: 'POST', path: '/v1/memory/update', auth: 'user', request: MemoryUpdateRequestSchema, response: MemoryResponseSchema },
   memoryPurge: { method: 'POST', path: '/v1/memory/purge', auth: 'user', request: MemoryPurgeRequestSchema, response: MemoryPurgeResponseSchema },
   memorySubjects: { method: 'POST', path: '/v1/memory/subjects', auth: 'user', request: MemorySubjectsRequestSchema, response: MemorySubjectsResponseSchema },
+  memoryChat: { method: 'POST', path: '/v1/memory/chat', auth: 'user', request: MemoryChatRequestSchema, response: MemoryChatResponseSchema, capability: 'cloud_ai' },
   // Real-time Pidgy checks: one bounded clause of an unsent draft, processed ephemerally. Opt-in (memory.realtimeComposeChecks).
   composeCheck: { method: 'POST', path: '/v1/compose/check', auth: 'user', request: ComposeCheckRequestSchema, response: ComposeCheckResponseSchema, capability: 'cloud_mail_sync' },
 
@@ -297,6 +300,7 @@ export const ROUTES = {
   snippetRender: { method: 'POST', path: '/v1/snippets/render', auth: 'user', request: SnippetRenderRequestSchema, response: SnippetRenderResponseSchema, capability: 'cloud_ai' },
 
   // Tracked documents.
+  documentPreview: { method: 'POST', path: '/v1/documents/preview', auth: 'user', request: DocumentPreviewRequestSchema, response: DocumentPreviewResponseSchema },
   documentCreate: { method: 'POST', path: '/v1/documents/create', auth: 'user', request: DocumentCreateRequestSchema, response: DocumentResponseSchema, capability: 'cloud_documents' },
   documents: { method: 'GET', path: '/v1/documents', auth: 'user', response: DocumentsResponseSchema, capability: 'cloud_documents' },
   documentLinkCreate: { method: 'POST', path: '/v1/documents/links/create', auth: 'user', request: DocumentLinkCreateRequestSchema, response: DocumentLinkResponseSchema, capability: 'cloud_documents' },

@@ -83,6 +83,7 @@ import { effectiveSettings, resolveAIProvider } from './ai/provider-router';
 import { cachedCloudState, clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud/client';
 import { cloudThreadStateAvailable, forgetThreadIntel } from './cloud/thread-state';
 import { handleCloudRequest } from './cloud/handlers';
+import { resolveSenderDocumentLink } from './cloud/document-preview';
 import { serveAskStream } from './cloud/ask-stream';
 import { cloudSection, dashboardSection, panelSection } from '../ui/cloud-features';
 import { handleWebMessage, type WebBridgeDeps } from './web-bridge';
@@ -1593,6 +1594,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ emails: await readTrackedEmails() });
         return;
       }
+      if (message?.type === 'RESOLVE_SENDER_DOCUMENT_LINK') {
+        sendResponse({ destination: await resolveSenderDocumentLink(settings, String(message.url || ''), () => getCloudClient(settings)) });
+        return;
+      }
       if (message?.type === 'RESOLVE_SENDER_TRACKING_LINK') {
         const clickId = String(message.clickId || '');
         const origin = String(message.origin || '');
@@ -1602,7 +1607,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const target = allowed && /^clk_[\w-]{1,80}$/.test(clickId) && settings.trackingEnabled ? await trackerTarget() : null;
         if (!target) { sendResponse({}); return; }
         try {
-          sendResponse(await new TrackingClient(target.baseUrl, target.credential).getLinkDestination(clickId));
+          const link = await new TrackingClient(target.baseUrl, target.credential).getLinkDestination(clickId);
+          const preview = link.destination ? await resolveSenderDocumentLink(settings, link.destination, () => getCloudClient(settings)) : null;
+          sendResponse(preview ? { ...link, destination: preview } : link);
         } catch { sendResponse({}); }
         return;
       }

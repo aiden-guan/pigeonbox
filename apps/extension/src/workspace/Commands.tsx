@@ -114,7 +114,7 @@ export function CommandPalette(props: {
       if (document.activeElement === inputRef.current) closeButton?.focus(); else inputRef.current?.focus();
     };
     document.addEventListener('keydown', trap);
-    return () => { document.removeEventListener('keydown', trap); if (prior?.isConnected && prior !== document.body) prior.focus(); else document.querySelector<HTMLElement>('[data-command-launcher]')?.focus(); };
+    return () => { document.removeEventListener('keydown', trap); if (prior?.isConnected && prior !== document.body) prior.focus({ preventScroll: true }); else document.querySelector<HTMLElement>('[data-command-launcher]')?.focus({ preventScroll: true }); };
   }, [close]);
 
   useEffect(() => {

@@ -116,9 +116,10 @@ export const RelationshipBriefSchema = z.object({
   lastDiscussed: z.object({ text: z.string().max(400), source: SourceRefSchema }).nullable(),
   youOwe: z.array(CommitmentSchema).max(20),
   theyOwe: z.array(CommitmentSchema).max(20),
+  recentlyCompleted: z.array(CommitmentSchema).max(20).default([]),
   nextMeeting: z.object({ title: z.string().max(300), start: IsoSchema, source: SourceRefSchema }).nullable(),
   importantThreads: z
-    .array(z.object({ threadId: GmailIdSchema, subject: z.string().max(998), lastMessageAt: IsoSchema, state: ThreadStateSchema }))
+    .array(z.object({ threadId: GmailIdSchema, accountId: IdSchema.optional(), subject: z.string().max(998), lastMessageAt: IsoSchema, state: ThreadStateSchema }))
     .max(10),
   timeline: z.array(TimelineEntrySchema).max(40),
   notes: z.string().max(5_000),

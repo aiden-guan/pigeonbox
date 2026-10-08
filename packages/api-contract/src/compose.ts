@@ -1,4 +1,4 @@
-import { COMPOSE_CLAIM_KINDS, COMPOSE_CLAIM_MAX } from '@pigeonbox/shared';
+import { COMPOSE_CONTEXT_HINTS, COMPOSE_CLAIM_MAX } from '@pigeonbox/shared';
 import { z } from 'zod';
 import { GmailIdSchema, MailboxSelectorSchema, SourceRefSchema } from './common.js';
 
@@ -14,7 +14,7 @@ import { GmailIdSchema, MailboxSelectorSchema, SourceRefSchema } from './common.
  */
 
 /** What the extension's local detector thought the clause was. An optimization hint only; the server re-derives it. */
-export const ComposeCheckHintSchema = z.enum(COMPOSE_CLAIM_KINDS);
+export const ComposeCheckHintSchema = z.enum(COMPOSE_CONTEXT_HINTS);
 export type ComposeCheckHint = z.infer<typeof ComposeCheckHintSchema>;
 
 /** Longest stretch of unsent draft text one check may carry. */
@@ -29,7 +29,7 @@ export const ComposeCheckRequestSchema = MailboxSelectorSchema.extend({
 });
 export type ComposeCheckRequest = z.infer<typeof ComposeCheckRequestSchema>;
 
-export const ComposeCheckKindSchema = z.enum(['calendar_conflict', 'commitment_conflict', 'fact_conflict', 'context']);
+export const ComposeCheckKindSchema = z.enum(['calendar_conflict', 'commitment_conflict', 'fact_conflict', 'context', 'overlooked_context', 'helpful_context']);
 export type ComposeCheckKind = z.infer<typeof ComposeCheckKindSchema>;
 
 export const ComposeCheckNoticeSchema = z.object({
@@ -41,6 +41,8 @@ export const ComposeCheckNoticeSchema = z.object({
   confidence: z.number().min(0).max(1),
   /** A grounded replacement for the whole claim. Absent unless trusted context supplies it. */
   suggestedText: z.string().min(1).max(COMPOSE_CHECK_MAX_CLAIM).optional(),
+  /** Exact unique substring of the checked clause; validated by server and UI. */
+  highlightText: z.string().min(1).max(160).optional(),
   sources: z.array(SourceRefSchema).max(4),
 });
 export type ComposeCheckNotice = z.infer<typeof ComposeCheckNoticeSchema>;

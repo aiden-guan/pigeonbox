@@ -432,7 +432,7 @@ export class DomFallbackAdapter implements GmailAdapter {
       logSelectorMiss('insertComposeBody', SELECTORS.composeBody);
       return fail('insertComposeBody', 'compose body not found', true);
     }
-    body.focus();
+    body.focus({ preventScroll: true });
     if (typeof window !== 'undefined') {
       const selection = window.getSelection();
       if (selection) {

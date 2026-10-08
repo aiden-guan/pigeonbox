@@ -19,6 +19,8 @@ describe('sender trust', () => {
     expect(senderMaySend(gmail, 'REQUEST_SUMMARY')).toBe(true);
     expect(senderMaySend(gmail, 'CREATE_TRACKED_EMAIL')).toBe(true);
     expect(senderMaySend(gmail, 'RESOLVE_SENDER_TRACKING_LINK')).toBe(true);
+    expect(senderMaySend(gmail, 'RESOLVE_SENDER_DOCUMENT_LINK')).toBe(true);
+    expect(senderMaySend({ id: ID, origin: 'https://evil.example.com' }, 'RESOLVE_SENDER_DOCUMENT_LINK')).toBe(false);
     expect(senderMaySend({ id: ID, origin: 'https://evil.example.com' }, 'RESOLVE_SENDER_TRACKING_LINK')).toBe(false);
     expect(senderMaySend(gmail, 'inboxsdk__injectPageWorld')).toBe(true);
     // Cloud thread state is readable from Gmail; deciding, connecting and calling other routes are not.

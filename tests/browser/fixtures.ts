@@ -183,6 +183,8 @@ export type FixtureApi = {
   syncMode: 'idle' | 'analyzing' | 'reauth';
   /** Serve Cloud preferences with Real-time Pidgy checks on or off. Unset: no preferences route, as before. */
   composeChecks?: boolean;
+  composeAmbient?: boolean;
+  documentPreviews?: Record<string, string>;
   engagement?: boolean;
   calls: { route: string; body: Record<string, unknown> }[];
   baseUrl: string;
@@ -266,6 +268,7 @@ export const test = base.extend<{ app: App }>({
       const def = Object.entries(ROUTES).find(([, value]) => value.path === route && value.method === request.method)?.[0] as RouteName | undefined;
       let data: unknown;
       if (route === '/v1/capabilities') data = { plan: 'cloud', capabilities };
+      else if (def === 'documentPreview') data = { url: api.documentPreviews?.[String(body.token)] ?? null };
       else if (def === 'connections')
         data = { accounts: api.disconnected ? [] : [accountFor(api)], googleConfigured: true, maxAccounts: 5 };
       else if (def === 'cloudOverview') {
@@ -335,7 +338,9 @@ export const test = base.extend<{ app: App }>({
       } else if (def === 'preferences' && api.composeChecks !== undefined) data = { preferences: fixturePreferences(api.composeChecks) };
       else if (def === 'composeCheck')
         // A calendar-backed answer: busy tomorrow 2–4 PM, free otherwise.
-        data = /\bfree tomorrow at 3\b/i.test(String(body.claim))
+        data = api.composeAmbient && /any upcoming hackathons/i.test(String(body.claim))
+          ? { status: 'notice', kind: 'overlooked_context', severity: 'info', message: 'You have CalHacks Oct 23–25.', confidence: 0.96, highlightText: 'any upcoming hackathons', sources: [{ id: 'event:calhacks', kind: 'calendar_event', title: 'CalHacks', url: 'https://calendar.google.com/calendar/event?eid=calhacks' }] }
+          : /\bfree tomorrow at 3\b/i.test(String(body.claim))
           ? {
               status: 'notice',
               kind: 'calendar_conflict',
