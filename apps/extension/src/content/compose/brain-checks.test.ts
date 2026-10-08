@@ -87,6 +87,22 @@ afterEach(() => {
 });
 
 describe('real-time Pidgy checks in compose', () => {
+  it('checks the calendar denial from the screenshot with empty recipients and subject, excluding the signature', async () => {
+    const c = compose([]);
+    c.harness.subject = '';
+    const { deps, requests } = brain({
+      ok: true, status: 'notice', notice: {
+        kind: 'calendar_conflict', severity: 'warning', message: 'You have a meeting at noon today.',
+        sources: [{ kind: 'calendar_event', title: 'Meeting' }],
+      },
+    });
+    attachComposeBrainChecks(c.harness.view(), deps);
+    c.setText('<div>i dont&nbsp;have any meetings left today</div><div>--</div><div class="gmail_signature">Aiden Guan</div>');
+    await settle();
+    expect(requests).toEqual([expect.objectContaining({ claim: 'i dont have any meetings left today', hint: 'existence', recipientEmails: [], subject: '' })]);
+    expect(c.notice()?.textContent).toContain('You have a meeting at noon today.');
+    expect(JSON.stringify(requests)).not.toContain('Aiden Guan');
+  });
   it('waits for typing to settle, then checks once', async () => {
     const c = compose();
     const { deps, requests } = brain();

@@ -2,6 +2,28 @@ import { expect, test } from './fixtures';
 
 const checks = (calls: Array<{ route: string; body: Record<string, unknown> }>) => calls.filter((call) => call.route === '/v1/compose/check');
 
+test('the screenshot calendar denial gets an inline warning before a recipient or subject is added', async ({ app }) => {
+  app.api.composeChecks = true;
+  app.api.composeAmbient = true;
+  await (await app.page('settings', true)).close();
+  const page = await app.context.newPage();
+  await page.goto(`chrome-extension://${app.id}/brain-fixture.html?empty-compose`);
+  const body = page.locator('#brain-compose [aria-label="Message Body"]');
+  await body.click();
+  await page.keyboard.type('i dont have any meetings left today\n\n--\nAiden Guan');
+  const notice = page.locator('[data-gi-ui="brain-notice"]');
+  await expect(notice.locator('.pb-dot')).toBeVisible();
+  await expect(notice.getByRole('dialog', { name: 'Pidgy' })).toBeHidden();
+  expect(checks(app.api.calls)).toHaveLength(1);
+  expect(checks(app.api.calls)[0]!.body).toMatchObject({ claim: 'i dont have any meetings left today', hint: 'existence', recipientEmails: [], subject: '' });
+  expect(JSON.stringify(checks(app.api.calls))).not.toContain('Aiden Guan');
+  await notice.locator('.pb-dot').click();
+  await expect(notice).toContainText('You have Meeting with Alex from 12–12:30 PM today.');
+  await expect(notice.getByRole('button', { name: 'View source' })).toBeVisible();
+  await expect(notice.getByRole('button', { name: /Fix/ })).toHaveCount(0);
+  await expect(body).toContainText('i dont have any meetings left today');
+});
+
 test('real-time Pidgy check: prose stays local, a busy-calendar claim gets one quiet notice, closing cleans up', async ({ app }) => {
   app.api.composeChecks = true;
   await (await app.page('settings', true)).close();

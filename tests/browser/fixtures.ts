@@ -338,7 +338,9 @@ export const test = base.extend<{ app: App }>({
       } else if (def === 'preferences' && api.composeChecks !== undefined) data = { preferences: fixturePreferences(api.composeChecks) };
       else if (def === 'composeCheck')
         // A calendar-backed answer: busy tomorrow 2–4 PM, free otherwise.
-        data = api.composeAmbient && /any upcoming hackathons/i.test(String(body.claim))
+        data = api.composeAmbient && /any meetings left today/i.test(String(body.claim))
+          ? { status: 'notice', kind: 'calendar_conflict', severity: 'warning', message: 'You have Meeting with Alex from 12–12:30 PM today.', confidence: 0.98, highlightText: 'i dont have any meetings', sources: [{ id: 'event:meeting', kind: 'calendar_event', title: 'Meeting with Alex', url: 'https://calendar.google.com/calendar/event?eid=meeting' }] }
+          : api.composeAmbient && /any upcoming hackathons/i.test(String(body.claim))
           ? { status: 'notice', kind: 'overlooked_context', severity: 'info', message: 'You have CalHacks Oct 23–25.', confidence: 0.96, highlightText: 'any upcoming hackathons', sources: [{ id: 'event:calhacks', kind: 'calendar_event', title: 'CalHacks', url: 'https://calendar.google.com/calendar/event?eid=calhacks' }] }
           : /\bfree tomorrow at 3\b/i.test(String(body.claim))
           ? {

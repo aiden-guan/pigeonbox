@@ -7,8 +7,9 @@ import { activeBrainChecks, attachComposeBrainChecks, type BrainCheckReply } fro
 // Real compose code (tracking, placeholder guard, real-time Pidgy checks) on one controlled
 // InboxSDK compose. Checks go through the real extension worker and Cloud client to the fixture API.
 const compose = new GmailComposeSendHarness('new');
-compose.recipients = [{ emailAddress: 'alex@fixture.test' }];
-compose.subject = 'Coffee';
+const emptyCompose = new URL(location.href).searchParams.has('empty-compose');
+compose.recipients = emptyCompose ? [] : [{ emailAddress: 'alex@fixture.test' }];
+compose.subject = emptyCompose ? '' : 'Coffee';
 compose.setDraftId('abc777');
 compose.element.id = 'brain-compose';
 compose.element.style.cssText = 'box-sizing:border-box;width:560px;max-width:100%;padding:8px;background:white;border:1px solid #ddd;';

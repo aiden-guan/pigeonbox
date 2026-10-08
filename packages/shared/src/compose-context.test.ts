@@ -2,6 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { detectComposeContext, validComposeHighlight } from './compose-context.js';
 describe('ambient compose candidate gate', () => {
   it.each([
+    'i dont have any meetings left today', "I don't have any meetings left today.",
+    'I have no meetings today.', 'We have no calls tomorrow.',
+    "I don’t think I have any appointments on Friday.", 'I have nothing else scheduled tonight.',
+  ])('passes calendar statements to reasoning without a recipient or clock time: %s', text => expect(detectComposeContext(text)).not.toBeNull());
+  it.each([
+    'My afternoon is completely clear.', 'There is nothing else on my plate for today.',
+    'I have the whole day to myself.', 'My schedule is wide open.',
+    'I am done for the day.', 'Everything on my calendar has wrapped up.',
+    'That application is behind me now, I finished it yesterday.',
+    'I am back to waiting for their response.',
+    "The contract hasn't been signed.", 'The application is already complete.',
+  ])('keeps novel personal assertions eligible for semantic reasoning: %s', text => expect(detectComposeContext(text)).not.toBeNull());
+  it.each([
     "i don't think i have any upcoming hackathons", "i think i already submitted that",
     "i haven't heard from alex in a while", "i don't think we've discussed pricing yet",
     "i'm pretty sure the interview is remote", "i think the deadline is next week",
