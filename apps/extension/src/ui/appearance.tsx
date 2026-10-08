@@ -40,15 +40,17 @@ export function applyTheme(target: HTMLElement, value: Appearance) {
 }
 export function useAppearance() {
   const [appearance, setAppearance] = useState<Appearance>('light');
-  useEffect(() => watchAppearance((value) => { applyTheme(document.documentElement, value); setAppearance(value); }), []);
+  const [ready, setReady] = useState(false);
+  useEffect(() => watchAppearance((value) => { applyTheme(document.documentElement, value); setAppearance(value); setReady(true); }), []);
   const change = (value: Appearance) => {
     applyTheme(document.documentElement, value);
     setAppearance(value);
+    setReady(true);
     // Inside Gmail's floating shell, let the frame around us switch now rather than after the storage round trip.
     if (window.parent !== window) window.parent.postMessage({ type: 'PB_APPEARANCE', appearance: value }, '*');
     void chrome.storage.local.set({ [APPEARANCE_KEY]: value });
   };
-  return { appearance, change };
+  return { appearance, change, ready };
 }
 export function AppearanceButton() {
   const { appearance, change } = useAppearance();

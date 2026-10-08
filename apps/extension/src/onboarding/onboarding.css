@@ -26,6 +26,7 @@
 }
 
 .ob-root { position: fixed; inset: 0; overflow: hidden; background: var(--gm-bg); color: var(--pb-fg); font-family: var(--pb-sans); transition: background-color 1.1s ease; }
+.ob-root[data-theme-pending] { visibility: hidden; }
 .ob-root:not([data-phase="welcome"]) { background: var(--pb-surface); }
 .ob-stage { position: absolute; inset: 0; transition: opacity .6s ease; }
 

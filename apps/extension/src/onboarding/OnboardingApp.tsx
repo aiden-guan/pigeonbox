@@ -148,13 +148,16 @@ export function OnboardingApp() {
   }
 
   const enabled = FEATURES.filter((feature) => features[feature.id]);
+  const initialMode: Mode = theme.appearance === 'dark' ||
+    (theme.appearance === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    ? 'night' : 'light';
 
   return (
-    <div className="ob-root" data-phase={phase}>
+    <div className="ob-root" data-phase={phase} data-theme-pending={!theme.ready || undefined}>
       {phase !== 'theme' ? <InboxStage phase={stagePhase} origin={origin} focus={focus} finale={phase === 'setup' && step === 'done'} /> : null}
 
-      {phase === 'theme' || introLeaving ? (
-        <ThemeIntro initial={theme.appearance === 'dark' ? 'night' : 'light'} leaving={introLeaving}
+      {theme.ready && (phase === 'theme' || introLeaving) ? (
+        <ThemeIntro initial={initialMode} leaving={introLeaving}
           onPick={(mode, from) => revealTheme(mode, from)} onContinue={leaveIntro} />
       ) : null}
 
