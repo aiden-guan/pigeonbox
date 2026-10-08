@@ -23,11 +23,25 @@ test('unavailable Cloud keeps onboarding on the waitlist and account commands on
   const settingsWaitlist = await settings;
   await expect(settingsWaitlist).toHaveURL('https://usepigeonbox.com/waitlist?source=extension');
   await settingsWaitlist.close();
+  // Record the requested URL before the live page can remove its query string.
+  await app.worker.evaluate(() => {
+    const createTab = chrome.tabs.create;
+    chrome.tabs.create = (async (properties: chrome.tabs.CreateProperties) => {
+      chrome.tabs.create = createTab;
+      await chrome.storage.session.set({ fixtureOpenedDashboardUrl: properties.url });
+      return createTab(properties);
+    }) as typeof chrome.tabs.create;
+  });
   const command = app.context.waitForEvent('page');
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'CLOUD_OPEN', section: 'documents' }));
   const commandDashboard = await command;
-  await expect(commandDashboard).toHaveURL(`https://usepigeonbox.com/dashboard?ext=${app.id}#documents`);
-  await commandDashboard.reload(); // Apply fixture routing after chrome.tabs.create opens the page.
+  const dashboardUrl = `https://usepigeonbox.com/dashboard?ext=${app.id}#documents`;
+  expect(await app.worker.evaluate(async () => (await chrome.storage.session.get('fixtureOpenedDashboardUrl')).fixtureOpenedDashboardUrl)).toBe(dashboardUrl);
+  // The extension-opened request can load the live site before routing attaches;
+  // its scripts remove ?ext. Start a fresh document so routing catches HELLO.
+  await commandDashboard.goto('about:blank');
+  await commandDashboard.goto(dashboardUrl);
+  await expect(commandDashboard).toHaveURL(dashboardUrl);
   await expect(commandDashboard.locator('body[data-hello="1"]')).toHaveCount(1);
   const state = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'GET_PRODUCT_STATE' }));
   expect(state.state?.runMode ?? state.runMode).toBe('local');
