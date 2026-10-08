@@ -1,6 +1,6 @@
 # Chrome Web Store readiness
 
-Status checked in the owner dashboard on 2026-10-03: existing item `hmoiiokfmacghpddabpgaajolbeljhcp` has v0.4.0 **Published to testers**. That historical status does not confirm a later submission. The old v0.5.0 kit at `release/chrome-web-store-20261003/` is retained as a snapshot. The current package is the unified v0.5.3 ZIP described below; preparing it does not upload or submit it.
+Status checked in the owner dashboard on 2026-10-03: existing item `hmoiiokfmacghpddabpgaajolbeljhcp` has v0.4.0 **Published to testers**. That historical status does not confirm a later submission. The v0.5.0 submission kit at `release/chrome-web-store-20261003/` is a local ignored archive; its older screenshots and promo tiles were removed during this cleanup. Use the current listing images in `docs/store/`. The current package is the unified v0.5.3 ZIP described below; preparing it does not upload or submit it.
 
 Listing text, dashboard answers and images: [store/listing.md](store/listing.md). Privacy policy: [PRIVACY.md](../PRIVACY.md).
 
