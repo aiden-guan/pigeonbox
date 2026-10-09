@@ -36,7 +36,7 @@ import {
 } from '@pigeonbox/tracking';
 import { applyCategoryChip, rowsForThread } from './thread/chips';
 import { attachDocumentAction, insertDocumentLink } from './compose/documents';
-import { attachComposeBrainChecks, type BrainCheckReply, type ComposeBrainDeps } from './compose/brain-checks';
+import { attachComposeBrainChecks, type BrainCheckReply, type ComposeBrainDeps, sourceHref } from './compose/brain-checks';
 import { autofillPreparedReply, claimThread, composerIsEmpty, holdsUneditedPrepared, releaseThread, rememberPlaced, removePrepared, selectOwnText } from './compose/prepared-reply';
 import { VARIANT_CHOICE_KEY } from './compose/variant-choice';
 import type { ThreadIntel } from '@pigeonbox/api-contract';
@@ -368,6 +368,11 @@ function brainDeps(): ComposeBrainDeps {
     available: () => cloudAvailable,
     check: (request) => send<BrainCheckReply>({ type: 'CLOUD_COMPOSE_CHECK', check: request }, 9_000),
     mailbox: () => mailboxOwner()?.email ?? null,
+    openSource: (source, mailbox) => {
+      const href = sourceHref(source, mailbox);
+      if (href) window.open(href, '_blank', 'noopener,noreferrer');
+      else void send({ type: 'OPEN_BRAIN' });
+    },
     // Carries no draft text: only whether checks are on, so Pidgy shows only when it is watching.
   };
 }

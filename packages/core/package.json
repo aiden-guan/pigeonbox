@@ -1,6 +1,6 @@
 {
   "name": "@pigeonbox/core",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "private": true,
   "description": "Product-level PigeonBox concepts: run mode and capabilities.",
   "license": "MIT",

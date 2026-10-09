@@ -15,16 +15,17 @@
  * Tracking, the placeholder guard and sending are untouched: this module never
  * listens to presending or sending.
  */
-import { boundClaim, detectComposeContext, normalizeClaim, splitComposeClauses, stripQuotedHistory, validComposeHighlight, type ComposeContextHint } from '@pigeonbox/shared';
+import { boundClaim, detectComposeContext, detectComposeCompletion, normalizeClaim, splitComposeClauses, stripQuotedHistory, validComposeHighlight, type ComposeContextHint } from '@pigeonbox/shared';
 import type { SdkComposeView } from '../tracking/compose-tracking';
+import { renderCompletion, type CompletionHandle, type CompletionView } from './brain-completion';
 import { renderNotice, type NoticeHandle, type NoticeSource } from './brain-notice';
 
 /** Typing must settle this long before anything is read. */
-export const BRAIN_IDLE_MS = 900;
+export const BRAIN_IDLE_MS = 450;
 /** At most one remote check per compose in this window. */
 export const BRAIN_COOLDOWN_MS = 2_800;
 /** Answers (including "nothing to say") are reused this long for the same clause and context. */
-export const BRAIN_CACHE_MS = 5 * 60_000;
+export const BRAIN_CACHE_MS = 30_000;
 /** After the worker reports checks are off, this compose stops asking for a while. */
 export const BRAIN_DISABLED_BACKOFF_MS = 60_000;
 /** After a failed check, wait before trying again. */
@@ -36,11 +37,12 @@ export type BrainCheckRequest = {
   recipientEmails: string[];
   threadId?: string;
   mailbox?: string;
-  hint: ComposeContextHint;
+  hint?: ComposeContextHint;
+  includeCompletion?: boolean;
 };
 export type BrainCheckReply =
-  | { ok: true; status: 'none' | 'disabled' }
-  | { ok: true; status: 'notice'; notice: { kind: string; severity: 'info' | 'warning'; message: string; suggestedText?: string; highlightText?: string; sources: NoticeSource[] } };
+  | { ok: true; status: 'none' | 'disabled' | 'unavailable'; completion?: CompletionView }
+  | { ok: true; status: 'notice'; notice: { kind: string; severity: 'info' | 'warning'; message: string; suggestedText?: string; highlightText?: string; sources: NoticeSource[] }; completion?: CompletionView };
 
 export type ComposeBrainDeps = {
   /** Cheap and synchronous: false in Local mode, so nothing is even handed to the worker. */
@@ -53,7 +55,7 @@ export type ComposeBrainDeps = {
 };
 
 type View = SdkComposeView & { getBodyElement?: () => HTMLElement | null };
-type Candidate = { claim: string; norm: string; hint: ComposeContextHint };
+type Candidate = { claim: string; norm: string; hint?: ComposeContextHint; includeCompletion?: boolean };
 type ShownNotice = { norm: string; claim: string; generation: number; suggestion: string | null; handle: NoticeHandle };
 
 const controllers = new Map<string, { destroy: () => void }>();
@@ -89,14 +91,18 @@ export function readComposeText(body: HTMLElement, selection: Selection | null =
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const element = node as Element;
     if (element !== body && element.matches(SKIP)) return;
-    if (element === focus) caret = out.length;
+    if (element === focus && selection!.focusOffset === 0) caret = out.length;
     if (element.tagName === 'BR') {
       out += '\n';
       return;
     }
     const block = BLOCK.test(element.tagName);
     if (block && out && !out.endsWith('\n')) out += '\n';
-    for (const child of Array.from(element.childNodes)) walk(child);
+    for (const [index, child] of Array.from(element.childNodes).entries()) {
+      if (element === focus && selection!.focusOffset === index) caret = out.length;
+      walk(child);
+    }
+    if (element === focus && selection!.focusOffset === element.childNodes.length) caret = out.length;
     if (block && !out.endsWith('\n')) out += '\n';
   };
   walk(body);
@@ -301,6 +307,11 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   let pending: Candidate | null = null;
   let lastChecked: Candidate | null = null;
   let generation = 0;
+  let composing = false;
+  let queue: Candidate[] = [];
+  let completion: { candidate: Candidate; generation: number; key: string; value: CompletionView; handle: CompletionHandle } | null = null;
+  const dismissedCompletions = new Set<string>();
+  const failures = new Map<string, number>();
   const inflight = new Map<string, number>();
   let cooldownUntil = 0;
   let pausedUntil = 0;
@@ -308,15 +319,54 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   const cache = new Map<string, { reply: BrainCheckReply; at: number; candidate: Candidate }>();
   const dismissed = new Set<string>();
 
-  const onInput = () => { generation += 1; schedule(); };
+  const onInput = () => { generation += 1; hideCompletion(); queue = []; schedule(); };
+  const onCompositionStart = () => { composing = true; generation += 1; hideCompletion(); };
+  const onCompositionEnd = () => { composing = false; onInput(); };
+  const onSelection = () => { if (completion && !completionRange(completion.candidate)) hideCompletion(); };
+  const onBlur = () => hideCompletion();
+  const onKey = (event: KeyboardEvent) => {
+    if (event.isComposing || composing) return;
+    if (event.code === 'Space' && event.shiftKey && (event.ctrlKey || event.metaKey) && !event.altKey) {
+      event.preventDefault(); event.stopPropagation();
+      if (!body || !deps.available()) return;
+      const { text, caret } = readComposeText(body);
+      const clause = locateClauses(text).find(item => caret !== null && caret >= item.start && caret <= item.end + 1);
+      if (!clause) return;
+      const hint = detectComposeContext(clause.text);
+      const includeCompletion = detectComposeCompletion(clause.text) && Boolean(completionRange({ claim: clause.text, norm: clause.norm }));
+      if (!hint && !includeCompletion) return;
+      const candidate = { claim: boundClaim(clause.text), norm: clause.norm, ...(hint ? { hint } : {}), ...(includeCompletion ? { includeCompletion: true } : {}) };
+      cache.delete(cacheKey(request(candidate)));
+      dismissed.delete(candidate.norm); dismissedCompletions.delete(candidate.norm);
+      pausedUntil = 0;
+      generation += 1; hideCompletion(); pending = candidate; dispatch();
+      return;
+    }
+    if (!completion || !completion.handle.isVisible() || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.key === 'Escape') {
+      event.preventDefault(); event.stopPropagation();
+      dismissedCompletions.add(completion.candidate.norm); hideCompletion();
+    } else if (event.key === 'Tab' && completionRange(completion.candidate)) {
+      if (acceptCompletion()) { event.preventDefault(); event.stopPropagation(); }
+    }
+  };
   const bind = () => {
     const next = view.getBodyElement?.() ?? null;
     if (next === body && next?.isConnected) return;
     body?.removeEventListener('input', onInput);
+    body?.removeEventListener('keydown', onKey, true);
+    body?.removeEventListener('compositionstart', onCompositionStart);
+    body?.removeEventListener('compositionend', onCompositionEnd);
+    body?.removeEventListener('blur', onBlur);
     observer?.disconnect();
+    generation += 1; hideCompletion(); hideNotice(false); queue = [];
     body = next;
     if (!body) return;
     body.addEventListener('input', onInput, { passive: true });
+    body.addEventListener('keydown', onKey, true);
+    body.addEventListener('compositionstart', onCompositionStart);
+    body.addEventListener('compositionend', onCompositionEnd);
+    body.addEventListener('blur', onBlur);
     // Only to notice Gmail swapping the body element out; typing never triggers this.
     if (body.parentElement) {
       observer = new MutationObserver(() => {
@@ -330,7 +380,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
 
   function schedule(details = false) {
     if (destroyed) return;
-    if (details) { generation += 1; hideNotice(); }
+    if (details) { generation += 1; hideNotice(); hideCompletion(); }
     detailsChanged ||= details;
     window.clearTimeout(idleTimer);
     idleTimer = window.setTimeout(evaluate, BRAIN_IDLE_MS);
@@ -343,7 +393,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
 
   function evaluate() {
     idleTimer = undefined;
-    if (destroyed || !deps.available()) return;
+    if (destroyed || composing || !deps.available()) return;
     if (!body?.isConnected) bind();
     if (!body) return;
     const recheck = detailsChanged;
@@ -359,12 +409,15 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     const ordered = caret === null ? [...fresh].reverse() : [...fresh].sort((a, b) => distance(a, caret) - distance(b, caret));
     for (const clause of ordered) {
       const hint = detectComposeContext(clause.text);
-      if (!hint) continue;
-      candidate = { claim: boundClaim(clause.text), norm: clause.norm, hint };
-      break;
+      const includeCompletion = detectComposeCompletion(clause.text) && Boolean(completionRange({ claim: clause.text, norm: clause.norm }));
+      if (!hint && !includeCompletion) continue;
+      const next = { claim: boundClaim(clause.text), norm: clause.norm, ...(hint ? { hint } : {}), ...(includeCompletion ? { includeCompletion: true } : {}) };
+      if (!candidate) candidate = next;
+      else if (queue.length < 3) queue.push(next);
     }
     // Recipients or subject changed: the last checked clause may mean something else now.
     if (!candidate && recheck && lastChecked && present.has(lastChecked.norm)) candidate = lastChecked;
+    if (!candidate && lastChecked?.includeCompletion && !dismissedCompletions.has(lastChecked.norm) && completionRange(lastChecked)) candidate = lastChecked;
     if (!candidate) {
       if (!notice) resurface(present);
       return;
@@ -382,21 +435,22 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
       recipientEmails: recipientsOf(view),
       ...(typeof threadId === 'string' && /^#?[A-Za-z0-9:_-]{1,64}$/.test(threadId) ? { threadId } : {}),
       ...(mailbox && /^[^\s@<>]{1,200}@[^\s@<>]{1,200}$/.test(mailbox) ? { mailbox } : {}),
-      hint: candidate.hint,
+      ...(candidate.hint ? { hint: candidate.hint } : {}),
+      ...(candidate.includeCompletion ? { includeCompletion: true } : {}),
     };
   }
 
   function cacheKey(check: BrainCheckRequest): string {
     // Calendar answers do not depend on the subject; Brain answers can.
     const subject = check.hint === 'availability' || check.hint === 'scheduling' ? '' : normalizeClaim(check.subject);
-    return JSON.stringify([normalizeClaim(check.claim), subject, [...check.recipientEmails].sort(), check.threadId ?? '', check.mailbox ?? '']);
+    return JSON.stringify([check.includeCompletion ? check.claim : normalizeClaim(check.claim), subject, [...check.recipientEmails].sort(), check.threadId ?? '', check.mailbox ?? '', Boolean(check.includeCompletion)]);
   }
 
   function dispatch(alreadyPresent = false) {
     window.clearTimeout(retryTimer);
     retryTimer = undefined;
     const candidate = pending;
-    if (!candidate || destroyed) return;
+    if (!candidate || destroyed || composing || !deps.available()) return;
     const now = clock();
     if (now < pausedUntil || dismissed.has(candidate.norm)) {
       pending = null;
@@ -414,6 +468,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
       pending = null;
       lastChecked = candidate;
       apply(cached.reply, candidate, generation);
+      nextQueued();
       return;
     }
     if (inflight.has(key)) {
@@ -426,7 +481,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     }
     pending = null;
     lastChecked = candidate;
-    const mine = ++generation;
+    const mine = generation;
     inflight.set(key, mine);
     cooldownUntil = now + BRAIN_COOLDOWN_MS;
     void deps
@@ -435,21 +490,101 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
       .then((reply) => {
         if (inflight.get(key) === mine) inflight.delete(key);
         if (destroyed) return;
-        if (!reply) {
+        if (!reply || reply.status === 'unavailable') {
           cooldownUntil = Math.max(cooldownUntil, clock() + BRAIN_FAILURE_BACKOFF_MS);
+          const attempts = (failures.get(key) ?? 0) + 1; failures.set(key, attempts);
+          if (failures.size > 50) failures.delete(failures.keys().next().value!);
+          if (mine === generation && attempts < 3) { pending = candidate; retryTimer = window.setTimeout(dispatch, BRAIN_FAILURE_BACKOFF_MS); }
           return;
         }
         if (reply.status === 'disabled') {
           pausedUntil = clock() + BRAIN_DISABLED_BACKOFF_MS;
           hideNotice();
+          hideCompletion();
+          queue = [];
           return;
         }
-        cache.set(key, { reply, at: clock(), candidate });
+        failures.delete(key);
+        // An accepted/forgotten/corrected fact must not be revived by undo from
+        // a cached continuation. Every continuation gets fresh server validation.
+        if (!reply.completion) cache.set(key, { reply, at: clock(), candidate });
         if (cache.size > 50) cache.delete(cache.keys().next().value!);
         // A newer check was sent while this one was out: its answer wins.
-        if (mine !== generation || cacheKey(request(candidate)) !== key) return;
+        if (cacheKey(request(candidate)) !== key) return;
+        if (mine !== generation) {
+          // Keep a freshly validated continuation useful when the writer has
+          // already typed its beginning while the request was in flight.
+          if (reply.completion && !(reply.status === 'notice' && reply.notice.severity === 'warning')) {
+            if (completionRange(candidate)) apply(reply, candidate, generation);
+            else showRemainingCompletion(reply.completion, candidate);
+          }
+          return;
+        }
         apply(reply, candidate, mine);
+        nextQueued();
       });
+  }
+
+  function nextQueued() {
+    if (!pending && queue.length) { pending = queue.shift()!; dispatch(); }
+  }
+
+  /** A collapsed live caret immediately after the exact prefix, in user prose. */
+  function completionRange(candidate: Pick<Candidate, 'claim' | 'norm'>): Range | null {
+    if (!body || composing || !deps.available()) return null;
+    const selection = document.getSelection();
+    if (!selection?.isCollapsed || !selection.rangeCount || !body.contains(selection.focusNode)) return null;
+    if (selection.focusNode?.parentElement?.closest(SKIP)) return null;
+    const { text, caret } = readComposeText(body, selection);
+    if (caret === null) return null;
+    const clause = locateClauses(text).find(item => item.norm === candidate.norm && item.text === candidate.claim && caret >= item.end && /^ *$/.test(text.slice(item.end, caret)));
+    if (!clause || /[^\s]/.test(text.slice(caret).split('\n')[0] ?? '')) return null;
+    return selection.getRangeAt(0).cloneRange();
+  }
+
+  function showRemainingCompletion(value: CompletionView, candidate: Candidate) {
+    if (!body || !candidate.includeCompletion || dismissedCompletions.has(candidate.norm)) return;
+    const { text, caret } = readComposeText(body);
+    if (caret === null) return;
+    const current = locateClauses(text).find(clause => caret >= clause.end && /^ *$/.test(text.slice(clause.end, caret)) && clause.text.startsWith(candidate.claim));
+    if (!current || current.text.length <= candidate.claim.length || current.text.length > 700) return;
+    const typed = current.text.slice(candidate.claim.length);
+    // Exact appended text only. Edits, different facts, selections, recipient
+    // changes and finished continuations cannot revive an old answer.
+    if (!value.text.startsWith(typed)) return;
+    const remaining = value.text.slice(typed.length);
+    if (!remaining.trim()) return;
+    const next = { ...candidate, claim: current.text, norm: current.norm };
+    if (!completionRange(next)) return;
+    showCompletion({ ...value, text: remaining }, next, generation);
+  }
+
+  function hideCompletion() { completion?.handle.remove(); completion = null; }
+
+  function showCompletion(value: CompletionView, candidate: Candidate, answered: number) {
+    hideCompletion();
+    if (!body || !candidate.includeCompletion || dismissedCompletions.has(candidate.norm) || !completionRange(candidate)) return;
+    const text = value.text.slice(0, 240);
+    if (!text.trim() || /[<>\r\n]/.test(text) || !value.sources.length) return;
+    const mailbox = deps.mailbox?.() ?? null;
+    const handle = renderCompletion(body, { text, sources: value.sources }, {
+      range: () => completionRange(candidate), accept: () => { acceptCompletion(); },
+      source: source => (deps.openSource ?? defaultOpenSource)(source, mailbox),
+    });
+    completion = { candidate, generation: answered, key: cacheKey(request(candidate)), value: { ...value, text }, handle };
+  }
+
+  function acceptCompletion(): boolean {
+    const shown = completion;
+    if (!shown || !body || shown.generation !== generation || shown.key !== cacheKey(request(shown.candidate))) { hideCompletion(); return false; }
+    const range = completionRange(shown.candidate);
+    if (!range) { hideCompletion(); return false; }
+    const { text, caret } = readComposeText(body);
+    // The editor may already hold a space after the prefix.
+    const suffix = caret && /\s/.test(text[caret - 1] ?? '') ? shown.value.text.replace(/^ +/, '') : shown.value.text;
+    hideCompletion();
+    // Gmail must observe a normal, undoable insert; never fall back to a DOM rewrite.
+    try { return document.execCommand('insertText', false, suffix); } catch { return false; }
   }
 
   /** The newest notice's words were deleted: an earlier answered conflict that is still in the message comes back. */
@@ -468,11 +603,13 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     // The clause may have been deleted or edited while Cloud was answering.
     const present = new Set(locateClauses(readComposeText(body, null).text).map((clause) => clause.norm));
     if (!present.has(candidate.norm)) return;
+    if (reply.completion) showCompletion(reply.completion, candidate, answered);
     if (reply.status !== 'notice') {
       if (notice?.norm === candidate.norm) hideNotice();
       return;
     }
     if (dismissed.has(candidate.norm)) return;
+    if (reply.notice.severity === 'warning') hideCompletion();
     hideNotice(false);
     const mailbox = deps.mailbox?.() ?? null;
     const source = reply.notice.sources.find((item) => sourceHref(item, mailbox)) ?? null;
@@ -514,8 +651,17 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     window.clearTimeout(idleTimer);
     window.clearTimeout(retryTimer);
     body?.removeEventListener('input', onInput);
+    body?.removeEventListener('keydown', onKey, true);
+    body?.removeEventListener('compositionstart', onCompositionStart);
+    body?.removeEventListener('compositionend', onCompositionEnd);
+    body?.removeEventListener('blur', onBlur);
     observer?.disconnect();
     hideNotice(false);
+    hideCompletion();
+    document.removeEventListener('selectionchange', onSelection);
+    queue = [];
+    dismissedCompletions.clear();
+    failures.clear();
     cache.clear();
     inflight.clear();
     dismissed.clear();
@@ -527,6 +673,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   }
 
   bind();
+  document.addEventListener('selectionchange', onSelection);
   controllers.set(id, { destroy });
   view.on?.('recipientsChanged', () => schedule(true));
   view.on?.('subjectChanged', () => schedule(true));

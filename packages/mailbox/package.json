@@ -1,6 +1,6 @@
 {
   "name": "@pigeonbox/mailbox",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Local mailbox persistence in IndexedDB (Dexie): threads, messages, search documents and derived state.",
   "private": true,
   "type": "module",

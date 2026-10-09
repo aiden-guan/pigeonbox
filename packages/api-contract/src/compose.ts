@@ -26,11 +26,21 @@ export const ComposeCheckRequestSchema = MailboxSelectorSchema.extend({
   subject: z.string().max(998),
   claim: z.string().trim().min(3).max(COMPOSE_CHECK_MAX_CLAIM),
   hint: ComposeCheckHintSchema.optional(),
+  /** Ask for a continuation at the caret, independently gated by its own preference. */
+  includeCompletion: z.boolean().optional(),
 });
 export type ComposeCheckRequest = z.infer<typeof ComposeCheckRequestSchema>;
 
 export const ComposeCheckKindSchema = z.enum(['calendar_conflict', 'commitment_conflict', 'fact_conflict', 'context', 'overlooked_context', 'helpful_context']);
 export type ComposeCheckKind = z.infer<typeof ComposeCheckKindSchema>;
+
+export const ComposeCompletionSchema = z.object({
+  /** Only the new suffix, never a replacement for what the user wrote. */
+  text: z.string().min(1).max(240),
+  confidence: z.number().min(0).max(1),
+  sources: z.array(SourceRefSchema).min(1).max(4),
+});
+export type ComposeCompletion = z.infer<typeof ComposeCompletionSchema>;
 
 export const ComposeCheckNoticeSchema = z.object({
   status: z.literal('notice'),
@@ -44,6 +54,7 @@ export const ComposeCheckNoticeSchema = z.object({
   /** Exact unique substring of the checked clause; validated by server and UI. */
   highlightText: z.string().min(1).max(160).optional(),
   sources: z.array(SourceRefSchema).max(4),
+  completion: ComposeCompletionSchema.optional(),
 });
 export type ComposeCheckNotice = z.infer<typeof ComposeCheckNoticeSchema>;
 
@@ -52,7 +63,7 @@ export type ComposeCheckNotice = z.infer<typeof ComposeCheckNoticeSchema>;
  * `disabled`: Real-time Pidgy checks are off for this account; the claim was not examined.
  */
 export const ComposeCheckResponseSchema = z.discriminatedUnion('status', [
-  z.object({ status: z.literal('none') }),
+  z.object({ status: z.literal('none'), completion: ComposeCompletionSchema.optional() }),
   z.object({ status: z.literal('disabled') }),
   ComposeCheckNoticeSchema,
 ]);

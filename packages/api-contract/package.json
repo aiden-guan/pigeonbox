@@ -1,6 +1,6 @@
 {
   "name": "@pigeonbox/api-contract",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "private": true,
   "description": "Typed PigeonBox Cloud protocol: request, response and error schemas shared by the extension and the hosted API.",
   "license": "MIT",

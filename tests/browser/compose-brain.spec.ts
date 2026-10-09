@@ -162,3 +162,108 @@ test('ambient Brain underlines the exact self-context phrase and keeps the advis
   await expect(notice.getByRole('button',{name:/Fix/})).toHaveCount(0);
   expect(await body.evaluate(node=>node.querySelectorAll('[data-gi-ui]').length)).toBe(0);
 });
+
+
+test('smart autofill stays outside the editor, Tab inserts one undoable suffix, and Escape dismisses', async ({ app }) => {
+  app.api.composeChecks = false;
+  app.api.composeCompletion = ' where I made 35k in revenue.';
+  await (await app.page('settings', true)).close();
+  const page = await app.context.newPage(); await page.goto(`chrome-extension://${app.id}/brain-fixture.html?empty-compose`);
+  const body = page.locator('#brain-compose [aria-label="Message Body"]');
+  // Gmail's line box is taller than its text bounds. Positioning the whole
+  // overlay at a caret rect's top puts its glyphs below the writer's glyphs.
+  await body.evaluate(node => { (node as HTMLElement).style.font = '13px/20px Arial'; });
+  await body.click(); await page.keyboard.type('I used to have a paid community');
+  const ghost = page.locator('[data-gi-ui="brain-completion"]');
+  await expect(ghost.getByRole('button', {name:'Accept smart autofill'})).toBeVisible();
+  await expect(ghost).toContainText('where I made 35k in revenue.');
+  await expect(body).toHaveText('I used to have a paid community');
+  expect(await body.locator('[data-gi-ui]').count()).toBe(0);
+  expect(checks(app.api.calls)).toHaveLength(1);
+  expect(checks(app.api.calls)[0]!.body).toMatchObject({includeCompletion:true,claim:'I used to have a paid community'});
+  const geometry = await page.evaluate(() => {
+    const shadow = document.querySelector('[data-gi-ui="brain-completion"]')!.shadowRoot!;
+    const ghost = shadow.querySelector('.ghost')!.getBoundingClientRect();
+    const editorNode = document.querySelector('#brain-compose [aria-label="Message Body"]')!;
+    const editor = editorNode.getBoundingClientRect();
+    const typed = document.createRange(); typed.selectNodeContents(editorNode);
+    const suggested = document.createRange(); suggested.selectNodeContents(shadow.querySelector('.suffix')!);
+    const typedBounds = typed.getBoundingClientRect(), suggestedBounds = suggested.getBoundingClientRect();
+    return {within:ghost.right<=editor.right+1 && ghost.top>=editor.top, caretAtEnd:document.getSelection()?.isCollapsed,
+      baselineDelta:Math.abs(suggestedBounds.bottom-typedBounds.bottom)};
+  });
+  expect(geometry.within).toBe(true); expect(geometry.caretAtEnd).toBe(true);
+  expect(geometry.baselineDelta).toBeLessThanOrEqual(0.5);
+  await page.locator('#brain-compose').screenshot({path:'/private/tmp/pidgy-smart-compose.png'});
+  await page.keyboard.press('Tab');
+  await expect(body).toHaveText('I used to have a paid community where I made 35k in revenue.');
+  await expect(ghost).toHaveCount(0);
+  await page.keyboard.press(process.platform==='darwin'?'Meta+z':'Control+z');
+  await expect(body).toHaveText('I used to have a paid community');
+  await expect(ghost.getByRole('button',{name:'Accept smart autofill'})).toBeVisible();
+  await page.keyboard.press('Escape'); await expect(ghost).toHaveCount(0);
+  await page.keyboard.type(' '); await page.waitForTimeout(1200); await expect(ghost).toHaveCount(0);
+  await page.getByRole('button',{name:'Close compose'}).click();
+  await expect(page.locator('body')).toHaveAttribute('data-brain-checks','0');
+});
+
+test('a changed prefix invalidates delayed autofill and selected text keeps normal Tab behavior', async ({app}) => {
+  app.api.composeChecks = true; app.api.composeCompletion=' where I made 35k in revenue.'; app.api.composeDelayMs=700;
+  await (await app.page('settings',true)).close();
+  const page=await app.context.newPage(); await page.goto(`chrome-extension://${app.id}/brain-fixture.html`);
+  const body=page.locator('#brain-compose [aria-label="Message Body"]');
+  await body.click(); await page.keyboard.type('I used to have a paid community');
+  await page.waitForTimeout(1000); await page.keyboard.type(' but closed it.');
+  await page.waitForTimeout(1700);
+  await expect(page.locator('[data-gi-ui="brain-completion"]')).toHaveCount(0);
+  await page.keyboard.press(process.platform==='darwin'?'Meta+a':'Control+a');
+  const intercepted=await body.evaluate(node=>{const event=new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true});node.dispatchEvent(event);return event.defaultPrevented;});
+  expect(intercepted).toBe(false);
+});
+
+test('autofill shares the caret text baseline and font inside a formatted Gmail span', async ({app}) => {
+  app.api.composeChecks = false; app.api.composeCompletion = ' that generated $35k in revenue.';
+  await (await app.page('settings',true)).close();
+  const page = await app.context.newPage(); await page.goto(`chrome-extension://${app.id}/brain-fixture.html?empty-compose`);
+  const body = page.locator('#brain-compose [aria-label="Message Body"]');
+  await body.evaluate(node => {
+    const span = document.createElement('span'); span.textContent = 'I ran a paid';
+    span.style.font = 'italic 700 18px/30px Georgia'; span.style.letterSpacing = '0.3px';
+    node.replaceChildren(span); (node as HTMLElement).focus();
+    const range = document.createRange(); range.selectNodeContents(span); range.collapse(false);
+    const selection = document.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+  });
+  await page.keyboard.type(' community');
+  const ghost = page.locator('[data-gi-ui="brain-completion"]');
+  await expect(ghost.getByRole('button',{name:'Accept smart autofill'})).toBeVisible();
+  const geometry = await page.evaluate(() => {
+    const original = document.querySelector('#brain-compose [aria-label="Message Body"] span')!;
+    const suffix = document.querySelector('[data-gi-ui="brain-completion"]')!.shadowRoot!.querySelector('.suffix')!;
+    const typed = document.createRange(); typed.selectNodeContents(original);
+    const suggested = document.createRange(); suggested.selectNodeContents(suffix);
+    const before = getComputedStyle(original), after = getComputedStyle(suffix);
+    const typography = (style: CSSStyleDeclaration) => ({family:style.fontFamily,size:style.fontSize,weight:style.fontWeight,style:style.fontStyle,spacing:style.letterSpacing});
+    return { delta:Math.abs(typed.getBoundingClientRect().bottom-suggested.getBoundingClientRect().bottom),
+      original:typography(before), suggestion:typography(after) };
+  });
+  expect(geometry.delta).toBeLessThanOrEqual(0.5); expect(geometry.suggestion).toEqual(geometry.original);
+});
+
+
+test('delayed autofill keeps the untyped suffix when the writer continues its exact beginning', async ({ app }) => {
+  app.api.composeChecks = false; app.api.composeCompletion = ' where I made 35k in revenue.';
+  app.api.composeDelayMs = 1_000;
+  await (await app.page('settings', true)).close();
+  const page = await app.context.newPage(); await page.goto(`chrome-extension://${app.id}/brain-fixture.html?empty-compose`);
+  const body = page.locator('#brain-compose [aria-label="Message Body"]');
+  await body.click(); await page.keyboard.type('I used to have a paid community');
+  await expect.poll(() => checks(app.api.calls).length).toBe(1);
+  await page.keyboard.type(' where I made');
+  const ghost = page.locator('[data-gi-ui="brain-completion"]');
+  await expect(ghost.getByRole('button', { name: 'Accept smart autofill' })).toBeVisible();
+  await expect(ghost).toContainText('35k in revenue.');
+  await expect(body).toHaveText('I used to have a paid community where I made');
+  await page.keyboard.press('Tab');
+  await expect(body).toHaveText('I used to have a paid community where I made 35k in revenue.');
+  expect(checks(app.api.calls)).toHaveLength(1);
+});

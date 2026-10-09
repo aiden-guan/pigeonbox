@@ -498,3 +498,93 @@ it('highlights a literal phrase across Gmail inline formatting without changing 
   expect(claimRange(body,"i don't think i have any upcoming hackathons",null,'any upcoming hackathons')?.toString()).toBe('any upcoming hackathons');
   expect(body.innerHTML).toBe(before);
 });
+
+describe('smart autofill editor behavior and Pidgy coverage', () => {
+  function caret(body: HTMLElement) {
+    body.focus();
+    body.getBoundingClientRect = () => ({left:0,right:600,top:0,bottom:200,width:600,height:200,x:0,y:0,toJSON:()=>({})});
+    Range.prototype.getBoundingClientRect = () => ({left:20,right:20,top:20,bottom:40,width:0,height:20,x:20,y:20,toJSON:()=>({})});
+    const range = document.createRange(); range.selectNodeContents(body); range.collapse(false);
+    const selection = document.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+  }
+  const answer: BrainCheckReply = { ok: true, status: 'none', completion: { text: ' where I made 35k in revenue.', sources: [{ kind: 'message', title: 'Community revenue', gmailThreadId: 'abc123' }] } };
+  it('shows only an overlay at the live caret, accepts explicitly and never inserts on appearance', async () => {
+    const c = compose(); const {deps, requests} = brain(answer); attachComposeBrainChecks(c.harness.view(), deps);
+    c.type('I used to have a paid community'); caret(c.body); await settle();
+    const host = document.querySelector('[data-gi-ui="brain-completion"]');
+    expect(host).not.toBeNull(); expect(host?.shadowRoot?.textContent).toContain('35k in revenue');
+    expect(requests[0]).toMatchObject({ includeCompletion: true, claim: 'I used to have a paid community' });
+    expect(c.body.textContent).toBe('I used to have a paid community');
+    expect(c.body.querySelectorAll('[data-gi-ui]')).toHaveLength(0);
+    const insert = vi.fn(() => true); Object.defineProperty(document, 'execCommand', { configurable: true, value: insert });
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }); c.body.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true); expect(insert).toHaveBeenCalledWith('insertText', false, answer.completion!.text);
+    expect(document.querySelector('[data-gi-ui="brain-completion"]')).toBeNull();
+  });
+  it('starts after a short typing pause and shows the untyped part of an in-flight continuation', async () => {
+    const c = compose(); let resolve!: (reply: BrainCheckReply) => void;
+    const { deps, requests } = brain(() => new Promise(done => { resolve = done; }));
+    attachComposeBrainChecks(c.harness.view(), deps);
+    c.type('I used to have a paid community'); caret(c.body);
+    await vi.advanceTimersByTimeAsync(449); expect(requests).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1); expect(requests).toHaveLength(1);
+    c.type(' where I made'); caret(c.body);
+    resolve(answer); await vi.advanceTimersByTimeAsync(1);
+    const host = document.querySelector('[data-gi-ui="brain-completion"]');
+    expect(host?.shadowRoot?.textContent).toContain('35k in revenue');
+    expect(c.body.textContent).toBe('I used to have a paid community where I made');
+    const insert = vi.fn(() => true); Object.defineProperty(document, 'execCommand', { configurable: true, value: insert });
+    c.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    expect(insert).toHaveBeenCalledWith('insertText', false, ' 35k in revenue.');
+    expect(requests).toHaveLength(1);
+  });
+  it.each(['different words', 'recipient change', 'warning'])('drops an in-flight continuation after %s', async reason => {
+    const c = compose(); let resolve!: (reply: BrainCheckReply) => void;
+    const { deps } = brain(() => new Promise(done => { resolve = done; }));
+    attachComposeBrainChecks(c.harness.view(), deps);
+    c.type('I used to have a paid community'); caret(c.body); await settle();
+    c.type(reason === 'different words' ? ' where I lost' : ' where I made'); caret(c.body);
+    if (reason === 'recipient change') { c.harness.recipients = [{emailAddress:'someoneelse@example.test'}]; c.emit('recipientsChanged'); }
+    resolve(reason === 'warning' ? { ...busy, completion: answer.completion } : answer);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(document.querySelector('[data-gi-ui="brain-completion"]')).toBeNull();
+  });
+  it('drops completion immediately on editing, selection movement or text-input composition', async () => {
+    const c = compose(); const {deps} = brain(answer); attachComposeBrainChecks(c.harness.view(), deps);
+    c.type('I used to have a paid community'); caret(c.body); await settle();
+    c.body.dispatchEvent(new Event('compositionstart'));
+    expect(document.querySelector('[data-gi-ui="brain-completion"]')).toBeNull();
+    await settle(); c.body.dispatchEvent(new Event('compositionend')); await settle();
+    c.type(' with paid members');
+    expect(document.querySelector('[data-gi-ui="brain-completion"]')).toBeNull();
+  });
+  it('does not offer or accept a continuation away from the clause end', async () => {
+    const c = compose(); const {deps, requests} = brain(answer); attachComposeBrainChecks(c.harness.view(), deps);
+    c.type('I used to have a paid community');
+    const range = document.createRange(); range.setStart(c.body.firstChild!, 4); range.collapse(true);
+    document.getSelection()!.removeAllRanges(); document.getSelection()!.addRange(range); await settle();
+    expect(requests[0]).not.toHaveProperty('includeCompletion');
+    expect(document.querySelector('[data-gi-ui="brain-completion"]')).toBeNull();
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }); c.body.dispatchEvent(tab); expect(tab.defaultPrevented).toBe(false);
+  });
+  it('checks multiple freshly pasted factual clauses instead of marking the unexamined ones seen', async () => {
+    const c = compose(); const {deps, requests} = brain(none); attachComposeBrainChecks(c.harness.view(), deps);
+    c.type("I have no meetings today. I already sent the proposal. The deadline is Friday.");
+    await settle(); await vi.advanceTimersByTimeAsync(BRAIN_COOLDOWN_MS * 2 + 20);
+    expect(new Set(requests.map(item => item.claim)).size).toBe(3);
+  });
+  it('retries an unavailable check without caching it as no advice, and cleans up on close', async () => {
+    const c = compose(); let calls = 0;
+    const {deps, requests} = brain(async () => ++calls === 1 ? { ok: true, status: 'unavailable' } : busy);
+    attachComposeBrainChecks(c.harness.view(), deps); c.type("I'm free tomorrow at 3."); await settle();
+    await vi.advanceTimersByTimeAsync(15_010); expect(requests).toHaveLength(2); expect(c.notice()).not.toBeNull();
+    c.emit('destroy'); expect(document.querySelector('[data-gi-ui="brain-completion"]')).toBeNull();
+  });
+  it('allows an explicit current-phrase recheck of an existing draft', async () => {
+    const c = compose([], 'I used to have a paid community'); const {deps, requests} = brain(answer);
+    attachComposeBrainChecks(c.harness.view(), deps); caret(c.body);
+    c.body.dispatchEvent(new KeyboardEvent('keydown', {code:'Space',key:' ',ctrlKey:true,shiftKey:true,bubbles:true,cancelable:true}));
+    await vi.advanceTimersByTimeAsync(10); expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ includeCompletion: true });
+  });
+});

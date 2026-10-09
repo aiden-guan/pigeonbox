@@ -19,9 +19,10 @@ export function detectComposeContext(clause: string): ComposeContextHint | null 
   if (stripQuotedHistory(clause).trim() !== clause.trim() || /https?:|www\.|[<>]|\?\s*$/i.test(clause)) return null;
   const text = normalizeClaim(clause);
   if (/^(?:who|what|when|where|why|how|can you|could you|would you|do you|are you|let|please)\b/.test(text)) return null;
-  if (SUBJECTIVE.test(text) || HYPOTHETICAL.test(text) || /\b(?:at|on|by|to|the|is|in|and|or|of|for|with)\s*$/.test(text)) return null;
+  if (HYPOTHETICAL.test(text) || /\b(?:at|on|by|to|the|is|in|and|or|of|for|with)\s*$/.test(text)) return null;
   const specific = classifyComposeClaim(clause);
   if (specific) return specific;
+  if (SUBJECTIVE.test(text) && !/\b(?:sent|submitted|paid|signed|booked|confirmed|received|finished|approved|accepted|replied|discussed|agreed|decided)\b/.test(text)) return null;
   const objectiveState = /\b(?:is|are|was|were|has|have|had|isn't|aren't|wasn't|weren't|hasn't|haven't|hadn't)\b/.test(text);
   if (!PERSONAL.test(text) && !objectiveState) return null;
   const history = HISTORY.test(text);
@@ -45,4 +46,13 @@ export function validComposeHighlight(claim: string, highlight: string | null | 
   if (!highlight || highlight.length > 160 || !highlight.trim() || /[<>\r\n]|https?:|www\./i.test(highlight)) return undefined;
   const start = claim.indexOf(highlight);
   return start >= 0 && claim.indexOf(highlight, start + 1) < 0 ? highlight : undefined;
+}
+
+/** Completion eligibility is prose-based, not a catalog of phrases to fill. */
+export function detectComposeCompletion(clause: string): boolean {
+  const text = clause.trim();
+  return text.length >= 12 && text.length <= COMPOSE_CLAIM_MAX &&
+    text.split(/\s+/).length >= 3 && stripQuotedHistory(text).trim() === text &&
+    !/[.!?]$|https?:|www\.|[<>\r\n]/i.test(text) &&
+    !/^(?:hi|hello|dear|best|regards|thanks|thank you|unsubscribe)\b/i.test(text);
 }

@@ -237,6 +237,7 @@ export function renderNotice(
   dot.setAttribute('aria-label', `Pidgy: ${titleText}`);
   dot.setAttribute('aria-haspopup', 'dialog');
   dot.setAttribute('aria-expanded', 'false');
+  dot.title = `Pidgy: ${view.message}`;
   dot.setAttribute('aria-controls', popId);
   dot.hidden = true;
   dot.addEventListener('mousedown', (event) => event.preventDefault());

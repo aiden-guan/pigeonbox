@@ -68,3 +68,11 @@ it('accepts broad routing hints while bounding semantic notice fields', () => {
   expect(ComposeCheckResponseSchema.safeParse({status:'notice',kind:'overlooked_context',severity:'info',message:'You have CalHacks Oct 23–25.',confidence:0.96,highlightText:'any upcoming hackathons',sources:[]}).success).toBe(true);
   expect(ComposeCheckResponseSchema.safeParse({status:'notice',kind:'context',severity:'info',message:'A fact.',confidence:0.96,highlightText:'x'.repeat(161),sources:[]}).success).toBe(false);
 });
+
+it('validates optional continuations and preserves legacy none/notice replies', () => {
+  const completion = { text: ' with relevant context.', confidence: 0.96, sources: [{ id:'memory:one',kind:'note',title:'User context' }] };
+  expect(ComposeCheckResponseSchema.safeParse({ status:'none',completion }).success).toBe(true);
+  for (const patch of [{text:'x'.repeat(241)},{sources:[]},{confidence:1.1}]) expect(ComposeCheckResponseSchema.safeParse({status:'none',completion:{...completion,...patch}}).success).toBe(false);
+  expect(ComposeCheckResponseSchema.parse({status:'none'})).toEqual({status:'none'});
+  expect(PreferencesSchema.shape.memory.parse({ enabled:true,learnFromReceivedMail:true,learnFromSentMail:true,learnFromDraftEdits:true,realtimeComposeChecks: true }).smartComposeCompletion).toBe(false);
+});

@@ -27,6 +27,8 @@ describe('sender trust', () => {
     expect(senderMaySend(gmail, 'CLOUD_THREAD_INTEL')).toBe(true);
     // Real-time Pidgy checks: Gmail may ask, the worker decides; arbitrary Cloud calls stay page-only.
     expect(senderMaySend(gmail, 'CLOUD_COMPOSE_CHECK')).toBe(true);
+    expect(senderMaySend(gmail, 'OPEN_BRAIN')).toBe(true);
+    expect(senderMaySend({ id: ID, origin: 'https://evil.example.com' }, 'OPEN_BRAIN')).toBe(false);
     expect(senderMaySend({ id: 'other', origin: 'https://mail.google.com' }, 'CLOUD_COMPOSE_CHECK')).toBe(false);
     expect(senderMaySend({ id: ID, origin: 'https://evil.example.com' }, 'CLOUD_COMPOSE_CHECK')).toBe(false);
     for (const type of ['SAVE_SETTINGS', 'CLOUD_SIGN_IN', 'SET_RUN_MODE', 'CLEAR_INDEX', 'ENQUEUE_ACTION', 'CHATGPT_LOGIN', 'LOCAL_MODEL_DOWNLOAD', 'GET_PRODUCT_STATE', 'CLOUD_CALL', 'CLOUD_OPEN', 'CLOUD_INTEL_STATE']) {

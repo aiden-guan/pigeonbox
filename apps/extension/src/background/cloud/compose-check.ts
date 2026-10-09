@@ -11,7 +11,7 @@
  * typing or sending. Nothing here stores, logs or caches the clause; the
  * content script never receives tokens or other credentials.
  */
-import { ComposeCheckRequestSchema, type ComposeCheckNotice, type ComposeCheckRequest, type SourceRef } from '@pigeonbox/api-contract';
+import { ComposeCheckRequestSchema, type ComposeCheckNotice, type ComposeCompletion, type ComposeCheckRequest, type SourceRef } from '@pigeonbox/api-contract';
 import { validComposeHighlight } from '@pigeonbox/shared';
 import type { PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
 import type { CloudState } from '@pigeonbox/core';
@@ -19,9 +19,10 @@ import { cloudThreadStateAvailable } from './thread-state';
 
 /** A source the Gmail page may show: no IDs beyond Gmail's own, and only Google Calendar links. */
 export type ComposeCheckSource = Pick<SourceRef, 'kind' | 'title' | 'at' | 'gmailThreadId' | 'url'>;
+export type ComposeCheckCompletion = Pick<ComposeCompletion, 'text' | 'confidence'> & { sources: ComposeCheckSource[] };
 export type ComposeCheckReply =
-  | { ok: true; status: 'none' | 'disabled' }
-  | { ok: true; status: 'notice'; notice: Pick<ComposeCheckNotice, 'kind' | 'severity' | 'message' | 'suggestedText' | 'highlightText'> & { sources: ComposeCheckSource[] } };
+  | { ok: true; status: 'none' | 'disabled' | 'unavailable'; completion?: ComposeCheckCompletion }
+  | { ok: true; status: 'notice'; notice: Pick<ComposeCheckNotice, 'kind' | 'severity' | 'message' | 'suggestedText' | 'highlightText'> & { sources: ComposeCheckSource[] }; completion?: ComposeCheckCompletion };
 
 type Deps = { state: CloudState; runMode: string; client: () => Promise<PigeonBoxCloudClient | null>; now?: () => number };
 
@@ -31,7 +32,7 @@ export const PREFERENCE_TTL_MS = 30_000;
 export const MAX_CHECKS_PER_MINUTE = 20;
 const CHECK_TIMEOUT_MS = 8_000;
 
-let preference: { key: string; enabled: boolean; at: number } | null = null;
+let preference: { key: string; checks: boolean; completion: boolean; at: number } | null = null;
 let rate = { start: 0, count: 0 };
 
 /** Forget the cached preference, e.g. right after Settings changed it. */
@@ -59,6 +60,7 @@ export function parseComposeCheck(input: unknown): ComposeCheckRequest | null {
     ...(typeof raw.threadId === 'string' && threadIdPattern.test(raw.threadId) ? { threadId: raw.threadId } : {}),
     ...(typeof raw.mailbox === 'string' && /^[^\s@<>]{1,200}@[^\s@<>]{1,200}$/.test(raw.mailbox) ? { mailbox: raw.mailbox } : {}),
     ...(typeof raw.hint === 'string' ? { hint: raw.hint } : {}),
+    ...(typeof raw.includeCompletion === 'boolean' ? { includeCompletion: raw.includeCompletion } : {}),
   };
   const parsed = ComposeCheckRequestSchema.safeParse(candidate);
   return parsed.success ? parsed.data : null;
@@ -85,11 +87,11 @@ function safeSource(source: SourceRef): ComposeCheckSource {
   };
 }
 
-async function realtimeChecksEnabled(client: PigeonBoxCloudClient, key: string, now: number): Promise<boolean> {
-  if (preference && preference.key === key && now - preference.at < PREFERENCE_TTL_MS) return preference.enabled;
+async function composePreferences(client: PigeonBoxCloudClient, key: string, now: number) {
+  if (preference && preference.key === key && now - preference.at < PREFERENCE_TTL_MS) return preference;
   const { preferences } = await client.call('preferences', undefined, { timeoutMs: 5_000 });
-  preference = { key, enabled: preferences.memory.realtimeComposeChecks === true, at: now };
-  return preference.enabled;
+  preference = { key, checks: preferences.memory.realtimeComposeChecks === true, completion: preferences.memory.smartComposeCompletion === true, at: now };
+  return preference;
 }
 
 export async function handleComposeCheck(input: unknown, deps: Deps): Promise<ComposeCheckReply> {
@@ -104,17 +106,21 @@ export async function handleComposeCheck(input: unknown, deps: Deps): Promise<Co
     const client = await deps.client();
     if (!client) return DISABLED;
     // The preference is read (or recalled) before the clause is sent anywhere.
-    if (!(await realtimeChecksEnabled(client, `${deps.state.email ?? ''}`, now))) return DISABLED;
+    const prefs = await composePreferences(client, `${deps.state.email ?? ''}`, now);
+    if (request.includeCompletion !== undefined) request.includeCompletion = request.includeCompletion === true && prefs.completion;
+    if (!prefs.checks && !request.includeCompletion) return DISABLED;
     rate.count += 1;
     const response = await client.composeCheck(request, { timeoutMs: CHECK_TIMEOUT_MS });
     if (response.status === 'disabled') {
-      preference = { key: `${deps.state.email ?? ''}`, enabled: false, at: now };
+      preference = { key: `${deps.state.email ?? ''}`, checks: false, completion: false, at: now };
       return DISABLED;
     }
-    if (response.status !== 'notice') return NONE;
+    const completion = response.completion && request.includeCompletion ? { ...response.completion, sources: response.completion.sources.map(safeSource) } : undefined;
+    if (response.status !== 'notice') return completion ? { ...NONE, completion } : NONE;
     return {
       ok: true,
       status: 'notice',
+      ...(completion ? { completion } : {}),
       notice: {
         kind: response.kind,
         severity: response.severity,
@@ -125,7 +131,7 @@ export async function handleComposeCheck(input: unknown, deps: Deps): Promise<Co
       },
     };
   } catch {
-    // Expired session, timeout, budget, outage, invalid response: stay quiet.
-    return NONE;
+    // Transient failures must not poison the compose's negative cache.
+    return { ok: true, status: 'unavailable' };
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectComposeContext, validComposeHighlight } from './compose-context.js';
+import { detectComposeContext, detectComposeCompletion, validComposeHighlight } from './compose-context.js';
 describe('ambient compose candidate gate', () => {
   it.each([
     'i dont have any meetings left today', "I don't have any meetings left today.",
@@ -42,4 +42,12 @@ describe('ambient compose candidate gate', () => {
     for(const text of ['hackathons tomorrow','<b>hackathons</b>','https://example.test','x'.repeat(161)]) expect(validComposeHighlight(claim,text)).toBeUndefined();
     expect(validComposeHighlight('hackathons and hackathons','hackathons')).toBeUndefined();
   });
+});
+
+it('lets unfinished prose reach AI completion without hard-coded personal sentences', () => {
+  for (const text of ['I used to have a paid community', 'The application we discussed was', 'My background includes several years of', 'Our last conversation covered']) expect(detectComposeCompletion(text)).toBe(true);
+  for (const text of ['Hi Alex,', 'Thanks for your help', 'I completed my application.', '> I have an old community', 'https://example.test']) expect(detectComposeCompletion(text)).toBe(false);
+});
+it('preserves factual checks inside polite or subjective framing', () => {
+  for (const text of ["I'd love to meet tomorrow at 3pm.", 'I am excited that the contract was already signed.', 'I hope you saw that we agreed on Friday.']) expect(detectComposeContext(text)).not.toBeNull();
 });

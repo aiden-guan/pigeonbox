@@ -100,7 +100,7 @@ describe('Real-time Pidgy checks in the worker', () => {
   it('fails open: expired session, timeout or a disabled answer are quiet', async () => {
     const failing = cloud(true);
     failing.composeCheck.mockRejectedValueOnce(new CloudApiError({ code: 'signed_out', message: 'Sign in again.' }));
-    expect(await handleComposeCheck(check, { state: ready, runMode: 'cloud', client: failing.client })).toEqual({ ok: true, status: 'none' });
+    expect(await handleComposeCheck(check, { state: ready, runMode: 'cloud', client: failing.client })).toEqual({ ok: true, status: 'unavailable' });
     const off = cloud(true, { status: 'disabled' });
     expect(await handleComposeCheck(check, { state: ready, runMode: 'cloud', client: off.client })).toEqual({ ok: true, status: 'disabled' });
     // The server said off: the next check is not sent until the preference is read again.
@@ -124,4 +124,18 @@ describe('Real-time Pidgy checks in the worker', () => {
     expect(await handleCloudRequest({ type: 'CLOUD_CALL', route: 'composeCheck', body: check }, gmail, deps)).toMatchObject({ ok: false, code: 'forbidden' });
     expect(api.composeCheck).toHaveBeenCalledTimes(1);
   });
+});
+
+it('gates completion independently and strips internal source identifiers from the reply', async () => {
+  const answer = { status: 'none', completion: { text: ' where I made 35k in revenue.', confidence: 0.96, sources: [{ id: 'memory:private', kind: 'message', title: 'Community', gmailThreadId: 'abc123', accountId: 'private' }] } };
+  const api = cloud(false, answer);
+  api.call.mockResolvedValue({ preferences: { memory: { realtimeComposeChecks: false, smartComposeCompletion: true } } } as never);
+  const reply = await handleComposeCheck({ ...check, includeCompletion: true }, { state: ready, runMode: 'cloud', client: api.client });
+  expect(reply).toMatchObject({ status: 'none', completion: { text: answer.completion.text, sources: [{ kind: 'message', title: 'Community', gmailThreadId: 'abc123' }] } });
+  expect(JSON.stringify(reply)).not.toContain('private');
+  expect(api.composeCheck).toHaveBeenCalledTimes(1);
+  forgetComposeCheckPreference();
+  const off = cloud(false, answer);
+  expect(await handleComposeCheck({ ...check, includeCompletion: true }, { state: ready, runMode: 'cloud', client: off.client })).toEqual({ ok: true, status: 'disabled' });
+  expect(off.composeCheck).not.toHaveBeenCalled();
 });

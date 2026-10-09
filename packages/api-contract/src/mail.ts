@@ -314,7 +314,9 @@ export const PreferencesSchema = z.object({
      * Off unless the user turns it on.
      */
     realtimeComposeChecks: z.boolean().default(false),
-  }).default({ enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true, realtimeComposeChecks: false }),
+    /** Optional source-grounded inline continuations; live prose is never retained. */
+    smartComposeCompletion: z.boolean().default(false),
+  }).default({ enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true, realtimeComposeChecks: false, smartComposeCompletion: false }),
   fastRecall: z.object({
     /** Opt-in: keep encrypted excerpts of synced mail for deep search. Off by default. */
     enabled: z.boolean(),

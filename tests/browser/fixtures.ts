@@ -153,7 +153,7 @@ function fixtureAskAnswer(sources: unknown[], at: string) {
   };
 }
 
-function fixturePreferences(realtimeComposeChecks: boolean) {
+function fixturePreferences(realtimeComposeChecks: boolean, smartComposeCompletion = false) {
   return {
     timeZone: 'America/Los_Angeles',
     workdays: [1, 2, 3, 4, 5],
@@ -161,7 +161,7 @@ function fixturePreferences(realtimeComposeChecks: boolean) {
     followUp: { defaultBusinessDays: 3, remindIfOpenedNoReply: false, remindWhenRevived: true, prepareDraftMorningOf: true, morningAt: '08:30' },
     autoDrafts: { enabled: true, placeInGmail: false, kinds: ['reply'], learnFromEdits: true },
     calendar: { bufferMinutes: 10, avoidBackToBack: true, preferMornings: false, defaultDurationMinutes: 30, focusBlocks: [] },
-    memory: { enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true, realtimeComposeChecks },
+    memory: { enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true, realtimeComposeChecks, smartComposeCompletion },
     fastRecall: { enabled: false, retentionDays: 90 },
     briefings: { morning: { enabled: true, at: '08:00' }, endOfDay: { enabled: false, at: '17:30' }, meeting: { enabled: true, minutesBefore: 30, externalOnly: true } },
     notifications: { extension: true, web: true, followUpsDue: true, approvals: true, engagement: false },
@@ -184,6 +184,8 @@ export type FixtureApi = {
   /** Serve Cloud preferences with Real-time Pidgy checks on or off. Unset: no preferences route, as before. */
   composeChecks?: boolean;
   composeAmbient?: boolean;
+  composeCompletion?: string;
+  composeDelayMs?: number;
   documentPreviews?: Record<string, string>;
   engagement?: boolean;
   calls: { route: string; body: Record<string, unknown> }[];
@@ -335,10 +337,13 @@ export const test = base.extend<{ app: App }>({
         if (api.askDelay) await new Promise((resolve) => setTimeout(resolve, api.askDelay));
         await new Promise((resolve) => setTimeout(resolve, 300));
         data = fixtureAskAnswer(briefing.sources, at);
-      } else if (def === 'preferences' && api.composeChecks !== undefined) data = { preferences: fixturePreferences(api.composeChecks) };
-      else if (def === 'composeCheck')
+      } else if (def === 'preferences' && (api.composeChecks !== undefined || api.composeCompletion !== undefined)) data = { preferences: fixturePreferences(api.composeChecks === true, Boolean(api.composeCompletion)) };
+      else if (def === 'composeCheck') {
+        if (api.composeDelayMs) await new Promise(resolve => setTimeout(resolve, api.composeDelayMs));
         // A calendar-backed answer: busy tomorrow 2–4 PM, free otherwise.
-        data = api.composeAmbient && /any meetings left today/i.test(String(body.claim))
+        data = api.composeCompletion && body.includeCompletion
+          ? { status: 'none', completion: { text: api.composeCompletion, confidence: 0.96, sources: [{ id: 'memory:community', kind: 'message', title: 'Community revenue', gmailThreadId: 'abc123' }] } }
+          : api.composeAmbient && /any meetings left today/i.test(String(body.claim))
           ? { status: 'notice', kind: 'calendar_conflict', severity: 'warning', message: 'You have Meeting with Alex from 12–12:30 PM today.', confidence: 0.98, highlightText: 'i dont have any meetings', sources: [{ id: 'event:meeting', kind: 'calendar_event', title: 'Meeting with Alex', url: 'https://calendar.google.com/calendar/event?eid=meeting' }] }
           : api.composeAmbient && /any upcoming hackathons/i.test(String(body.claim))
           ? { status: 'notice', kind: 'overlooked_context', severity: 'info', message: 'You have CalHacks Oct 23–25.', confidence: 0.96, highlightText: 'any upcoming hackathons', sources: [{ id: 'event:calhacks', kind: 'calendar_event', title: 'CalHacks', url: 'https://calendar.google.com/calendar/event?eid=calhacks' }] }
@@ -353,6 +358,7 @@ export const test = base.extend<{ app: App }>({
               sources: [{ id: 'event:math52', kind: 'calendar_event', title: 'Math 52', url: 'https://calendar.google.com/calendar/event?eid=math52' }],
             }
           : { status: 'none' };
+      }
       else if (def === 'tasks') data = { tasks };
       else if (def === 'taskCreate') { tasks.push({ id: String(body.id), title: String(body.title), threadId: body.threadId ? String(body.threadId) : null, accountId: body.threadId ? accountId : null, dueAt: null, status: 'open', createdAt: at }); data = { tasks }; }
       else if (def === 'taskUpdate') { tasks = tasks.map((task) => task.id === body.id ? { ...task, status: body.status as SavedTask['status'] } : task); data = { tasks }; }

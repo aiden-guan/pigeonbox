@@ -128,6 +128,13 @@ export function MemorySettings() {
             checked={prefs.memory.realtimeComposeChecks}
             onChange={(realtimeComposeChecks) => void settings({ realtimeComposeChecks })}
           />
+          <Toggle
+            label="Smart autofill"
+            description="Suggests a short continuation from your Brain and conversation as you type. Tab accepts; Escape dismisses. Only the current phrase is processed, never saved."
+            checked={prefs.memory.smartComposeCompletion}
+            onChange={(smartComposeCompletion) => void settings({ smartComposeCompletion })}
+          />
+          <p className="gi-muted text-xs">Press Ctrl/⌘ + Shift + Space in a draft to ask Pidgy to check the current phrase again.</p>
           <p className="gi-muted text-xs">
             Fast Recall is {prefs.fastRecall.enabled ? 'on' : 'off'}. Its optional encrypted mail excerpts are managed separately in Privacy &amp; data.
           </p>

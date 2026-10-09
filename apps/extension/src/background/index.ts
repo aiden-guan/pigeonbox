@@ -2238,6 +2238,9 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
   switch (message?.type) {
     case 'GET_PRODUCT_STATE':
       return productState();
+    case 'OPEN_BRAIN':
+      await openDashboard('memory');
+      return { ok: true };
     case 'OPEN_DASHBOARD': {
       const setup: Record<string, string> = message.setup === 'cloud' ? { setup: 'cloud' } : {};
       await openDashboard(typeof message.section === 'string' ? message.section : 'overview', setup);
