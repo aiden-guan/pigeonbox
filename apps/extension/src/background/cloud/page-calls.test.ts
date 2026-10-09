@@ -17,6 +17,13 @@ describe('extension page Cloud calls', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
+  it('allows memory conversations from trusted extension pages', async () => {
+    const { client, call } = fakeClient(() => ({ answer: 'Your saved context.', memories: [], changes: [] }));
+    expect(PAGE_ROUTES.has('memoryChat')).toBe(true);
+    expect(await pageCall(client, 'memoryChat', { message: 'What do you remember?' })).toMatchObject({ ok: true });
+    expect(call).toHaveBeenCalledWith('memoryChat', { message: 'What do you remember?' });
+  });
+
   it('turns contract errors into plain reasons', async () => {
     const { client } = fakeClient(() => {
       throw new CloudApiError({ code: 'conflict', status: 409, message: 'Fill in [DATE NEEDED] before approving. Nothing was sent.' });

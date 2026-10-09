@@ -59,7 +59,7 @@ type AskDraft = {
 };
 
 type StoredPanelState = {
-  mode?: 'home' | 'inbox' | 'ask' | 'cloud';
+  mode?: 'home' | 'inbox' | 'ask' | 'memory' | 'cloud';
   splitCategory?: SplitCategory;
   askQuery?: string;
   askRequestId?: string;
@@ -88,6 +88,8 @@ const CATEGORIES: Array<[SplitCategory, string]> = [
 ];
 const ActivityView = lazy(() => import('../sidepanel/ActivityView').then((module) => ({ default: module.ActivityView })));
 
+const CloudMemory = lazy(() => import('../sidepanel/CloudMemory').then(module => ({ default: module.CloudMemory })));
+
 export function PigeonBoxWorkspace() {
   const [active, setActive] = useState<boolean | null>(null);
   useEffect(() => {
@@ -101,11 +103,13 @@ export function PigeonBoxWorkspace() {
 }
 function WorkspaceContent() {
   const [palette, setPalette] = useState(false);
-  const [mode, setMode] = useState<'home' | 'inbox' | 'ask' | 'cloud'>('home');
+  const [mode, setMode] = useState<'home' | 'inbox' | 'ask' | 'memory' | 'cloud'>('home');
   const product = useProductState();
   const theme = useAppearance();
   const cloudMode = product.state.runMode === 'cloud';
   const [cloudSection, setCloudSection] = useState('overview');
+  const [memoryVisited, setMemoryVisited] = useState(false);
+  useEffect(() => { if (mode === 'memory') setMemoryVisited(true); }, [mode]);
   const [, setApprovalCount] = useState(0);
   const [category, setCategory] = useState<SplitCategory>('RESPOND');
   const [inboxSection, setInboxSection] = useState<'mail' | 'sent' | 'waiting'>('mail');
@@ -220,7 +224,7 @@ function WorkspaceContent() {
     document.addEventListener('keydown', shortcut);
     return () => document.removeEventListener('keydown', shortcut);
   }, [cloudMode, palette]);
-  function navigate(next: 'home' | 'inbox' | 'ask' | 'cloud', section = 'overview') {
+  function navigate(next: 'home' | 'inbox' | 'ask' | 'memory' | 'cloud', section = 'overview') {
     const destination = next === 'cloud' ? 'home' : next;
     setMode(destination); setCloudSection(section);
     void chrome.runtime.sendMessage({ type: 'WORKSPACE_NAVIGATE', mode: destination, splitCategory: category, inboxSection, cloudSection: section });
@@ -234,6 +238,7 @@ function WorkspaceContent() {
       { id: 'draft-reply', label: 'Draft a reply', detail: context.subject, icon: 'edit' as const, run: () => chrome.runtime.sendMessage({ type: 'WORKSPACE_THREAD_ACTION', id: 'draft', threadId: context.threadId }) },
       ...(['remind', 'archive', 'mark_respond', 'mark_waiting', 'mark_fyi'] as const).map((id) => ({ id, label: ({ remind: 'Remind me', archive: 'Archive thread', mark_respond: 'Mark Respond', mark_waiting: 'Mark Waiting', mark_fyi: 'Mark FYI' })[id], detail: context.subject, icon: 'inbox' as const, run: () => chrome.runtime.sendMessage({ type: 'WORKSPACE_THREAD_ACTION', id, threadId: context.threadId }) })),
     ] : []),
+    ...(cloudMode && product.has('cloud_ai') ? [{ id: 'memory', label: 'Open memory', detail: 'Ask, remember, correct or forget personal context', icon: 'brain' as const, run: () => navigate('memory') }] : []),
     { id: 'tracking', label: 'Tracking activity', detail: 'Sent mail, opens and clicks', icon: 'tracking', run: () => chooseInbox('sent') },
     { id: 'settings', label: 'Settings', detail: 'Execution mode, privacy and preferences', icon: 'settings', run: () => openSettings('command_palette', cloudMode ? 'cloud' : 'local') },
     ...(['light', 'dark', 'system'] as const).filter((value) => value !== theme.appearance).map((value) => ({ id: `appearance-${value}`, label: value === 'system' ? 'Match system appearance' : `Switch to ${value} appearance`, detail: `Appearance is ${theme.appearance} now`, icon: 'settings' as const, run: () => theme.change(value) })),
@@ -291,6 +296,7 @@ function WorkspaceContent() {
           <Tab active={mode === 'home'} onClick={() => navigate('home')}>Home</Tab>
           <Tab active={mode === 'inbox'} onClick={() => navigate('inbox')}>Inbox</Tab>
           <Tab active={mode === 'ask'} onClick={() => navigate('ask')}>Ask</Tab>
+          {cloudMode && product.has('cloud_ai') ? <Tab active={mode === 'memory'} onClick={() => navigate('memory')}>Memory</Tab> : null}
         </nav><div className="pb-window-controls"><IconButton label="Open PigeonBox Settings" data-settings-entry onClick={() => openSettings('workspace_header', cloudMode ? 'cloud' : 'local')}><WorkspaceIcon name="settings" size={16} /></IconButton><button type="button" className="pb-icon-btn" aria-label={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} title={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} onClick={() => { setDisplayError(''); void requestWorkspaceDisplay(location.pathname.includes('sidepanel') ? 'float' : 'dock').catch(() => setDisplayError('Could not move the workspace. Try again.')); }}><WorkspaceIcon name="dock" size={16} /></button></div></div>
       </header>
       {displayError ? <p className="gi-warn px-4" role="alert">{displayError}</p> : null}
@@ -318,7 +324,7 @@ function WorkspaceContent() {
             {inboxSection === 'mail' ? <p className="pb-inbox-purpose">Mail indexed from Gmail on this computer.</p> : null}
           </main>
         </div>
-      ) : cloudMode ? (product.has('cloud_semantic_search') ? <CloudAsk key={`${product.state.cloudOrigins.join('|')}:${product.state.cloud.email}`} context={context} mailbox={mailbox?.email} pendingQuery={pendingAsk} onQueryConsumed={() => setPendingAsk(null)} capabilities={product.state.capabilities} onContextQuestion={(question) => answerThreadQuestion(question, context, product.has('cloud_mail_sync'))} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} /> : <div className="px-4"><p className="gi-warn">Cloud Ask is unavailable for this connection. Sign in or check your plan on the dashboard.</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => void chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD', section: 'cloud', setup: 'cloud' })}>Open dashboard</button></div>) : (
+      ) : mode === 'memory' ? null : cloudMode ? (product.has('cloud_semantic_search') ? <CloudAsk key={`${product.state.cloudOrigins.join('|')}:${product.state.cloud.email}`} context={context} mailbox={mailbox?.email} pendingQuery={pendingAsk} onQueryConsumed={() => setPendingAsk(null)} capabilities={product.state.capabilities} onContextQuestion={(question) => answerThreadQuestion(question, context, product.has('cloud_mail_sync'))} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} /> : <div className="px-4"><p className="gi-warn">Cloud Ask is unavailable for this connection. Sign in or check your plan on the dashboard.</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => void chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD', section: 'cloud', setup: 'cloud' })}>Open dashboard</button></div>) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="pb-ask-content min-h-0 flex-1 overflow-auto">
             {context ? <ContextCard subject={context.subject} sender={context.sender} motionKey={`context:${context.threadId}`} /> : null}
@@ -385,7 +391,10 @@ function WorkspaceContent() {
             </Button>
           </form>
         </div>
-      )}</div>
+      )}
+      {(memoryVisited || mode === 'memory') ? <div className="pb-memory-host" hidden={mode !== 'memory'} inert={mode !== 'memory'}>
+        {cloudMode && product.has('cloud_ai') ? <Suspense fallback={<p className="gi-muted px-4" role="status">Loading memory…</p>}><CloudMemory key={`${product.state.cloudOrigins.join('|')}:${product.state.cloud.email}`} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} /></Suspense> : <p className="gi-muted px-4">Sign in to Cloud to use your saved memory.</p>}
+      </div> : null}</div>
     </div>
   );
 }

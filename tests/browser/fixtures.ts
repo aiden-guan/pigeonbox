@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DEFAULT_SETTINGS } from '../../packages/shared/src/index';
 import type { TrackedEmail, TrackingEvent } from '../../packages/tracking/src/index';
-import { ROUTES, type CloudDraft, type DraftListItem, type RouteName, type ThreadIntel, type SavedTask } from '../../packages/api-contract/src/index';
+import { ROUTES, type CloudDraft, type DraftListItem, type RouteName, type ThreadIntel, type SavedTask, type PersonalMemory } from '../../packages/api-contract/src/index';
 
 const accountId = '00000000-0000-4000-8000-000000000001';
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -207,6 +207,8 @@ export const test = base.extend<{ app: App }>({
     const api: FixtureApi = { partial: false, disconnected: false, delay: 0, fail: false, quiet: false, syncMode: 'idle', calls: [], baseUrl: '' };
     const placed = new Map<string, CloudDraft>();
     let tasks: SavedTask[] = [];
+    const memorySubject = { id: 'a'.repeat(64), type: 'self' as const, label: 'You' };
+    let memories: PersonalMemory[] = [{ id: uuid(90), kind: 'preference', category: 'preferences', text: 'I prefer concise replies.', confidence: 1, status: 'active', validFrom: at, validUntil: null, lastConfirmedAt: at, corrected: true, entities: [], sources: [{ id: 'memory:fixture', kind: 'message', title: 'Pricing', accountId, gmailThreadId: 'abc123', at }], subject: memorySubject }];
     const heldClaims: Array<() => void> = [];
     const server = createServer(async (request, response) => {
       const route = new URL(request.url!, 'http://fixture.test').pathname;
@@ -270,6 +272,17 @@ export const test = base.extend<{ app: App }>({
       const def = Object.entries(ROUTES).find(([, value]) => value.path === route && value.method === request.method)?.[0] as RouteName | undefined;
       let data: unknown;
       if (route === '/v1/capabilities') data = { plan: 'cloud', capabilities };
+      else if (def === 'memorySubjects') data = { subjects: memories.length ? [{ ...memorySubject, summary: null, factCount: memories.length, lastConfirmedAt: at }] : [], organizing: false };
+      else if (def === 'memoryList') data = { memories: body.query ? memories.filter(item => item.text.toLowerCase().includes(String(body.query).toLowerCase())) : memories, nextCursor: null };
+      else if (def === 'memoryUpdate') { const item = memories.find(item => item.id === body.memoryId)!; Object.assign(item, { text: body.text, corrected: true }); data = { memory: item }; }
+      else if (def === 'memoryForget') { memories = memories.filter(item => item.id !== body.memoryId); data = { ok: true }; }
+      else if (def === 'memoryChat') {
+        const message = String(body.message);
+        if (message.startsWith('Remember: ')) {
+          const memory: PersonalMemory = { ...memories[0]!, id: uuid(91), kind: 'preference', category: 'preferences', text: message.slice(10), confidence: 1, status: 'active', validFrom: at, validUntil: null, lastConfirmedAt: at, corrected: true, sources: [], entities: [], subject: memorySubject };
+          memories.push(memory); data = { answer: `Remembered: ${memory.text}`, memories: [memory], changes: [{ kind: 'saved', memoryId: memory.id, text: memory.text }] };
+        } else data = { answer: memories.map(item => item.text).join(' ') || 'No saved facts yet.', memories, changes: [] };
+      }
       else if (def === 'documentPreview') data = { url: api.documentPreviews?.[String(body.token)] ?? null };
       else if (def === 'connections')
         data = { accounts: api.disconnected ? [] : [accountFor(api)], googleConfigured: true, maxAccounts: 5 };
