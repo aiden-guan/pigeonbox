@@ -1,5 +1,4 @@
 import { useAppearance, AppearanceButton } from '../ui/appearance';
-import { MemorySettings } from './MemorySettings';
 import { AnalyticsPreference } from './AnalyticsPreference';
 import { Section, Toggle, Field } from './SettingsComponents';
 import { CloudPreferences } from './CloudPreferences';
@@ -60,7 +59,6 @@ export function SettingsApp() {
     ['Inbox', 'inbox'],
     ['Tracking', 'tracking'],
     ...(cloudSync ? [['Cloud / Sync', 'cloud'] as [string, string]] : []),
-    ...(cloudActive ? [['Memory', 'memory'] as [string, string]] : []),
     ['Personalization', 'personalization'],
     ['Privacy & data', 'privacy'],
     ['Updates', 'updates'],
@@ -355,7 +353,6 @@ export function SettingsApp() {
       </Section>
 
       {cloudSync ? <Section title="Cloud / Sync" id="cloud"><CloudPreferences capabilities={product.state.capabilities} /></Section> : null}
-      {cloudActive ? <Section title="Memory" id="memory"><MemorySettings /></Section> : null}
       <Section title="Personalization" id="personalization">
         <ProfileFields voice={settings.voiceProfile} onChange={(voiceProfile) => update('voiceProfile', voiceProfile)} />
         <Field label="Greeting">

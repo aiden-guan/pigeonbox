@@ -1,6 +1,6 @@
 import type { FloatPos, FloatSize } from '../content/shell/float-drag';
 export type WorkspaceState = {
-  mode: 'home' | 'inbox' | 'ask' | 'memory';
+  mode: 'home' | 'inbox' | 'ask';
   splitCategory: string;
   inboxSection: 'mail' | 'sent' | 'waiting';
   cloudSection: string;
@@ -15,7 +15,7 @@ export function workspaceState(value: unknown, legacy?: unknown): WorkspaceState
   const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
   return {
     ...DEFAULT_WORKSPACE,
-    mode: row.mode === 'ask' || row.mode === 'inbox' || row.mode === 'memory' ? row.mode : 'home',
+    mode: row.mode === 'ask' || row.mode === 'inbox' ? row.mode : 'home',
     splitCategory: ['PRIORITY', 'RESPOND', 'WAITING', 'FYI', 'NOTIFICATIONS', 'PROMOTIONS', 'NEWS', 'FOLLOW_UPS'].includes(row.splitCategory || '') ? row.splitCategory! : 'RESPOND',
     inboxSection: row.inboxSection === 'sent' || row.inboxSection === 'waiting' ? row.inboxSection : row.splitCategory === 'WAITING' ? 'waiting' : 'mail',
     cloudSection: typeof row.cloudSection === 'string' && /^[a-z_]{1,40}$/.test(row.cloudSection) ? row.cloudSection : 'overview',

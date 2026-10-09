@@ -105,9 +105,9 @@ describe('Settings navigation and Cloud gating', () => {
   it('a configured, signed-in Cloud build shows Cloud sections and one account action routed through the worker', async () => {
     product = CLOUD_READY;
     await render();
-    expect(navTargets()).toEqual(['pigeonbox', 'inbox', 'tracking', 'cloud', 'memory', 'personalization', 'privacy', 'updates', 'advanced']);
+    expect(navTargets()).toEqual(['pigeonbox', 'inbox', 'tracking', 'cloud', 'personalization', 'privacy', 'updates', 'advanced']);
     expect(container.querySelector('#cloud')).not.toBeNull();
-    expect(container.querySelector('#memory')).not.toBeNull();
+    expect(container.querySelector('#memory')).toBeNull();
     expect(buttonNamed('Manage billing')).toBeDefined();
     const manage = buttonNamed('Manage Cloud account ↗');
     expect(manage).toBeDefined();
