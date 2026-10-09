@@ -164,7 +164,7 @@ test('ambient Brain underlines the exact self-context phrase and keeps the advis
 });
 
 
-test('smart autofill stays outside the editor, Tab inserts one undoable suffix, and Escape dismisses', async ({ app }) => {
+test('smart autofill stays outside the editor, Tab inserts one undoable suffix, and Escape dismisses', async ({ app }, testInfo) => {
   app.api.composeChecks = false;
   app.api.composeCompletion = ' where I made 35k in revenue.';
   await (await app.page('settings', true)).close();
@@ -194,7 +194,7 @@ test('smart autofill stays outside the editor, Tab inserts one undoable suffix, 
   });
   expect(geometry.within).toBe(true); expect(geometry.caretAtEnd).toBe(true);
   expect(geometry.baselineDelta).toBeLessThanOrEqual(0.5);
-  await page.locator('#brain-compose').screenshot({path:'/private/tmp/pidgy-smart-compose.png'});
+  await page.locator('#brain-compose').screenshot({ path: testInfo.outputPath('pidgy-smart-compose.png') });
   await page.keyboard.press('Tab');
   await expect(body).toHaveText('I used to have a paid community where I made 35k in revenue.');
   await expect(ghost).toHaveCount(0);
