@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.3.0",
+    "@huggingface/transformers": "^4.3.1",
     "@inboxsdk/core": "^2.2.29",
     "@pigeonbox/agent": "*",
     "@pigeonbox/ai": "*",
