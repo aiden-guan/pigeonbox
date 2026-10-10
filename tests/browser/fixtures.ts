@@ -185,6 +185,8 @@ export type FixtureApi = {
   composeChecks?: boolean;
   composeAmbient?: boolean;
   composeCompletion?: string;
+  composeCompletionKind?: 'writing';
+  composeWriting?: string;
   composeDelayMs?: number;
   documentPreviews?: Record<string, string>;
   engagement?: boolean;
@@ -355,7 +357,9 @@ export const test = base.extend<{ app: App }>({
         if (api.composeDelayMs) await new Promise(resolve => setTimeout(resolve, api.composeDelayMs));
         // A calendar-backed answer: busy tomorrow 2–4 PM, free otherwise.
         data = api.composeCompletion && body.includeCompletion
-          ? { status: 'none', completion: { text: api.composeCompletion, confidence: 0.96, sources: [{ id: 'memory:community', kind: 'message', title: 'Community revenue', gmailThreadId: 'abc123' }] } }
+          ? { status: 'none', completion: { text: api.composeCompletion, confidence: 0.96, kind: api.composeCompletionKind, sources: api.composeCompletionKind === 'writing' ? [] : [{ id: 'memory:community', kind: 'message', title: 'Community revenue', gmailThreadId: 'abc123' }] } }
+          : api.composeWriting && body.includeWriting
+          ? { status: 'notice', kind: 'writing_suggestion', severity: 'info', message: 'A shorter way to say this.', confidence: 0.98, suggestedText: api.composeWriting, sources: [] }
           : api.composeAmbient && /any meetings left today/i.test(String(body.claim))
           ? { status: 'notice', kind: 'calendar_conflict', severity: 'warning', message: 'You have Meeting with Alex from 12–12:30 PM today.', confidence: 0.98, highlightText: 'i dont have any meetings', sources: [{ id: 'event:meeting', kind: 'calendar_event', title: 'Meeting with Alex', url: 'https://calendar.google.com/calendar/event?eid=meeting' }] }
           : api.composeAmbient && /any upcoming hackathons/i.test(String(body.claim))

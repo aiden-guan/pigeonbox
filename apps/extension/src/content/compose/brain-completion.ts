@@ -1,7 +1,7 @@
 import { knownAppearance } from '../../ui/appearance';
 import type { NoticeSource } from './brain-notice';
 
-export type CompletionView = { text: string; sources: NoticeSource[] };
+export type CompletionView = { text: string; sources: NoticeSource[]; kind?: 'grounded' | 'writing' };
 export type CompletionHandle = { remove: () => void; isVisible: () => boolean };
 
 /** Separate overlay: ghost text never enters Gmail's editor or saved draft. */
@@ -21,7 +21,7 @@ export function renderCompletion(body: HTMLElement, view: CompletionView, action
     .ghost { display: flex; align-items: baseline; gap: 6px; min-width: 0; pointer-events: auto; }
     button { font: inherit; letter-spacing: inherit; word-spacing: inherit; border: 0; margin: 0; padding: 0; background: transparent; cursor: pointer; }
     .suffix { color: #747474; opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: pre; text-align: left; flex: 0 1 auto; min-width: 0; }
-    .key { font: 10px/1.3 system-ui; border: 1px solid #aaa6; border-radius: 4px; padding: 1px 4px; color: #686868; flex-shrink: 0; }
+    .key { font: 10px/1.3 system-ui; border: 0; border-radius: 3px; padding: 1px 3px; opacity: .65; color: #686868; flex-shrink: 0; }
     .source { font: 11px/1.3 system-ui; color: #747474; flex-shrink: 0; }
     :host([data-pb-theme="dark"]) .suffix, :host([data-pb-theme="dark"]) .key, :host([data-pb-theme="dark"]) .source { color: #b6b6b6; }
     @media (prefers-color-scheme: dark) { :host([data-pb-theme="system"]) button { color: #b6b6b6; } }
@@ -44,7 +44,7 @@ export function renderCompletion(body: HTMLElement, view: CompletionView, action
   const source = view.sources[0];
   if (source) {
     const link = document.createElement('button');
-    link.type = 'button'; link.className = 'source'; link.textContent = '↗';
+    link.type = 'button'; link.className = 'source'; link.textContent = 'Source';
     link.title = view.sources.map(item => item.title).join('\n');
     link.setAttribute('aria-label', `View autofill source: ${source.title}`);
     link.addEventListener('mousedown', event => event.preventDefault());
@@ -55,7 +55,7 @@ export function renderCompletion(body: HTMLElement, view: CompletionView, action
   announce.className = 'sr-only'; announce.setAttribute('role', 'status'); announce.setAttribute('aria-live', 'polite');
   shadow.append(style, ghost, announce);
   document.body.append(host);
-  announce.textContent = `Pidgy suggests ${view.text.trim()}. Press Tab to accept or Escape to dismiss.`;
+  announce.textContent = `Suggestion: ${view.text.trim()}. Press Tab to accept or Escape to dismiss.`;
   let removed = false, frame = 0;
   const place = () => {
     frame = 0;

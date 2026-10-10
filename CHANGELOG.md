@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.5.8] — 2026-10-09
+
+### Changed
+- Smart suggestions now appear as quiet, issue-labelled references beside the relevant text. Their compact popovers stay anchored through edits, scrolling and resizing, while multiple suggestions open one at a time.
+
+---
+
 ## [0.5.6] — 2026-10-07
 
 ### Added

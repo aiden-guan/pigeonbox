@@ -7,6 +7,8 @@ export type ThreadIdView = {
 /** Views that may expose a Gmail message id synchronously or as a promise. */
 export type MessageIdView = {
   isLoaded?: () => boolean;
+  destroyed?: boolean;
+  getElement?: () => HTMLElement | null;
   getMessageID?: () => string | null | undefined | Promise<string | null | undefined>;
   getMessageIDAsync?: () => string | Promise<string | null | undefined>;
 };
@@ -48,7 +50,13 @@ export async function resolveThreadId(view: ThreadIdView | null | undefined): Pr
  * Uses getMessageIDAsync when available to avoid deprecation warnings.
  */
 export async function resolveMessageId(view: MessageIdView | null | undefined): Promise<string | null> {
-  if (!view) return null;
+  if (!view || view.destroyed) return null;
+  const element = view.getElement?.();
+  if (view.getElement) {
+    if (!element?.isConnected) return null;
+    const legacy = element.matches('[data-legacy-message-id]') ? element : element.querySelector('[data-legacy-message-id]');
+    if (!legacy?.getAttribute('data-legacy-message-id') && !Array.from(element.querySelectorAll('div.ii.gt')).some(body => /\bm[0-9a-f]+\b/.test(body.className))) return null;
+  }
   // Guard against calling getMessageID/getMessageIDAsync on collapsed or unloaded views
   if (typeof view.isLoaded === 'function' && !view.isLoaded()) {
     return null;
@@ -72,3 +80,12 @@ export async function resolveMessageId(view: MessageIdView | null | undefined): 
   return null;
 }
 
+
+/** Read rendered message content without invoking a logging SDK selector on a missing body. */
+export function readMessageBody(view: MessageIdView & { getBodyElement?: () => HTMLElement | null }): HTMLElement | null {
+  if (view.destroyed) return null;
+  const element = view.getElement?.();
+  if (view.getElement) return element?.isConnected ? element.querySelector<HTMLElement>('div.ii.gt, .adP, .a3s') : null;
+  if (typeof view.isLoaded === 'function' && !view.isLoaded()) return null;
+  return view.getBodyElement?.() ?? null;
+}

@@ -1,7 +1,7 @@
 import { COMPOSE_CLAIM_MAX, classifyComposeClaim, normalizeClaim, stripQuotedHistory } from './compose-claims.js';
 
 /** Routing hints, never truth judgments. Shared by the idle gate and Cloud. */
-export const COMPOSE_CONTEXT_HINTS = ['availability', 'scheduling', 'commitment', 'deadline', 'fact', 'existence', 'status', 'uncertainty', 'prior_reference', 'relationship', 'temporal', 'general_context'] as const;
+export const COMPOSE_CONTEXT_HINTS = ['availability', 'scheduling', 'commitment', 'deadline', 'fact', 'existence', 'status', 'uncertainty', 'prior_reference', 'relationship', 'temporal', 'general_context', 'writing'] as const;
 export type ComposeContextHint = (typeof COMPOSE_CONTEXT_HINTS)[number];
 
 const SUBJECTIVE = /\b(?:like|love|hate|want|wish|prefer|hope|feel|appreciate|glad|excited|ugly|beautiful|interesting|exciting|funny|joking|joke|great)\b/;
@@ -16,7 +16,11 @@ const PERSONAL = /\b(?:i|i'm|i've|me|we|we've|we're|us|my|our|you|your|they|thei
 /** High recall for checkable personal context, low traffic for social prose. */
 export function detectComposeContext(clause: string): ComposeContextHint | null {
   if (clause.length > COMPOSE_CLAIM_MAX * 2 || clause.length < 8) return null;
-  if (stripQuotedHistory(clause).trim() !== clause.trim() || /https?:|www\.|[<>]|\?\s*$/i.test(clause)) return null;
+  if (stripQuotedHistory(clause).trim() !== clause.trim() || /https?:|www\.|[<>]/i.test(clause)) return null;
+  if (detectComposeWriting(clause)) return 'writing';
+  // Questions about an existing conversation can benefit from a sourced reminder.
+  // Generic social questions still stay local.
+  if (/\?\s*$/.test(clause)) return /\b(?:we|our|you)\b/i.test(clause) && /\b(?:agreed|discussed|decided|deadline|contract|application|pricing|proposal)\b/i.test(clause) ? 'prior_reference' : null;
   const text = normalizeClaim(clause);
   if (/^(?:who|what|when|where|why|how|can you|could you|would you|do you|are you|let|please)\b/.test(text)) return null;
   if (HYPOTHETICAL.test(text) || /\b(?:at|on|by|to|the|is|in|and|or|of|for|with)\s*$/.test(text)) return null;
@@ -54,5 +58,15 @@ export function detectComposeCompletion(clause: string): boolean {
   return text.length >= 12 && text.length <= COMPOSE_CLAIM_MAX &&
     text.split(/\s+/).length >= 3 && stripQuotedHistory(text).trim() === text &&
     !/[.!?]$|https?:|www\.|[<>\r\n]/i.test(text) &&
-    !/^(?:hi|hello|dear|best|regards|thanks|thank you|unsubscribe)\b/i.test(text);
+    !/^(?:hi|hello|dear|best|regards|unsubscribe)\b/i.test(text);
+}
+
+
+/** Only prose with a concrete opportunity for a wording edit invites unsolicited review. */
+export function detectComposeWriting(clause: string): boolean {
+  const text = clause.trim();
+  if (text.length < 24 || text.length > COMPOSE_CLAIM_MAX || /https?:|www\.|[<>]/i.test(text) || stripQuotedHistory(text).trim() !== text) return false;
+  if (/\b([a-z]{2,})\s+\1\b/i.test(text)) return true;
+  return text.split(/\s+/).length >= 16 && /[.!?]$/.test(text) &&
+    /\b(?:in order to|due to the fact that|at this point in time|just wanted to|was wondering if|for the purpose of)\b/i.test(text);
 }

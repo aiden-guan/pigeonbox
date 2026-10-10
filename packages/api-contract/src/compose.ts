@@ -28,17 +28,23 @@ export const ComposeCheckRequestSchema = MailboxSelectorSchema.extend({
   hint: ComposeCheckHintSchema.optional(),
   /** Ask for a continuation at the caret, independently gated by its own preference. */
   includeCompletion: z.boolean().optional(),
+  /** New clients explicitly opt into writing edits and nonfactual continuations. */
+  includeWriting: z.boolean().optional(),
 });
 export type ComposeCheckRequest = z.infer<typeof ComposeCheckRequestSchema>;
 
-export const ComposeCheckKindSchema = z.enum(['calendar_conflict', 'commitment_conflict', 'fact_conflict', 'context', 'overlooked_context', 'helpful_context']);
+export const ComposeCheckKindSchema = z.enum(['calendar_conflict', 'commitment_conflict', 'fact_conflict', 'context', 'overlooked_context', 'helpful_context', 'writing_suggestion']);
 export type ComposeCheckKind = z.infer<typeof ComposeCheckKindSchema>;
 
 export const ComposeCompletionSchema = z.object({
   /** Only the new suffix, never a replacement for what the user wrote. */
   text: z.string().min(1).max(240),
   confidence: z.number().min(0).max(1),
-  sources: z.array(SourceRefSchema).min(1).max(4),
+  sources: z.array(SourceRefSchema).max(4),
+  kind: z.enum(['grounded', 'writing']).optional(),
+}).superRefine((value, ctx) => {
+  if (value.kind !== 'writing' && !value.sources.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Factual completions require a source', path: ['sources'] });
+  if (value.kind === 'writing' && value.sources.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Writing completions carry no factual sources', path: ['sources'] });
 });
 export type ComposeCompletion = z.infer<typeof ComposeCompletionSchema>;
 

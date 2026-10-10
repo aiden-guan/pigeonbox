@@ -46,8 +46,17 @@ describe('ambient compose candidate gate', () => {
 
 it('lets unfinished prose reach AI completion without hard-coded personal sentences', () => {
   for (const text of ['I used to have a paid community', 'The application we discussed was', 'My background includes several years of', 'Our last conversation covered']) expect(detectComposeCompletion(text)).toBe(true);
-  for (const text of ['Hi Alex,', 'Thanks for your help', 'I completed my application.', '> I have an old community', 'https://example.test']) expect(detectComposeCompletion(text)).toBe(false);
+  for (const text of ['Hi Alex,', 'I completed my application.', '> I have an old community', 'https://example.test']) expect(detectComposeCompletion(text)).toBe(false);
 });
 it('preserves factual checks inside polite or subjective framing', () => {
   for (const text of ["I'd love to meet tomorrow at 3pm.", 'I am excited that the contract was already signed.', 'I hope you saw that we agreed on Friday.']) expect(detectComposeContext(text)).not.toBeNull();
+});
+
+it('offers everyday requests and useful wording opportunities while retaining local noise filters', () => {
+  expect(detectComposeCompletion('Could you please send me')).toBe(true);
+  expect(detectComposeCompletion('Thanks for taking the time to')).toBe(true);
+  expect(detectComposeContext('Could you remind me what we agreed on for the proposal?')).toBe('prior_reference');
+  expect(detectComposeContext('I just wanted to ask if you could send the proposal in order to review it before Friday.')).toBe('writing');
+  expect(detectComposeContext('I sent the the proposal yesterday.')).toBe('writing');
+  expect(detectComposeContext('How are you doing?')).toBeNull();
 });

@@ -19,7 +19,7 @@ import { cloudThreadStateAvailable } from './thread-state';
 
 /** A source the Gmail page may show: no IDs beyond Gmail's own, and only Google Calendar links. */
 export type ComposeCheckSource = Pick<SourceRef, 'kind' | 'title' | 'at' | 'gmailThreadId' | 'url'>;
-export type ComposeCheckCompletion = Pick<ComposeCompletion, 'text' | 'confidence'> & { sources: ComposeCheckSource[] };
+export type ComposeCheckCompletion = Pick<ComposeCompletion, 'text' | 'confidence' | 'kind'> & { sources: ComposeCheckSource[] };
 export type ComposeCheckReply =
   | { ok: true; status: 'none' | 'disabled' | 'unavailable'; completion?: ComposeCheckCompletion }
   | { ok: true; status: 'notice'; notice: Pick<ComposeCheckNotice, 'kind' | 'severity' | 'message' | 'suggestedText' | 'highlightText'> & { sources: ComposeCheckSource[] }; completion?: ComposeCheckCompletion };
@@ -61,6 +61,7 @@ export function parseComposeCheck(input: unknown): ComposeCheckRequest | null {
     ...(typeof raw.mailbox === 'string' && /^[^\s@<>]{1,200}@[^\s@<>]{1,200}$/.test(raw.mailbox) ? { mailbox: raw.mailbox } : {}),
     ...(typeof raw.hint === 'string' ? { hint: raw.hint } : {}),
     ...(typeof raw.includeCompletion === 'boolean' ? { includeCompletion: raw.includeCompletion } : {}),
+    ...(typeof raw.includeWriting === 'boolean' ? { includeWriting: raw.includeWriting } : {}),
   };
   const parsed = ComposeCheckRequestSchema.safeParse(candidate);
   return parsed.success ? parsed.data : null;

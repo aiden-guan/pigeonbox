@@ -39,6 +39,7 @@ export type BrainCheckRequest = {
   mailbox?: string;
   hint?: ComposeContextHint;
   includeCompletion?: boolean;
+  includeWriting?: boolean;
 };
 export type BrainCheckReply =
   | { ok: true; status: 'none' | 'disabled' | 'unavailable'; completion?: CompletionView }
@@ -56,7 +57,7 @@ export type ComposeBrainDeps = {
 
 type View = SdkComposeView & { getBodyElement?: () => HTMLElement | null };
 type Candidate = { claim: string; norm: string; hint?: ComposeContextHint; includeCompletion?: boolean };
-type ShownNotice = { norm: string; claim: string; generation: number; suggestion: string | null; handle: NoticeHandle };
+type ShownNotice = { norm: string; claim: string; suggestion: string | null; handle: NoticeHandle };
 
 const controllers = new Map<string, { destroy: () => void }>();
 
@@ -315,7 +316,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   const inflight = new Map<string, number>();
   let cooldownUntil = 0;
   let pausedUntil = 0;
-  let notice: ShownNotice | null = null;
+  const notices = new Map<string, ShownNotice>();
   const cache = new Map<string, { reply: BrainCheckReply; at: number; candidate: Candidate }>();
   const dismissed = new Set<string>();
 
@@ -359,7 +360,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     body?.removeEventListener('compositionend', onCompositionEnd);
     body?.removeEventListener('blur', onBlur);
     observer?.disconnect();
-    generation += 1; hideCompletion(); hideNotice(false); queue = [];
+    generation += 1; hideCompletion(); hideNotice(undefined, false); queue = [];
     body = next;
     if (!body) return;
     body.addEventListener('input', onInput, { passive: true });
@@ -386,9 +387,14 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     idleTimer = window.setTimeout(evaluate, BRAIN_IDLE_MS);
   }
 
-  function hideNotice(animate = true) {
-    notice?.handle.remove(animate);
-    notice = null;
+  function hideNotice(norm?: string, animate = true) {
+    if (norm) {
+      notices.get(norm)?.handle.remove(animate);
+      notices.delete(norm);
+      return;
+    }
+    for (const notice of notices.values()) notice.handle.remove(animate);
+    notices.clear();
   }
 
   function evaluate() {
@@ -401,7 +407,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     const { text, caret } = readComposeText(body);
     const clauses = locateClauses(text);
     const present = new Set(clauses.map((clause) => clause.norm));
-    if (notice && !present.has(notice.norm)) hideNotice();
+    for (const norm of notices.keys()) if (!present.has(norm)) hideNotice(norm, false);
     let candidate: Candidate | null = null;
     const fresh = clauses.filter((clause) => !seen.has(clause.norm));
     seen = present;
@@ -419,7 +425,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     if (!candidate && recheck && lastChecked && present.has(lastChecked.norm)) candidate = lastChecked;
     if (!candidate && lastChecked?.includeCompletion && !dismissedCompletions.has(lastChecked.norm) && completionRange(lastChecked)) candidate = lastChecked;
     if (!candidate) {
-      if (!notice) resurface(present);
+      resurface(present);
       return;
     }
     pending = candidate;
@@ -437,6 +443,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
       ...(mailbox && /^[^\s@<>]{1,200}@[^\s@<>]{1,200}$/.test(mailbox) ? { mailbox } : {}),
       ...(candidate.hint ? { hint: candidate.hint } : {}),
       ...(candidate.includeCompletion ? { includeCompletion: true } : {}),
+      includeWriting: true,
     };
   }
 
@@ -565,9 +572,9 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     hideCompletion();
     if (!body || !candidate.includeCompletion || dismissedCompletions.has(candidate.norm) || !completionRange(candidate)) return;
     const text = value.text.slice(0, 240);
-    if (!text.trim() || /[<>\r\n]/.test(text) || !value.sources.length) return;
+    if (!text.trim() || /[<>\r\n]/.test(text) || (!value.sources.length && value.kind !== 'writing')) return;
     const mailbox = deps.mailbox?.() ?? null;
-    const handle = renderCompletion(body, { text, sources: value.sources }, {
+    const handle = renderCompletion(body, { text, sources: value.sources, kind: value.kind }, {
       range: () => completionRange(candidate), accept: () => { acceptCompletion(); },
       source: source => (deps.openSource ?? defaultOpenSource)(source, mailbox),
     });
@@ -587,14 +594,13 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     try { return document.execCommand('insertText', false, suffix); } catch { return false; }
   }
 
-  /** The newest notice's words were deleted: an earlier answered conflict that is still in the message comes back. */
+  /** Reuse answered clauses still in the message, keeping each finding attached to its own range. */
   function resurface(present: Set<string>) {
     const now = clock();
     for (const [key, entry] of [...cache.entries()].reverse()) {
       if (entry.reply.status !== 'notice' || now - entry.at >= BRAIN_CACHE_MS) continue;
-      if (!present.has(entry.candidate.norm) || dismissed.has(entry.candidate.norm) || cacheKey(request(entry.candidate)) !== key) continue;
+      if (!present.has(entry.candidate.norm) || dismissed.has(entry.candidate.norm) || notices.has(entry.candidate.norm) || cacheKey(request(entry.candidate)) !== key) continue;
       apply(entry.reply, entry.candidate, generation);
-      return;
     }
   }
 
@@ -605,44 +611,53 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     if (!present.has(candidate.norm)) return;
     if (reply.completion) showCompletion(reply.completion, candidate, answered);
     if (reply.status !== 'notice') {
-      if (notice?.norm === candidate.norm) hideNotice();
+      if (notices.has(candidate.norm)) hideNotice(candidate.norm);
       return;
     }
     if (dismissed.has(candidate.norm)) return;
     if (reply.notice.severity === 'warning') hideCompletion();
-    hideNotice(false);
+    hideNotice(candidate.norm, false);
     const mailbox = deps.mailbox?.() ?? null;
     const source = reply.notice.sources.find((item) => sourceHref(item, mailbox)) ?? null;
     const suggestion = reply.notice.suggestedText && reply.notice.suggestedText !== candidate.claim && uniqueClaimLocation(body, candidate.claim) ? reply.notice.suggestedText : null;
+    const highlightRange = claimRange(body, candidate.claim, suggestion, reply.notice.highlightText);
+    const anchorRange = claimRange(body, candidate.claim, null);
     const handle = renderNotice(
       body,
-      claimRange(body, candidate.claim, suggestion, reply.notice.highlightText),
-      { severity: reply.notice.severity, message: reply.notice.message, suggestion, source },
+      highlightRange,
+      { kind: reply.notice.kind, severity: reply.notice.severity, message: reply.notice.message, suggestion, source,
+        ...(reply.notice.kind === 'writing_suggestion' && suggestion ? { preview: suggestion } : {}),
+      },
       {
         onSource: () => source && (deps.openSource ?? defaultOpenSource)(source, mailbox),
         onSuggest: () => applySuggestion(shown),
         onDismiss: () => {
           dismissed.add(shown.norm);
-          if (notice === shown) hideNotice();
+          if (notices.get(shown.norm) === shown) {
+            hideNotice(shown.norm);
+            if (body) resurface(new Set(locateClauses(readComposeText(body, null).text).map((clause) => clause.norm)));
+          }
           body?.focus({ preventScroll: true });
         },
       },
+      { anchorRange },
     );
-    const shown: ShownNotice = { norm: candidate.norm, claim: candidate.claim, generation: answered, suggestion, handle };
-    notice = shown;
+    const shown: ShownNotice = { norm: candidate.norm, claim: candidate.claim, suggestion, handle };
+    notices.set(candidate.norm, shown);
   }
 
   function applySuggestion(shown: ShownNotice) {
-    // Only for the newest answer, and only while the checked words are still there exactly once.
-    if (notice !== shown || !shown.suggestion || shown.generation !== generation || !body) return;
+    // Apply only while this clause still owns the advice and its text is unique.
+    if (notices.get(shown.norm) !== shown || !shown.suggestion || !body) return;
     if (!replaceClaim(body, shown.claim, shown.suggestion)) {
       // Something changed underneath: leave the advice, drop the one-click fix.
       shown.handle.dropFix();
       shown.suggestion = null;
       return;
     }
-    hideNotice();
+    hideNotice(shown.norm);
     seen.add(normalizeClaim(shown.suggestion));
+    resurface(new Set(locateClauses(readComposeText(body, null).text).map((clause) => clause.norm)));
   }
 
   function destroy() {
@@ -656,7 +671,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     body?.removeEventListener('compositionend', onCompositionEnd);
     body?.removeEventListener('blur', onBlur);
     observer?.disconnect();
-    hideNotice(false);
+    hideNotice(undefined, false);
     hideCompletion();
     document.removeEventListener('selectionchange', onSelection);
     queue = [];

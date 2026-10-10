@@ -2,7 +2,7 @@ import type { GmailActionResult, GmailCapabilities } from '@pigeonbox/shared';
 import { EMPTY_CAPABILITIES } from './capabilities.js';
 import { DomFallbackAdapter } from './DomFallbackAdapter.js';
 import { queryFirst, SELECTORS } from './selectors.js';
-import { resolveMessageId, resolveThreadId, type MessageIdView, type ThreadIdView } from './thread-id.js';
+import { readMessageBody, resolveMessageId, resolveThreadId, type MessageIdView, type ThreadIdView } from './thread-id.js';
 import type {
   ComposeHandle,
   InsertComposeOptions,
@@ -679,7 +679,7 @@ async function mapThreadView(view: ThreadViewLike): Promise<CurrentThreadView | 
           /* recipient list in flux */
         }
         try {
-          bodyText = message.getBodyElement?.()?.textContent?.trim() || '';
+          bodyText = readMessageBody(message)?.textContent?.trim() || '';
         } catch {
           /* body element in flux */
         }

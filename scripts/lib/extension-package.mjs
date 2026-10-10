@@ -201,6 +201,11 @@ export function validateManifest(manifest, names, expectedVersion) {
     ...(manifest.content_scripts ?? []).flatMap((script) => [...(script.js ?? []), ...(script.css ?? [])]),
   ].filter(Boolean);
   for (const path of referenced) if (!names.has(path)) problems.push(`manifest references missing file ${path}`);
+  // The document action inserts this image into Gmail's page, outside extension origin.
+  const gmailIconAccessible = (manifest.web_accessible_resources ?? []).some(entry =>
+    (entry.matches ?? []).includes('https://mail.google.com/*') &&
+    (entry.resources ?? []).some(resource => ['icons/icon16.png', 'icons/*', '*'].includes(resource)));
+  if (!gmailIconAccessible) problems.push('Gmail toolbar icon icons/icon16.png must be web accessible to Gmail');
   const hosts = manifest.host_permissions ?? [];
   const broad = hosts.filter((host) => /^(?:\*|<all_urls>|https?:\/\/\*\/\*|\*:\/\/\*\/\*)$/.test(host));
   if (broad.length) problems.push(`required host permissions are too broad: ${broad.join(', ')}`);

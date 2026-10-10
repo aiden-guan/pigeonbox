@@ -60,10 +60,10 @@ describe('Cloud memory transparency controls', () => {
     expect(container.querySelector('[role="switch"]')?.getAttribute('aria-checked')).toBe('false');
     expect(container.textContent).toContain(memory.text);
   });
-  it('offers Real-time Pidgy checks off by default, as its own switch separate from learning', async () => {
-    const realtime = container.querySelector('[role="switch"][aria-label="Real-time Pidgy checks"]') as HTMLButtonElement;
+  it('offers Smart suggestions off by default, as its own switch separate from learning', async () => {
+    const realtime = container.querySelector('[role="switch"][aria-label="Smart suggestions"]') as HTMLButtonElement;
     expect(realtime.getAttribute('aria-checked')).toBe('false');
-    expect(container.textContent).toContain('processed ephemerally and is not saved as a memory');
+    expect(container.textContent).toContain('Only the current phrase is processed; it is never saved');
     call.mockResolvedValueOnce({ ok: true, data: { preferences: { ...preferences, memory: { ...preferences.memory, realtimeComposeChecks: true } } } });
     await act(async () => realtime.click());
     expect(call).toHaveBeenLastCalledWith('preferencesUpdate', { preferences: { memory: { realtimeComposeChecks: true } } });

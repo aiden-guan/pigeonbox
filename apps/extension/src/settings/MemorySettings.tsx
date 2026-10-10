@@ -123,18 +123,18 @@ export function MemorySettings() {
             onChange={(learnFromDraftEdits) => void settings({ learnFromDraftEdits })}
           />
           <Toggle
-            label="Real-time Pidgy checks"
-            description="While you write, Pidgy can privately check a short relevant phrase against your calendar and Brain. Draft text used for a check is processed ephemerally and is not saved as a memory."
+            label="Smart suggestions"
+            description="Offers concise wording edits and relevant reminders from your calendar and memory as you write. Only the current phrase is processed; it is never saved."
             checked={prefs.memory.realtimeComposeChecks}
             onChange={(realtimeComposeChecks) => void settings({ realtimeComposeChecks })}
           />
           <Toggle
             label="Smart autofill"
-            description="Suggests a short continuation from your Brain and conversation as you type. Tab accepts; Escape dismisses. Only the current phrase is processed, never saved."
+            description="Finishes everyday requests and adds sourced details from your memory and conversation as you type. Tab accepts; Escape dismisses. Only the current phrase is processed, never saved."
             checked={prefs.memory.smartComposeCompletion}
             onChange={(smartComposeCompletion) => void settings({ smartComposeCompletion })}
           />
-          <p className="gi-muted text-xs">Press Ctrl/⌘ + Shift + Space in a draft to ask Pidgy to check the current phrase again.</p>
+          <p className="gi-muted text-xs">Press Ctrl/⌘ + Shift + Space in a draft to check the current phrase again.</p>
           <p className="gi-muted text-xs">
             Fast Recall is {prefs.fastRecall.enabled ? 'on' : 'off'}. Its optional encrypted mail excerpts are managed separately in Privacy &amp; data.
           </p>

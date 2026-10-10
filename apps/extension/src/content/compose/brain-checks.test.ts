@@ -275,10 +275,11 @@ describe('real-time Pidgy checks in compose', () => {
     c.type("I'm free tomorrow at 3.");
     await settle();
     const root = c.notice()!;
-    // Inline and quiet: no card, only an on-demand popover labelled by its one-line message.
-    expect(root.textContent).not.toContain('Pidgy noticed something');
+    // Inline and quiet: only an on-demand, category-aware suggestion popover.
     const dialog = root.querySelector('[role="dialog"]')!;
-    expect(dialog.getAttribute('aria-label')).toBe('Pidgy');
+    expect(dialog.getAttribute('aria-label')).toBe('Smart suggestion');
+    expect(root.querySelector('.gi-pigeon, img')).toBeNull();
+    expect((root.querySelector('.pb-reference') as HTMLButtonElement | null)?.dataset.category).toBe('Schedule');
     expect(root.getElementById(dialog.getAttribute('aria-describedby')!)?.textContent).toBe('You have Math 52 from 2–4 PM tomorrow.');
     expect(button(root, 'suggest')?.textContent).toContain('Fix');
     expect(button(root, 'source')).not.toBeNull();
@@ -417,8 +418,8 @@ describe('real-time Pidgy checks in compose', () => {
       c.body.dispatchEvent(quiet);
       expect(quiet.defaultPrevented).toBe(false);
       expect(c.body.textContent).toBe("I'm free tomorrow at 3.");
-      // The dot presents it; Tab applies exactly the suggested words.
-      root.querySelector<HTMLButtonElement>('.pb-dot')!.click();
+      // The contextual label presents it; Tab applies exactly the suggested words.
+      root.querySelector<HTMLButtonElement>('.pb-reference')!.click();
       expect(dialog.hidden).toBe(false);
       const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
       c.body.dispatchEvent(tab);
@@ -431,7 +432,7 @@ describe('real-time Pidgy checks in compose', () => {
       c.setText("<div>Also, I'm free tomorrow at 3.</div>");
       await settle();
       await vi.advanceTimersByTimeAsync(BRAIN_COOLDOWN_MS);
-      c.notice()!.querySelector<HTMLButtonElement>('.pb-dot')!.click();
+      c.notice()!.querySelector<HTMLButtonElement>('.pb-reference')!.click();
       const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
       c.body.dispatchEvent(escape);
       expect(escape.defaultPrevented).toBe(true);

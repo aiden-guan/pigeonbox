@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DomFallbackAdapter } from './DomFallbackAdapter.js';
 import { InboxSdkAdapter, type InboxSdkLike } from './InboxSdkAdapter.js';
 import { CompositeGmailAdapter } from './index.js';
-import { resolveMessageId, resolveThreadId } from './thread-id.js';
+import { readMessageBody, resolveMessageId, resolveThreadId } from './thread-id.js';
 import type { MailboxEvent } from './types.js';
 
 function sdk(handlers: { rows: Array<(row: unknown) => void>; threads: number; compose: number; routes: number }): InboxSdkLike {
@@ -490,5 +490,31 @@ describe('adapter lifecycle', () => {
     composeCb!(mockCv);
 
     expect(hookCalls).toEqual(['thread-v2', 'compose-v2']);
+  });
+});
+
+describe('Gmail message DOM readiness', () => {
+  it('avoids SDK error-logging getters until the message id and body actually exist', async () => {
+    const element = document.createElement('div'); document.body.append(element);
+    const getMessageIDAsync = vi.fn(async () => 'abc123');
+    const getBodyElement = vi.fn(() => { throw new Error('SDK logs selector miss'); });
+    const view = { getElement: () => element, isLoaded: () => true, getMessageIDAsync, getBodyElement };
+    expect(await resolveMessageId(view)).toBeNull();
+    expect(readMessageBody(view)).toBeNull();
+    expect(getMessageIDAsync).not.toHaveBeenCalled(); expect(getBodyElement).not.toHaveBeenCalled();
+    const missing = { ...view, getElement: () => null };
+    expect(await resolveMessageId(missing)).toBeNull(); expect(readMessageBody(missing)).toBeNull();
+    expect(getMessageIDAsync).not.toHaveBeenCalled(); expect(getBodyElement).not.toHaveBeenCalled();
+    element.innerHTML = '<div data-legacy-message-id="abc123"><div class="a3s">A rendered message</div></div>';
+    expect(await resolveMessageId(view)).toBe('abc123');
+    expect(readMessageBody(view)?.textContent).toBe('A rendered message');
+    element.remove();
+    expect(await resolveMessageId(view)).toBeNull(); expect(readMessageBody(view)).toBeNull();
+    expect(getMessageIDAsync).toHaveBeenCalledTimes(1); expect(getBodyElement).not.toHaveBeenCalled();
+  });
+  it('preserves the legacy message-body id fallback', async () => {
+    const element = document.createElement('div'); element.innerHTML = '<div class="ii gt mabc123">Legacy body</div>'; document.body.append(element);
+    const view = { getElement: () => element, isLoaded: () => true, getMessageIDAsync: vi.fn(async () => 'abc123') };
+    expect(await resolveMessageId(view)).toBe('abc123'); element.remove();
   });
 });
