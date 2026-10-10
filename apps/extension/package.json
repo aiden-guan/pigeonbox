@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.0",
-    "@inboxsdk/core": "^2.2.26",
+    "@inboxsdk/core": "^2.2.29",
     "@pigeonbox/agent": "*",
     "@pigeonbox/ai": "*",
     "@pigeonbox/api-contract": "*",
