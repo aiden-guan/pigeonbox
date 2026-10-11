@@ -59,7 +59,7 @@ git clone https://github.com/aiden-guan/pigeonbox.git && cd pigeonbox && npm run
 
 ### Option C — Download a prebuilt release
 
-No Node needed: grab `PigeonBox-vX.Y.Z.zip` from the [latest release](https://github.com/aiden-guan/pigeonbox/releases/latest) and unzip it into its own folder. The newest GitHub release is 0.4.0; 0.5.3 is available by building from source (Options A and B). `npm run package` creates one ZIP with Local and optional Cloud modes; store publication is a separate release step.
+No Node needed: grab `PigeonBox-vX.Y.Z.zip` from the [latest release](https://github.com/aiden-guan/pigeonbox/releases/latest) and unzip it into its own folder. Releases are published on version tags and can lag behind `main`, so the latest release may be older than the version in `package.json`; build from source (Options A and B) for the newest code. `npm run package` creates one ZIP with Local and optional Cloud modes; store publication is a separate release step.
 
 ### Then, in Chrome (all options)
 
