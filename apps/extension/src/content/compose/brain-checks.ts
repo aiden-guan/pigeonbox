@@ -20,7 +20,7 @@ import type { SdkComposeView } from '../tracking/compose-tracking';
 import { renderCompletion, type CompletionHandle, type CompletionView } from './brain-completion';
 import { renderNotice, type NoticeHandle, type NoticeSource } from './brain-notice';
 
-/** Typing must settle this long before anything is read. */
+/** Typing must settle this long before anything is read. Default; remote config may tune it within bounds. */
 export const BRAIN_IDLE_MS = 450;
 /** At most one remote check per compose in this window. */
 export const BRAIN_COOLDOWN_MS = 2_800;
@@ -45,6 +45,10 @@ export type BrainCheckReply =
   | { ok: true; status: 'none' | 'disabled' | 'unavailable'; completion?: CompletionView }
   | { ok: true; status: 'notice'; notice: { kind: string; severity: 'info' | 'warning'; message: string; suggestedText?: string; highlightText?: string; sources: NoticeSource[] }; completion?: CompletionView };
 
+/** Remote-tunable timing (already bounds-checked by the worker) and the config revision it came from. */
+export type BrainTuning = { idleMs: number; cooldownMs: number; cacheMs: number; revision: string };
+export const DEFAULT_BRAIN_TUNING: BrainTuning = { idleMs: BRAIN_IDLE_MS, cooldownMs: BRAIN_COOLDOWN_MS, cacheMs: BRAIN_CACHE_MS, revision: 'default' };
+
 export type ComposeBrainDeps = {
   /** Cheap and synchronous: false in Local mode, so nothing is even handed to the worker. */
   available: () => boolean;
@@ -53,13 +57,25 @@ export type ComposeBrainDeps = {
   mailbox?: () => string | null;
   openSource?: (source: NoticeSource, mailbox: string | null) => void;
   now?: () => number;
+  /** Read on every use, so a config change applies to open composers too. */
+  tuning?: () => BrainTuning;
 };
 
 type View = SdkComposeView & { getBodyElement?: () => HTMLElement | null };
 type Candidate = { claim: string; norm: string; hint?: ComposeContextHint; includeCompletion?: boolean };
 type ShownNotice = { norm: string; claim: string; suggestion: string | null; handle: NoticeHandle };
 
-const controllers = new Map<string, { destroy: () => void }>();
+const controllers = new Map<string, { destroy: () => void; invalidate: () => void }>();
+
+/**
+ * Remembered context changed (a fact was forgotten or corrected, a connection
+ * or preference changed, remote config moved to a new revision): no compose
+ * may reuse an answer computed before it. Shown advice is withdrawn and the
+ * clause under the caret is checked again on the next pause.
+ */
+export function invalidateBrainChecks(): void {
+  for (const controller of controllers.values()) controller.invalidate();
+}
 
 /** Live controllers, for diagnostics and tests. */
 export function activeBrainChecks(): number {
@@ -297,6 +313,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   const id = composeId(view);
   if (controllers.has(id)) return id;
   const clock = deps.now ?? (() => Date.now());
+  const tuning = () => deps.tuning?.() ?? DEFAULT_BRAIN_TUNING;
   let body: HTMLElement | null = null;
   let observer: MutationObserver | null = null;
   let idleTimer: number | undefined;
@@ -316,6 +333,8 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   const inflight = new Map<string, number>();
   let cooldownUntil = 0;
   let pausedUntil = 0;
+  /** Bumped by invalidate(); answers from an older epoch are neither cached nor shown. */
+  let epoch = 0;
   const notices = new Map<string, ShownNotice>();
   const cache = new Map<string, { reply: BrainCheckReply; at: number; candidate: Candidate }>();
   const dismissed = new Set<string>();
@@ -384,7 +403,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     if (details) { generation += 1; hideNotice(); hideCompletion(); }
     detailsChanged ||= details;
     window.clearTimeout(idleTimer);
-    idleTimer = window.setTimeout(evaluate, BRAIN_IDLE_MS);
+    idleTimer = window.setTimeout(evaluate, tuning().idleMs);
   }
 
   function hideNotice(norm?: string, animate = true) {
@@ -450,7 +469,8 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   function cacheKey(check: BrainCheckRequest): string {
     // Calendar answers do not depend on the subject; Brain answers can.
     const subject = check.hint === 'availability' || check.hint === 'scheduling' ? '' : normalizeClaim(check.subject);
-    return JSON.stringify([check.includeCompletion ? check.claim : normalizeClaim(check.claim), subject, [...check.recipientEmails].sort(), check.threadId ?? '', check.mailbox ?? '', Boolean(check.includeCompletion)]);
+    // Every input the answer depends on, plus the config revision: a new revision never reuses an old answer.
+    return JSON.stringify([check.includeCompletion ? check.claim : normalizeClaim(check.claim), subject, [...check.recipientEmails].sort(), check.threadId ?? '', check.mailbox ?? '', Boolean(check.includeCompletion), tuning().revision]);
   }
 
   function dispatch(alreadyPresent = false) {
@@ -471,7 +491,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     const check = request(candidate);
     const key = cacheKey(check);
     const cached = cache.get(key);
-    if (cached && now - cached.at < BRAIN_CACHE_MS) {
+    if (cached && now - cached.at < tuning().cacheMs) {
       pending = null;
       lastChecked = candidate;
       apply(cached.reply, candidate, generation);
@@ -489,8 +509,9 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     pending = null;
     lastChecked = candidate;
     const mine = generation;
+    const answeredEpoch = epoch;
     inflight.set(key, mine);
-    cooldownUntil = now + BRAIN_COOLDOWN_MS;
+    cooldownUntil = now + tuning().cooldownMs;
     void deps
       .check(check)
       .catch(() => undefined)
@@ -514,10 +535,11 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
         failures.delete(key);
         // An accepted/forgotten/corrected fact must not be revived by undo from
         // a cached continuation. Every continuation gets fresh server validation.
-        if (!reply.completion) cache.set(key, { reply, at: clock(), candidate });
+        // An invalidation while this was in flight means the answer predates the change.
+        if (!reply.completion && epoch === answeredEpoch) cache.set(key, { reply, at: clock(), candidate });
         if (cache.size > 50) cache.delete(cache.keys().next().value!);
         // A newer check was sent while this one was out: its answer wins.
-        if (cacheKey(request(candidate)) !== key) return;
+        if (cacheKey(request(candidate)) !== key || epoch !== answeredEpoch) return;
         if (mine !== generation) {
           // Keep a freshly validated continuation useful when the writer has
           // already typed its beginning while the request was in flight.
@@ -598,7 +620,7 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
   function resurface(present: Set<string>) {
     const now = clock();
     for (const [key, entry] of [...cache.entries()].reverse()) {
-      if (entry.reply.status !== 'notice' || now - entry.at >= BRAIN_CACHE_MS) continue;
+      if (entry.reply.status !== 'notice' || now - entry.at >= tuning().cacheMs) continue;
       if (!present.has(entry.candidate.norm) || dismissed.has(entry.candidate.norm) || notices.has(entry.candidate.norm) || cacheKey(request(entry.candidate)) !== key) continue;
       apply(entry.reply, entry.candidate, generation);
     }
@@ -687,9 +709,22 @@ export function attachComposeBrainChecks(view: View, deps: ComposeBrainDeps): st
     controllers.delete(id);
   }
 
+  function invalidate() {
+    if (destroyed) return;
+    epoch += 1;
+    cache.clear();
+    inflight.clear();
+    hideNotice(undefined, false);
+    hideCompletion();
+    queue = [];
+    pausedUntil = 0;
+    // The clause the user was on gets a fresh check on the next pause.
+    schedule(true);
+  }
+
   bind();
   document.addEventListener('selectionchange', onSelection);
-  controllers.set(id, { destroy });
+  controllers.set(id, { destroy, invalidate });
   view.on?.('recipientsChanged', () => schedule(true));
   view.on?.('subjectChanged', () => schedule(true));
   view.on?.('destroy', destroy);

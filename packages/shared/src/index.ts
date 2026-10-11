@@ -391,6 +391,11 @@ export type PublicExtensionSettings = Omit<ExtensionSettings, 'personalApiToken'
    * `trackerBaseUrl` only.
    */
   trackerUrls?: string[];
+  /**
+   * Compose check timing from remote client config (Cloud mode only, already
+   * bounds-checked by the worker). Absent means the built-in defaults.
+   */
+  composeTuning?: { idleMs: number; cooldownMs: number; cacheMs: number; revision: string };
 };
 
 export function toPublicSettings(settings: ExtensionSettings): PublicExtensionSettings {

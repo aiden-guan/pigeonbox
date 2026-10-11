@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Every workspace package, the root package and manifest.json carry one version.
+ * Every workspace package, the root package and manifest.json carry one version,
+ * and CHANGELOG.md has a section for it.
  *
  *   node scripts/check-versions.mjs            check consistency
  *   node scripts/check-versions.mjs v0.2.0     also require this tag to match (release CI)
@@ -55,6 +56,10 @@ if (!SEMVER.test(expected ?? '')) problems.push(`root version ${expected} is not
 for (const [file, version] of versions) if (version !== expected) problems.push(`${file} is ${version}, expected ${expected}`);
 const tag = args.find((arg) => /^v?\d/.test(arg));
 if (tag && tag.replace(/^v/, '') !== expected) problems.push(`tag ${tag} does not match version ${expected}`);
+const changelog = join(root, 'CHANGELOG.md');
+if (existsSync(changelog) && !new RegExp(`^## \\[${expected?.replace(/\./g, '\\.')}\\]`, 'm').test(readFileSync(changelog, 'utf8'))) {
+  problems.push(`CHANGELOG.md has no "## [${expected}]" section`);
+}
 const lock = join(root, 'package-lock.json');
 if (existsSync(lock) && JSON.parse(readFileSync(lock, 'utf8')).version !== expected) problems.push('package-lock.json version is stale; run npm install');
 

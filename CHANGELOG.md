@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.6.0] — 2026-10-11
+
+### Added
+- **Clear update prompts.** When PigeonBox Cloud needs a newer extension, Cloud settings say so ("You're using PigeonBox 0.5.8. PigeonBox Cloud requires 0.6.0 or newer.") with an Update button, instead of reporting Cloud as unreachable. Cloud stops retrying until you update; Local mode keeps working.
+- **Copy diagnostics** in Settings → Advanced: a short troubleshooting summary for bug reports, with no email content, addresses or IDs.
+
+### Changed
+- PigeonBox Cloud can adjust compose-check timing, notification polling and maintenance notices, or pause a Cloud feature, without an extension update. It can only make PigeonBox do less, never more, and Local mode never asks.
+- Pidgy drops remembered answers as soon as you forget or correct a memory or change a connection, and only checks text when it knows which Gmail account you are writing from.
+- Onboarding: the Local / Cloud choice stands out more clearly in light and dark mode, without the cursor highlight.
+
 ## [0.5.8] — 2026-10-09
 
 ### Changed

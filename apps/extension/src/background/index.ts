@@ -80,7 +80,12 @@ import {
 } from './ai/chatgpt-login';
 import { completeOnDevice, downloadOnDevice, warmOnDevice } from './ai/on-device';
 import { effectiveSettings, resolveAIProvider } from './ai/provider-router';
-import { cachedCloudState, clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState } from './cloud/client';
+import { cachedCloudState, clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState, remoteConfig, remoteConfigApi, clientConfig, lastCloudOkAt } from './cloud/client';
+import { featureDisabled } from './cloud/remote-config';
+import { requestExtensionUpdate } from './extension-update';
+import { chromeMajor, diagnostics, formatDiagnostics } from './diagnostics';
+import { composeCheckPreferenceState } from './cloud/compose-check';
+import { PROTOCOL_VERSION } from '@pigeonbox/api-contract';
 import { cloudThreadStateAvailable, forgetThreadIntel } from './cloud/thread-state';
 import { handleCloudRequest } from './cloud/handlers';
 import { resolveSenderDocumentLink } from './cloud/document-preview';
@@ -138,7 +143,14 @@ async function contentSettings(): Promise<PublicExtensionSettings> {
   // an account without it sends at once instead of waiting on a refused allocation.
   const capabilities = (await cachedCloudState(settings).catch(() => null))?.capabilities;
   const entitled = capabilities ? capabilities.includes('cloud_tracking') : true;
-  return { ...view, trackerBaseUrl: tracker ?? '', trackerUrls: cloudTrackerUrls(settings), hasPersonalApiToken: Boolean(tracker && user && entitled) };
+  const { compose, revision } = await clientConfig(settings);
+  return {
+    ...view,
+    trackerBaseUrl: tracker ?? '',
+    trackerUrls: cloudTrackerUrls(settings),
+    hasPersonalApiToken: Boolean(tracker && user && entitled),
+    composeTuning: { idleMs: compose.idleMs, cooldownMs: compose.cooldownMs, cacheMs: compose.cacheMs, revision },
+  };
 }
 
 async function publishContentSettings(): Promise<void> {
@@ -1244,6 +1256,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       if (message?.type === 'REPORT_RUNTIME') {
+        await recordGmailRuntimeChange(message.runtime);
         await chrome.storage.session.set({ gmailRuntime: message.runtime });
         const owner = mailboxOwnerFrom(message.owner);
         if (owner) {
@@ -2185,6 +2198,74 @@ async function afterCloudSignIn(): Promise<void> {
 }
 
 /** A Cloud client only when Cloud's always-on features (`cloud_mail_sync`) are available; null in Local mode. */
+const workerStartedAt = Date.now();
+// Count worker starts per browser session: frequent restarts explain lost in-memory state.
+void chrome.storage.session.get('workerStarts').then(({ workerStarts }) => {
+  const starts = (typeof workerStarts === 'number' ? workerStarts : 0) + 1;
+  void chrome.storage.session.set({ workerStarts: starts });
+  void diagnostics?.record({ component: 'service_worker', code: starts === 1 ? 'started' : 'restarted', outcome: 'success' });
+}).catch(() => undefined);
+
+/** Gmail integration changes (InboxSDK failing, selectors breaking) are logged once per change, not per report. */
+async function recordGmailRuntimeChange(next: unknown): Promise<void> {
+  const pick = (value: unknown) => {
+    const runtime = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+    return { inboxSdk: runtime.inboxSdk, domFallback: runtime.domFallback };
+  };
+  const before = pick((await chrome.storage.session.get('gmailRuntime')).gmailRuntime);
+  const after = pick(next);
+  if (after.inboxSdk !== before.inboxSdk && (after.inboxSdk === 'failed' || after.inboxSdk === 'loaded'))
+    void diagnostics?.record({ component: 'gmail', code: after.inboxSdk === 'failed' ? 'inboxsdk_failed' : 'inboxsdk_loaded', outcome: after.inboxSdk === 'failed' ? 'failure' : 'success' });
+  if (after.domFallback !== before.domFallback && after.domFallback === 'selector issue')
+    void diagnostics?.record({ component: 'gmail', code: 'selector_issue', outcome: 'failure' });
+}
+
+/** The "Copy diagnostics" text: allowlisted operational facts only (background/diagnostics.ts). */
+async function diagnosticsReport(): Promise<string> {
+  const api = cloudApiUrl(settings);
+  const cloud = settings.runMode === 'cloud' ? await cachedCloudState(settings).catch(() => null) : null;
+  const config = await remoteConfig.current(remoteConfigApi(settings));
+  const configStatus = await remoteConfig.status(remoteConfigApi(settings));
+  const runtime = ((await chrome.storage.session.get('gmailRuntime')).gmailRuntime ?? {}) as Record<string, unknown>;
+  const { workerStarts } = await chrome.storage.session.get('workerStarts');
+  const { mailboxIdentities: identities } = await chrome.storage.local.get('mailboxIdentities');
+  const lastOk = await lastCloudOkAt().catch(() => null);
+  const now = Date.now();
+  const update = cloud?.update;
+  return formatDiagnostics({
+    version: chrome.runtime.getManifest().version,
+    build: DEV_BUILD ? 'source' : 'release',
+    chromeMajor: chromeMajor(navigator.userAgent),
+    mode: settings.runMode === 'cloud' ? 'cloud' : 'local',
+    cloud: {
+      status: settings.runMode !== 'cloud' ? 'not_in_use' : api ? cloud?.status ?? 'not_checked' : 'not_configured',
+      signedIn: Boolean(api && (await cloudSession.currentUser(api))),
+      update: update ? (update.required ? 'required' : 'recommended') : 'none',
+      minimumVersion: update?.minimum ?? null,
+      notice: cloud?.notice ?? null,
+      lastOkAgeMinutes: lastOk === null ? null : Math.floor((now - lastOk) / 60_000),
+    },
+    protocol: PROTOCOL_VERSION,
+    remoteConfig: { source: configStatus.source, revision: configStatus.revision, ageMinutes: configStatus.ageMs === null ? null : Math.floor(configStatus.ageMs / 60_000), lastError: configStatus.lastError },
+    composeChecks: { remotelyDisabled: config.disabledFeatures.filter((name) => name.startsWith('compose_')), preference: composeCheckPreferenceState() },
+    tracking: { enabled: Boolean(settings.trackingEnabled) },
+    gmail: {
+      integration: typeof runtime.integration === 'string' ? runtime.integration : null,
+      inboxSdk: typeof runtime.inboxSdk === 'string' ? runtime.inboxSdk : null,
+      domFallback: typeof runtime.domFallback === 'string' ? runtime.domFallback : null,
+      // How many Gmail account slots PigeonBox has seen, never which ones.
+      knownAccounts: identities && typeof identities === 'object' ? Object.keys(identities).length : 0,
+    },
+    worker: { startsThisSession: typeof workerStarts === 'number' ? workerStarts : 1, uptimeMinutes: Math.floor((now - workerStartedAt) / 60_000) },
+    events: (await diagnostics?.events()) ?? [],
+  }, now);
+}
+
+async function syncNotificationAlarm(periodInMinutes: number): Promise<void> {
+  const alarm = await chrome.alarms.get(NOTIFICATION_ALARM).catch(() => undefined);
+  if (alarm?.periodInMinutes !== periodInMinutes) await chrome.alarms.create(NOTIFICATION_ALARM, { periodInMinutes });
+}
+
 async function cloudSyncClient() {
   const client = getCloudClient(settings);
   if (!client) return null;
@@ -2198,12 +2279,30 @@ async function cloudSyncClient() {
  * an extension page (enforced by `senderMaySend`). Returns undefined for any other message.
  */
 async function handleCloudMessage(message: { type?: unknown; [key: string]: unknown }, sender: chrome.runtime.MessageSender): Promise<unknown> {
-  return handleCloudRequest(message, sender, { settings: () => settings, readState: () => readCloudState(settings), client: async () => settings.runMode === 'cloud' ? getCloudClient(settings) : null, webUrl: cloudWebUrl });
+  return handleCloudRequest(message, sender, {
+    settings: () => settings,
+    readState: () => readCloudState(settings),
+    client: async () => settings.runMode === 'cloud' ? getCloudClient(settings) : null,
+    webUrl: cloudWebUrl,
+    config: () => clientConfig(settings),
+    contextChanged: () => void broadcastToGmailTabs({ type: 'PIGEONBOX_CONTEXT_CHANGED' }),
+  });
 }
 
 async function pollCloudNotifications(): Promise<void> {
   const client = await cloudSyncClient().catch(() => null);
   if (!client) return;
+  // Remote config may slow polling (within bounds) or pause it; it is cached, so this is usually free.
+  const config = await remoteConfig.refresh(remoteConfigApi(settings));
+  await syncNotificationAlarm(config.notifications.pollMinutes);
+  // New timing or revision: Gmail tabs pick it up, and drop compose answers cached under the old one.
+  // (Kept in session storage: the worker restarts far more often than config changes.)
+  const { publishedConfigRevision } = await chrome.storage.session.get('publishedConfigRevision');
+  if (config.revision !== publishedConfigRevision) {
+    await chrome.storage.session.set({ publishedConfigRevision: config.revision });
+    await publishContentSettings().catch(() => undefined);
+  }
+  if (featureDisabled(config, 'cloud_notifications')) return;
   void syncVoiceToCloud();
   await pollNotifications(client, chrome.storage.local, (id, _kind, title, body) => {
     void Promise.resolve(chrome.notifications.create(id, { type: 'basic', iconUrl: chrome.runtime.getURL('icons/icon128.png'), title, message: body })).catch(() => undefined);
@@ -2290,9 +2389,14 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       rebuildAgent();
       return { ok: true, state: await productState() };
     case 'CLOUD_REFRESH':
-      await refreshCloudState(settings);
+      // "Check again" re-reads remote config too, so a lowered minimum version takes effect at once.
+      await refreshCloudState(settings, { forceConfig: true });
       await publishContentSettings();
       return { ok: true, state: await productState() };
+    case 'EXTENSION_UPDATE':
+      return requestExtensionUpdate();
+    case 'GET_DIAGNOSTICS_REPORT':
+      return { ok: true, text: await diagnosticsReport() };
     case 'CLOUD_BILLING': {
       const client = getCloudClient(settings);
       if (!client) return { ok: false, reason: 'PigeonBox Cloud is not available in this build.' };

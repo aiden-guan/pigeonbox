@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { collectFiles, isExcludedFromPackage, localSecretValues, validatePackage, vendorPublicValues } from './lib/extension-package.mjs';
+import { collectFiles, isExcludedFromPackage, localSecretValues, undocumentedPermissions, validatePackage, vendorPublicValues } from './lib/extension-package.mjs';
 import { createZip, listZipEntries } from './lib/zip.mjs';
 import { releaseBuildEnv, validateReleaseConfig } from './lib/release-config.mjs';
 
@@ -65,6 +65,10 @@ const problems = validatePackage(files, {
   allowedValues: vendorPublicValues(root),
 });
 problems.push(...validateReleaseConfig(files));
+const packagedManifest = files.find((file) => file.name === 'manifest.json');
+if (packagedManifest) {
+  problems.push(...undocumentedPermissions(JSON.parse(packagedManifest.data.toString('utf8')), readFileSync(join(root, 'docs', 'chrome-web-store.md'), 'utf8')));
+}
 if (problems.length) {
   console.error('Package validation failed:');
   for (const problem of problems) console.error(`  - ${problem}`);

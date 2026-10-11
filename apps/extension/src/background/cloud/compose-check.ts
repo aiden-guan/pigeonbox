@@ -5,13 +5,15 @@
  *
  * - the extension is in Cloud mode, signed in, with Cloud sync (never in Local mode);
  * - the user turned on `memory.realtimeComposeChecks` (read from Cloud, cached briefly);
- * - the request has the bounded contract shape.
+ * - the request has the bounded contract shape and names the Gmail mailbox it
+ *   was written in, so Cloud never answers from another account's context;
+ * - remote config has not switched the feature off.
  *
  * Every failure is a quiet `none`: the check is advisory and must never break
  * typing or sending. Nothing here stores, logs or caches the clause; the
  * content script never receives tokens or other credentials.
  */
-import { ComposeCheckRequestSchema, type ComposeCheckNotice, type ComposeCompletion, type ComposeCheckRequest, type SourceRef } from '@pigeonbox/api-contract';
+import { DEFAULT_CLIENT_CONFIG, ComposeCheckRequestSchema, type ClientConfig, type ComposeCheckNotice, type ComposeCompletion, type ComposeCheckRequest, type SourceRef } from '@pigeonbox/api-contract';
 import { validComposeHighlight } from '@pigeonbox/shared';
 import type { PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
 import type { CloudState } from '@pigeonbox/core';
@@ -24,7 +26,14 @@ export type ComposeCheckReply =
   | { ok: true; status: 'none' | 'disabled' | 'unavailable'; completion?: ComposeCheckCompletion }
   | { ok: true; status: 'notice'; notice: Pick<ComposeCheckNotice, 'kind' | 'severity' | 'message' | 'suggestedText' | 'highlightText'> & { sources: ComposeCheckSource[] }; completion?: ComposeCheckCompletion };
 
-type Deps = { state: CloudState; runMode: string; client: () => Promise<PigeonBoxCloudClient | null>; now?: () => number };
+type Deps = {
+  state: CloudState;
+  runMode: string;
+  client: () => Promise<PigeonBoxCloudClient | null>;
+  /** Remote client config: may switch checks or completions off, or hide notice kinds; never turn anything on. */
+  config?: Pick<ClientConfig, 'disabledFeatures' | 'compose'>;
+  now?: () => number;
+};
 
 /** How long the Cloud preference is trusted before it is read again. */
 export const PREFERENCE_TTL_MS = 30_000;
@@ -34,6 +43,11 @@ const CHECK_TIMEOUT_MS = 8_000;
 
 let preference: { key: string; checks: boolean; completion: boolean; at: number } | null = null;
 let rate = { start: 0, count: 0 };
+
+/** The last preference this worker read, for diagnostics: no network request. */
+export function composeCheckPreferenceState(): 'on' | 'off' | 'unknown' {
+  return preference ? (preference.checks ? 'on' : 'off') : 'unknown';
+}
 
 /** Forget the cached preference, e.g. right after Settings changed it. */
 export function forgetComposeCheckPreference(): void {
@@ -101,6 +115,13 @@ export async function handleComposeCheck(input: unknown, deps: Deps): Promise<Co
   if (!cloudThreadStateAvailable(deps.state, deps.runMode)) return DISABLED;
   const request = parseComposeCheck(input);
   if (!request) return NONE;
+  // Without the mailbox the server would fall back to the first connected account.
+  if (!request.mailbox) return NONE;
+  const config = deps.config ?? DEFAULT_CLIENT_CONFIG;
+  const checksOff = config.disabledFeatures.includes('compose_checks');
+  const completionOff = config.disabledFeatures.includes('compose_completion');
+  if (checksOff && (completionOff || request.includeCompletion !== true)) return DISABLED;
+  if (completionOff && request.includeCompletion !== undefined) request.includeCompletion = false;
   if (now - rate.start >= 60_000) rate = { start: now, count: 0 };
   if (rate.count >= MAX_CHECKS_PER_MINUTE) return NONE;
   try {
@@ -109,7 +130,8 @@ export async function handleComposeCheck(input: unknown, deps: Deps): Promise<Co
     // The preference is read (or recalled) before the clause is sent anywhere.
     const prefs = await composePreferences(client, `${deps.state.email ?? ''}`, now);
     if (request.includeCompletion !== undefined) request.includeCompletion = request.includeCompletion === true && prefs.completion;
-    if (!prefs.checks && !request.includeCompletion) return DISABLED;
+    const checks = prefs.checks && !checksOff;
+    if (!checks && !request.includeCompletion) return DISABLED;
     rate.count += 1;
     const response = await client.composeCheck(request, { timeoutMs: CHECK_TIMEOUT_MS });
     if (response.status === 'disabled') {
@@ -117,7 +139,8 @@ export async function handleComposeCheck(input: unknown, deps: Deps): Promise<Co
       return DISABLED;
     }
     const completion = response.completion && request.includeCompletion ? { ...response.completion, sources: response.completion.sources.map(safeSource) } : undefined;
-    if (response.status !== 'notice') return completion ? { ...NONE, completion } : NONE;
+    // Checks switched off remotely, or a notice kind held back: only a completion may remain.
+    if (response.status !== 'notice' || !checks || config.compose.disabledKinds.includes(response.kind)) return completion ? { ...NONE, completion } : NONE;
     return {
       ok: true,
       status: 'notice',

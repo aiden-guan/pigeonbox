@@ -169,9 +169,10 @@
 .ob-welcome {
   --base: 520ms;
   position: relative; width: min(620px, 100%); padding: 40px 36px 22px; border-radius: 26px;
-  background: color-mix(in oklab, var(--pb-surface-raised) 84%, transparent);
+  /* Nearly opaque, with a firm edge: the choice must stand clear of the busy inbox behind it in both themes. */
+  background: color-mix(in oklab, var(--pb-surface-raised) 96%, transparent);
   -webkit-backdrop-filter: blur(26px) saturate(1.5); backdrop-filter: blur(26px) saturate(1.5);
-  border: 1px solid color-mix(in oklab, var(--pb-border) 80%, transparent);
+  border: 1px solid var(--pb-border-strong);
   box-shadow: 0 50px 100px -30px rgba(10, 14, 18, .5), 0 18px 36px -18px rgba(10, 14, 18, .3), inset 0 1px 0 rgba(255, 255, 255, .06);
   animation: ob-card-in 1s var(--ob-ease-out) .4s backwards;
   transition: opacity .38s ease, scale .45s var(--ob-ease-io), filter .4s ease;
@@ -190,10 +191,11 @@
 .ob-paths { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 26px; }
 .ob-path {
   position: relative; display: grid; gap: 4px; align-content: start; min-height: 172px; padding: 18px; overflow: hidden; text-align: left; cursor: pointer;
-  border: 1px solid var(--pb-border); border-radius: 18px; background: var(--pb-surface-raised); color: var(--pb-fg); font: inherit;
+  /* Inset from the card, with a strong border, so each option reads as its own target. */
+  border: 1px solid var(--pb-border-strong); border-radius: 18px; background: var(--pb-surface-inset); color: var(--pb-fg); font: inherit;
+  box-shadow: var(--pb-shadow-low);
   transition: transform .2s var(--ob-ease-out), border-color .25s ease, box-shadow .3s ease;
 }
-.ob-path-glow { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .3s ease; background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), color-mix(in oklab, var(--pb-accent) 15%, transparent), transparent 65%); }
 .ob-path-icon { position: relative; display: grid; place-items: center; width: 46px; height: 46px; margin-bottom: 12px; border-radius: 13px; background: var(--pb-accent-soft); color: var(--pb-accent); transition: transform .4s var(--ob-ease-spring); }
 .ob-path-tag { position: absolute; top: 16px; right: 16px; padding: 2px 9px; border: 1px solid var(--pb-border); border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--pb-fg-muted); }
 .ob-path strong { position: relative; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
@@ -204,7 +206,6 @@
 @media (hover: hover) and (pointer: fine) {
   .ob-path:hover { transform: translateY(-3px); border-color: color-mix(in oklab, var(--pb-accent) 45%, var(--pb-border)); box-shadow: var(--pb-shadow-float); }
   .ob-path:hover:active { transform: translateY(-1px) scale(.98); }
-  .ob-path:hover .ob-path-glow { opacity: 1; }
   .ob-path:hover .ob-path-icon { transform: rotate(-6deg) scale(1.06); }
   .ob-path:hover .ob-path-go { opacity: 1; translate: 0 0; }
 }
