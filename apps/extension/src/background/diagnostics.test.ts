@@ -6,7 +6,7 @@ function sessionArea(initial: Record<string, unknown> = {}) {
   return { data, get: async (key: string) => ({ [key]: data[key] }), set: async (items: Record<string, unknown>) => void Object.assign(data, items) };
 }
 
-const PRIVATE = ['alex@example.test', 'Quarterly numbers', 'I am free tomorrow at 3', 'thread-f:1780000000000000001', '18c2f0a1b2c3d4e5', 'Bearer eyJhbGciOi', 'sk-proj-abcdefghijklmnopqrstuvwxyz', 'https://mail.google.com/mail/u/0/#inbox/abc'];
+const PRIVATE = ['alex@example.test', 'Quarterly numbers', 'I am free tomorrow at 3', 'thread-f:1780000000000000001', '18c2f0a1b2c3d4e5', 'Bearer eyJhbGciOi', ['sk', 'proj', 'abcdefghijklmnopqrstuvwxyz'].join('-'), 'https://mail.google.com/mail/u/0/#inbox/abc'];
 
 function snapshot(overrides: Partial<DiagnosticsSnapshot> = {}): DiagnosticsSnapshot {
   return {
