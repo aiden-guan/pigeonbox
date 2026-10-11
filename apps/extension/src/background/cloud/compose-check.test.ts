@@ -139,3 +139,39 @@ it('gates completion independently and strips internal source identifiers from t
   expect(await handleComposeCheck({ ...check, includeCompletion: true }, { state: ready, runMode: 'cloud', client: off.client })).toEqual({ ok: true, status: 'disabled' });
   expect(off.composeCheck).not.toHaveBeenCalled();
 });
+
+describe('remote config and account isolation in the worker', () => {
+  const base = { state: ready, runMode: 'cloud' };
+  const config = (disabledFeatures: string[] = [], disabledKinds: string[] = []) => ({ disabledFeatures, compose: { idleMs: 450, cooldownMs: 2_800, cacheMs: 30_000, disabledKinds } }) as never;
+
+  it('never sends a clause that does not name the Gmail mailbox it was written in', async () => {
+    const api = cloud();
+    const withoutMailbox: Record<string, unknown> = { ...check };
+    delete withoutMailbox.mailbox;
+    expect(await handleComposeCheck(withoutMailbox, { ...base, client: api.client })).toEqual({ ok: true, status: 'none' });
+    expect(api.composeCheck).not.toHaveBeenCalled();
+  });
+
+  it('switches checks off remotely without contacting Cloud, even though the person opted in', async () => {
+    const api = cloud(true);
+    expect(await handleComposeCheck(check, { ...base, client: api.client, config: config(['compose_checks']) })).toEqual({ ok: true, status: 'disabled' });
+    expect(api.client).not.toHaveBeenCalled();
+  });
+
+  it('can turn completions off while checks keep working', async () => {
+    const api = cloud(true);
+    await handleComposeCheck({ ...check, includeCompletion: true }, { ...base, client: api.client, config: config(['compose_completion']) });
+    expect(api.composeCheck).toHaveBeenCalledWith(expect.objectContaining({ includeCompletion: false }), expect.anything());
+  });
+
+  it('holds back a notice kind that remote config disabled', async () => {
+    const api = cloud(true);
+    expect(await handleComposeCheck(check, { ...base, client: api.client, config: config([], ['calendar_conflict']) })).toEqual({ ok: true, status: 'none' });
+  });
+
+  it('cannot enable anything: an empty config leaves the opt-in in charge', async () => {
+    const api = cloud(false);
+    expect(await handleComposeCheck(check, { ...base, client: api.client, config: config() })).toEqual({ ok: true, status: 'disabled' });
+    expect(api.composeCheck).not.toHaveBeenCalled();
+  });
+});

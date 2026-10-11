@@ -26,6 +26,8 @@ export class CloudApiError extends Error {
   readonly retryable: boolean;
   readonly requestId?: string;
   readonly retryAfter?: number;
+  /** With `unsupported_protocol`: the oldest extension version the server accepts. */
+  readonly minimumVersion?: string;
 
   constructor(opts: {
     code: CloudApiError['code'];
@@ -34,6 +36,7 @@ export class CloudApiError extends Error {
     retryable?: boolean;
     requestId?: string;
     retryAfter?: number;
+    minimumVersion?: string;
   }) {
     super(opts.message);
     this.name = 'CloudApiError';
@@ -42,6 +45,7 @@ export class CloudApiError extends Error {
     this.retryable = opts.retryable ?? false;
     this.requestId = opts.requestId;
     this.retryAfter = opts.retryAfter;
+    this.minimumVersion = opts.minimumVersion;
   }
 }
 
@@ -127,6 +131,10 @@ export class PigeonBoxCloudClient {
   }
   version() {
     return this.call('version');
+  }
+  /** Raw remote client config; resolve it with `resolveClientConfig` before use. */
+  clientConfig(options: CallOptions = {}) {
+    return this.call('clientConfig', undefined, options);
   }
   exchangeCode(body: RouteRequest<'authToken'>) {
     return this.call('authToken', body);
@@ -324,7 +332,7 @@ export class PigeonBoxCloudClient {
     if (!response.ok) {
       const parsed = ErrorBodySchema.safeParse(json);
       if (parsed.success) {
-        const { code, message, retryable, retryAfter } = parsed.data.error;
+        const { code, message, retryable, retryAfter, minimumVersion } = parsed.data.error;
         throw new CloudApiError({
           code: isKnownErrorCode(code) ? code : 'internal',
           status: response.status,
@@ -332,6 +340,7 @@ export class PigeonBoxCloudClient {
           retryable,
           requestId: parsed.data.error.requestId ?? requestId,
           retryAfter,
+          minimumVersion,
         });
       }
       throw new CloudApiError({

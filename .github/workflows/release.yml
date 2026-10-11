@@ -32,6 +32,11 @@ jobs:
       - name: Production build and deterministic ZIP
         run: node scripts/package-extension.mjs --out release
 
+      - name: Fail on generated output that is not committed
+        run: |
+          changes=$(git status --porcelain --untracked-files=normal -- . ':!release')
+          test -z "$changes" || { echo "The release build changed tracked or untracked files:"; echo "$changes"; exit 1; }
+
       - name: Rebuild and confirm the ZIP is reproducible
         run: |
           first=$(cut -d' ' -f1 release/PigeonBox-${GITHUB_REF_NAME}.sha256)

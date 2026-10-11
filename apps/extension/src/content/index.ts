@@ -36,7 +36,7 @@ import {
 } from '@pigeonbox/tracking';
 import { applyCategoryChip, rowsForThread } from './thread/chips';
 import { attachDocumentAction, insertDocumentLink } from './compose/documents';
-import { attachComposeBrainChecks, type BrainCheckReply, type ComposeBrainDeps, sourceHref } from './compose/brain-checks';
+import { DEFAULT_BRAIN_TUNING, attachComposeBrainChecks, invalidateBrainChecks, type BrainCheckReply, type ComposeBrainDeps, sourceHref } from './compose/brain-checks';
 import { autofillPreparedReply, claimThread, composerIsEmpty, holdsUneditedPrepared, releaseThread, rememberPlaced, removePrepared, selectOwnText } from './compose/prepared-reply';
 import { VARIANT_CHOICE_KEY } from './compose/variant-choice';
 import type { ThreadIntel } from '@pigeonbox/api-contract';
@@ -318,8 +318,7 @@ async function boot(): Promise<void> {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local') {
         if (changes.publicSettings?.newValue && typeof changes.publicSettings.newValue === 'object') {
-          settings = { ...settings, ...(changes.publicSettings.newValue as PublicExtensionSettings) };
-          sentStatus?.setTrackerBaseUrl(settings.trackerBaseUrl || '');
+          applyPublicSettings(changes.publicSettings.newValue as PublicExtensionSettings);
           // Mode or sign-in may have changed: the next compose asks again.
           cloudCheckedAt = 0;
         }
@@ -363,8 +362,18 @@ function trackingDeps() {
   };
 }
 
+/** Merge settings from the worker; a new remote config revision drops cached compose answers. */
+function applyPublicSettings(next: PublicExtensionSettings): void {
+  const before = settings.composeTuning?.revision;
+  settings = { ...settings, ...next };
+  if (!next.composeTuning) delete settings.composeTuning;
+  sentStatus?.setTrackerBaseUrl(settings.trackerBaseUrl || '');
+  if (settings.composeTuning?.revision !== before) invalidateBrainChecks();
+}
+
 function brainDeps(): ComposeBrainDeps {
   return {
+    tuning: () => settings.composeTuning ?? DEFAULT_BRAIN_TUNING,
     available: () => cloudAvailable,
     check: (request) => send<BrainCheckReply>({ type: 'CLOUD_COMPOSE_CHECK', check: request }, 9_000),
     mailbox: () => mailboxOwner()?.email ?? null,
@@ -779,9 +788,14 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
         sendResponse({ ok: true }); return;
       }
       if (message?.type === 'PUBLIC_SETTINGS_CHANGED' && message.settings && typeof message.settings === 'object') {
-        settings = { ...settings, ...(message.settings as PublicExtensionSettings) };
-        sentStatus?.setTrackerBaseUrl(settings.trackerBaseUrl || '');
+        applyPublicSettings(message.settings as PublicExtensionSettings);
         cloudCheckedAt = 0;
+        sendResponse({ ok: true });
+        return;
+      }
+      if (message?.type === 'PIGEONBOX_CONTEXT_CHANGED') {
+        // A fact was forgotten or corrected, or a connection changed: no cached compose answer survives it.
+        invalidateBrainChecks();
         sendResponse({ ok: true });
         return;
       }

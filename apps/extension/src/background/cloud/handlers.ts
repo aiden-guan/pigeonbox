@@ -1,12 +1,14 @@
 import type { ExtensionSettings } from '@pigeonbox/shared';
 import type { CloudState } from '@pigeonbox/core';
 import type { PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
+import { DEFAULT_CLIENT_CONFIG, type ClientConfig } from '@pigeonbox/api-contract';
 import { cloudErrorMessage } from '@pigeonbox/cloud-client';
 import { isExtensionPageSender, senderMaySend } from '../messaging';
 import { cloudThreadStateAvailable, threadIntel } from './thread-state';
 import { pageCall } from './page-calls';
 import { forgetComposeCheckPreference, handleComposeCheck } from './compose-check';
 import { cloudSection } from '../../ui/cloud-features';
+import { diagnostics, durationBucket } from '../diagnostics';
 import { CLOUD_WAITLIST_URL, cloudApiUrl } from '../../config';
 
 type Deps = {
@@ -14,8 +16,14 @@ type Deps = {
   readState: () => Promise<CloudState>;
   client: () => Promise<PigeonBoxCloudClient | null>;
   webUrl: (section?: string) => string | null;
+  /** Remote client config in force (defaults when absent). */
+  config?: () => Promise<ClientConfig>;
+  /** Tell Gmail tabs that remembered context changed, so cached compose answers are dropped. */
+  contextChanged?: () => void;
 };
 const emailPattern = /^[^\s@<>]+@[^\s@<>]+$/;
+/** Page calls that change what compose checks can draw on. */
+const CONTEXT_ROUTES = new Set(['memoryForget', 'memoryUpdate', 'memoryPurge', 'preferencesUpdate', 'connectionUpdate']);
 const gmailId = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** Cloud routing is isolated from the worker lifecycle. Content callers receive read-only derived context. */
@@ -49,10 +57,13 @@ export async function handleCloudRequest(
     const mailbox =
       typeof message.mailbox === 'string' && emailPattern.test(message.mailbox) ? message.mailbox : undefined;
     try {
+      const threads = await threadIntel(client, ids, mailbox);
+      // Emergency switch: prepared replies are not offered while remote config disables them.
+      const preparedOff = (await deps.config?.() ?? DEFAULT_CLIENT_CONFIG).disabledFeatures.includes('prepared_drafts');
       return {
         ok: true,
         available: true,
-        threads: await threadIntel(client, ids, mailbox),
+        threads: preparedOff ? Object.fromEntries(Object.entries(threads).map(([id, intel]) => [id, { ...intel, draft: null }])) : threads,
         capabilities: (await deps.readState()).capabilities,
       };
     } catch (error) {
@@ -114,7 +125,11 @@ export async function handleCloudRequest(
   }
   if (message.type === 'CLOUD_COMPOSE_CHECK') {
     // Mode, preference and shape are decided here, in the trusted worker, before anything is sent.
-    return handleComposeCheck(message.check, { state: await deps.readState(), runMode: deps.settings().runMode, client: deps.client });
+    const started = Date.now();
+    const reply = await handleComposeCheck(message.check, { state: await deps.readState(), runMode: deps.settings().runMode, client: deps.client, config: await deps.config?.() });
+    // Status and timing only; the clause and the advice never reach diagnostics.
+    void diagnostics?.record({ component: 'compose_check', code: reply.status, outcome: reply.status === 'unavailable' ? 'failure' : 'success', duration: durationBucket(Date.now() - started) });
+    return reply;
   }
   if (message.type === 'CLOUD_INTEL_STATE') {
     const state = await deps.readState();
@@ -138,7 +153,10 @@ export async function handleCloudRequest(
   if (!client) return { ok: false, code: 'not_configured', reason: 'Turn on Cloud and sign in to use this.' };
   if (message.type === 'CLOUD_CALL') {
     if (message.route === 'preferencesUpdate') forgetComposeCheckPreference();
-    return pageCall(client, message.route, message.body);
+    const result = await pageCall(client, message.route, message.body);
+    // Remembered context changed: compose answers cached in Gmail may now be wrong.
+    if (CONTEXT_ROUTES.has(String(message.route)) && (result as { ok?: boolean })?.ok) deps.contextChanged?.();
+    return result;
   }
   if (!(await deps.readState()).capabilities.includes('cloud_documents'))
     return { ok: false, reason: 'Tracked documents are not available for this Cloud connection.' };

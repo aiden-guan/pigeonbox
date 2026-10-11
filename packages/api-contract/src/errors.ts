@@ -46,6 +46,8 @@ export const ErrorBodySchema = z.object({
     requestId: z.string().max(128).optional(),
     /** Seconds until a retry can succeed, for rate limits. */
     retryAfter: z.number().int().nonnegative().optional(),
+    /** With `unsupported_protocol`: the oldest extension version this server accepts. */
+    minimumVersion: z.string().regex(/^\d{1,4}\.\d{1,4}\.\d{1,4}$/).optional(),
   }),
 });
 export type ErrorBody = z.infer<typeof ErrorBodySchema>;
@@ -57,7 +59,7 @@ export function isKnownErrorCode(code: string): code is CloudErrorCode {
 export function errorBody(
   code: CloudErrorCode,
   message: string,
-  extra?: { requestId?: string; retryAfter?: number },
+  extra?: { requestId?: string; retryAfter?: number; minimumVersion?: string },
 ): ErrorBody {
   return {
     error: {
@@ -66,6 +68,7 @@ export function errorBody(
       retryable: RETRYABLE_ERRORS.has(code),
       ...(extra?.requestId ? { requestId: extra.requestId } : {}),
       ...(extra?.retryAfter !== undefined ? { retryAfter: extra.retryAfter } : {}),
+      ...(extra?.minimumVersion ? { minimumVersion: extra.minimumVersion } : {}),
     },
   };
 }

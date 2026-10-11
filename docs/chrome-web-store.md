@@ -39,8 +39,13 @@ Removed in 0.2.0: `tabs`, `activeTab`, and required hosts `chatgpt.com`, `*.conv
 | Permission | When |
 |---|---|
 | `identity` | Signing in to PigeonBox Cloud (`launchWebAuthFlow`) |
+| `https://api.github.com/*` | Settings → Updates, only after the person turns on update checks: lists GitHub releases so unpacked copies learn about a new version. Store copies never ask. |
 | `https://*/*` | The user connects a specific HTTPS origin: their BYOK endpoint, their tracker, Hugging Face for model downloads, or PigeonBox Cloud. Each request names the exact origin. |
-| `http://127.0.0.1/*`, `http://localhost/*` (and `:8787`, `:11434`) | Ollama, a local tracker, or local Cloud development |
+| `http://127.0.0.1/*`, `http://localhost/*` | A local AI server or tracker the person runs on their own computer, on a port they choose |
+| `http://127.0.0.1:8787/*`, `http://localhost:8787/*` | The self-hosted tracker's default local port |
+| `http://127.0.0.1:11434/*`, `http://localhost:11434/*` | Ollama's default local port |
+
+`npm run package` fails if the manifest declares a permission or host pattern that is not listed in these two tables, so a new permission cannot ship without a written reason.
 
 `https://*/*` is declared as optional because BYOK endpoints and self-hosted trackers are user-chosen. Reviewers may ask about it; the answer is that only the origin the user types is ever requested.
 

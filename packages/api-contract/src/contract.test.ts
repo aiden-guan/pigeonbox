@@ -44,12 +44,12 @@ describe('api contract', () => {
     }
   });
 
-  it('only exposes health, version and token exchange without auth', () => {
+  it('only exposes health, version, global client config and token exchange without auth', () => {
     const open = Object.entries(ROUTES)
       .filter(([, route]) => route.auth === 'none')
       .map(([name]) => name)
       .sort();
-    expect(open).toEqual(['authRefresh', 'authToken', 'health', 'version']);
+    expect(open).toEqual(['authRefresh', 'authToken', 'clientConfig', 'health', 'version']);
   });
 
   it('accepts a normal draft request and rejects oversized bodies', () => {

@@ -38,6 +38,13 @@ export function SettingsApp() {
   const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  const [copied, setCopied] = useState<{ ok: boolean; text: string } | null>(null);
+  async function copyDiagnostics() {
+    const reply = (await chrome.runtime.sendMessage({ type: 'GET_DIAGNOSTICS_REPORT' })) as { ok?: boolean; text?: string } | undefined;
+    const text = typeof reply?.text === 'string' ? reply.text : 'Diagnostics are unavailable right now.';
+    const ok = await navigator.clipboard.writeText(text).then(() => true, () => false);
+    setCopied({ ok, text });
+  }
   const [changeAi, setChangeAi] = useState(false);
   const [diag, setDiag] = useState<Record<string, unknown> | null>(null);
   const [rules, setRules] = useState('');
@@ -493,7 +500,14 @@ export function SettingsApp() {
             <button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.sendMessage({ type: 'INDEX_INBOX', mode: '30d' })}>Index older messages</button>
             <button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.sendMessage({ type: 'PAUSE_INDEX' })}>Pause</button>
             <button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.sendMessage({ type: 'RUN_DIAGNOSTICS' }, (next) => setDiag(next))}>Run diagnostics</button>
+            <button type="button" className="gi-btn gi-btn-ghost" onClick={() => void copyDiagnostics()}>Copy diagnostics</button>
           </div>
+          {copied ? (
+            <div role="status">
+              <p className="gi-muted text-xs">{copied.ok ? 'Copied. Paste it into your bug report. It has no email content, addresses or IDs.' : 'Could not copy. Select the text below instead.'}</p>
+              <pre className="gi-pre">{copied.text}</pre>
+            </div>
+          ) : null}
           {diag?.trackingReport ? <pre className="gi-pre">{String(diag.trackingReport)}</pre> : null}
           {diag ? <pre className="gi-pre">{JSON.stringify(diag, null, 2)}</pre> : null}
           {product.state.experimental ? (
