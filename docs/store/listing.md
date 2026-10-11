@@ -60,6 +60,8 @@ PigeonBox is MIT-licensed. The code, the privacy model and reproducible release 
 | Small promo tile (440×280) | `promo-small.png` |
 | Marquee promo tile (1400×560) | `promo-marquee.png` |
 
+The store rejects images and badges that read as store status or promotion (Red Nickel, 2026-10-11, for "Free" on the marquee). Keep words such as free, new, recommended, premium, best, top and #1 out of the graphics and their source pages; pricing belongs in the Distribution tab.
+
 **Official URL:** none (it requires a Search Console-verified domain; add the PigeonBox site once it is live).
 **Homepage URL:** https://usepigeonbox.com
 **Support URL:** https://github.com/aiden-guan/pigeonbox/issues
