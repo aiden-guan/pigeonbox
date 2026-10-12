@@ -260,7 +260,7 @@ export function OnboardingApp() {
 
             {step === 'done' ? (
               <StepFrame kicker="All set" title={settings.voiceProfile.name ? `You’re set, ${settings.voiceProfile.name}.` : 'You’re set.'}
-                sub={path === 'cloud' ? 'One more stop: sign in and connect Google on your dashboard so Pidgy can work while Gmail is closed.' : 'Pidgy works inside Gmail. Click the toolbar Pidgy to open it, or press ⌘K / Ctrl+K for commands.'}>
+                sub={path === 'cloud' ? 'One more stop on your dashboard: sign in, subscribe and turn Cloud on, in that order. Then connect Gmail so Pidgy can work while Gmail is closed.' : 'Pidgy works inside Gmail. Click the toolbar Pidgy to open it, or press ⌘K / Ctrl+K for commands.'}>
                 <ul className="ob-summary">
                   {(enabled.length ? enabled : [{ id: 'sort' as Feature, title: 'Inbox rules', detail: '' }]).map((feature, index) => (
                     <li key={feature.id} className="ob-rise" style={{ '--i': 3 + index } as CSSProperties}>

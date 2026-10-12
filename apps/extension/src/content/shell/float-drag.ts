@@ -1,5 +1,6 @@
 /**
  * Lets the floating thread card (and its docked pill) be dragged around and resized.
+ * Dropped near a viewport edge or corner, it snaps flush into place.
  * Position is anchored to the top-right corner so the pill and open card share an anchor.
  */
 
@@ -11,6 +12,11 @@ const POS_KEY = 'gi.float.pos';
 const SIZE_KEY = 'gi.float.size';
 const MARGIN = 8;
 const DRAG_SLOP = 4;
+/** Released within this distance of a viewport edge, the card snaps flush to it. */
+export const SNAP_ZONE = 48;
+/** The gap a snapped card keeps from the edge. */
+export const SNAP_GAP = 16;
+const SNAP_MS = 220;
 export const SIZE_LIMITS = { minWidth: 280, maxWidth: 680, minHeight: 240 };
 
 export function clampPos(pos: FloatPos, box: Box, viewport: Box): FloatPos {
@@ -20,6 +26,18 @@ export function clampPos(pos: FloatPos, box: Box, viewport: Box): FloatPos {
     right: Math.round(Math.min(Math.max(pos.right, MARGIN), maxRight)),
     top: Math.round(Math.min(Math.max(pos.top, MARGIN), maxTop)),
   };
+}
+
+/**
+ * Snaps a released card to any viewport edge it was dropped near. Each axis snaps
+ * on its own, so a drop near a corner lands in that corner.
+ */
+export function snapPos(pos: FloatPos, box: Box, viewport: Box): FloatPos {
+  const left = viewport.width - pos.right - box.width;
+  const bottom = viewport.height - pos.top - box.height;
+  const right = pos.right <= SNAP_ZONE ? SNAP_GAP : left <= SNAP_ZONE ? viewport.width - box.width - SNAP_GAP : pos.right;
+  const top = pos.top <= SNAP_ZONE ? SNAP_GAP : bottom <= SNAP_ZONE ? viewport.height - box.height - SNAP_GAP : pos.top;
+  return clampPos({ right, top }, box, viewport);
 }
 
 /** `room` is the space available to the left of the card's right edge and below its top. */
@@ -59,6 +77,16 @@ function viewport(): Box {
 function applyPos(host: HTMLElement, pos: FloatPos): void {
   host.style.setProperty('right', `${pos.right}px`, 'important');
   host.style.setProperty('top', `${pos.top}px`, 'important');
+}
+
+/** Glides the card into its snapped place; reduced motion jumps straight there. */
+function glideTo(host: HTMLElement, pos: FloatPos): void {
+  const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduce) {
+    host.style.transition = `right ${SNAP_MS}ms cubic-bezier(.2,.9,.3,1.15), top ${SNAP_MS}ms cubic-bezier(.2,.9,.3,1.15)`;
+    setTimeout(() => host.style.removeProperty('transition'), SNAP_MS + 40);
+  }
+  applyPos(host, pos);
 }
 
 function applySize(host: HTMLElement, size: FloatSize | null): void {
@@ -129,8 +157,10 @@ export function installFloatDrag(host: HTMLElement, fallback: () => FloatPos, op
   const onUp = (event: PointerEvent) => {
     if (!gesture || event.pointerId !== gesture.pointerId) return;
     if (gesture.kind === 'drag' && gesture.moved) {
-      if (options) options.save({ ...options.geometry(), position: currentPos() });
-      else save(POS_KEY, currentPos());
+      const snapped = snapPos(currentPos(), host.getBoundingClientRect(), viewport());
+      glideTo(host, snapped);
+      if (options) options.save({ ...options.geometry(), position: snapped });
+      else save(POS_KEY, snapped);
       swallowClick = true;
       setTimeout(() => (swallowClick = false), 0);
     } else if (gesture.kind === 'resize') {

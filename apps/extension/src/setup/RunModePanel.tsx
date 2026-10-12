@@ -110,11 +110,11 @@ export function RunModePanel({
           <div className="mt-3 flex flex-wrap gap-2">
             {!signedIn ? (
               <button type="button" className="gi-btn" disabled={busy} onClick={() => openDashboard('cloud', 'cloud')}>
-                Sign in on the dashboard ↗
+                Finish Cloud setup ↗
               </button>
             ) : null}
             {cloudStatus === 'not_entitled' ? (
-              <button type="button" className="gi-btn" disabled={busy} onClick={() => openDashboard('billing')}>
+              <button type="button" className="gi-btn" disabled={busy} onClick={() => openDashboard('cloud', 'cloud')}>
                 Subscribe ↗
               </button>
             ) : null}
