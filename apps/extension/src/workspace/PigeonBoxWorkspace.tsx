@@ -41,7 +41,11 @@ type SplitThread = {
   timestamp: string;
   priority?: string;
   manual?: boolean;
+  importance?: number;
+  reasons?: string[];
 };
+
+type InboxSort = 'importance' | 'newest';
 
 type AskItem = {
   threadId: string | null;
@@ -113,6 +117,8 @@ function WorkspaceContent() {
   const [splitLoading, setSplitLoading] = useState(true);
   const [splitError, setSplitError] = useState('');
   const [coverage, setCoverage] = useState('');
+  const [sort, setSort] = useState<InboxSort>('importance');
+  const sortRef = useRef<InboxSort>('importance');
   const [query, setQuery] = useWorkspaceInput('local:ask', '');
   const [displayError, setDisplayError] = useState('');
   const [asked, setAsked] = useState('');
@@ -132,7 +138,7 @@ function WorkspaceContent() {
   const loadSplit = useCallback((next: SplitCategory) => {
     const request = ++splitRequest.current;
     setSplitLoading(true); setSplitError('');
-    chrome.runtime.sendMessage({ type: 'LIST_SPLIT', category: next }, (res?: { threads?: SplitThread[] }) => {
+    chrome.runtime.sendMessage({ type: 'LIST_SPLIT', category: next, sort: sortRef.current }, (res?: { threads?: SplitThread[] }) => {
       const failed = Boolean(chrome.runtime.lastError || !res?.threads);
       if (request !== splitRequest.current) return;
       setSplitLoading(false);
@@ -184,7 +190,11 @@ function WorkspaceContent() {
         void chrome.storage.session.set({ panelState: cleanState });
       }
     };
-    loadSplit('RESPOND');
+    void chrome.storage.local.get('inboxSort').then((stored) => {
+      if (stored.inboxSort !== 'newest') { loadSplit('RESPOND'); return; }
+      sortRef.current = 'newest'; setSort('newest');
+      loadSplit(navigation.current.mode === 'home' ? 'RESPOND' : navigation.current.category as SplitCategory);
+    }, () => loadSplit('RESPOND'));
     // The Gmail shortcut may arrive before this React surface has mounted.
     const consumeCommands = () => void chrome.runtime.sendMessage({ type: 'CONSUME_WORKSPACE_COMMANDS' }).then((value) => { if (value?.open) setPalette(true); });
     consumeCommands();
@@ -258,6 +268,12 @@ function WorkspaceContent() {
     loadSplit(next);
   }
 
+  function chooseSort(next: InboxSort) {
+    sortRef.current = next; setSort(next);
+    void chrome.storage.local.set({ inboxSort: next });
+    loadSplit(category);
+  }
+
   function chooseInbox(section: 'mail' | 'sent' | 'waiting') {
     const next = section === 'waiting' ? 'WAITING' : category === 'WAITING' ? 'RESPOND' : category;
     setInboxSection(section); setCategory(next); setMode('inbox');
@@ -304,7 +320,7 @@ function WorkspaceContent() {
       ) : mode === 'inbox' ? (
         <div className="pb-inbox flex min-h-0 flex-1 flex-col">
           <div className="pb-inbox-sections" role="group" aria-label="Inbox views">{(['mail', 'sent', 'waiting'] as const).map((section) => <button key={section} type="button" aria-pressed={inboxSection === section} onClick={() => chooseInbox(section)}>{section === 'mail' ? 'Mail' : section === 'sent' ? 'Sent & tracking' : 'Waiting'}</button>)}</div>
-          {inboxSection === 'mail' ? <label className="pb-inbox-select"><span>Show</span><select aria-label="Inbox category" value={category} onChange={(event) => choose(event.target.value as SplitCategory)}>{CATEGORIES.filter(([id]) => id !== 'WAITING').map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>{threads.length ? <span className="pb-meta">{threads.length}</span> : null}</label> : <p className="pb-inbox-purpose">{inboxSection === 'sent' ? 'Sent emails, with opens and clicks when tracking is on.' : 'Conversations where the next reply is theirs.'}</p>}
+          {inboxSection === 'mail' ? <label className="pb-inbox-select"><span>Show</span><select aria-label="Inbox category" value={category} onChange={(event) => choose(event.target.value as SplitCategory)}>{CATEGORIES.filter(([id]) => id !== 'WAITING').map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>{threads.length ? <span className="pb-meta">{threads.length}</span> : null}<select aria-label="Sort order" className="pb-inbox-sort" value={sort} onChange={(event) => chooseSort(event.target.value as InboxSort)}><option value="importance">Important first</option><option value="newest">Newest first</option></select></label> : <p className="pb-inbox-purpose">{inboxSection === 'sent' ? 'Sent emails, with opens and clicks when tracking is on.' : 'Conversations where the next reply is theirs.'}</p>}
           <main className="min-h-0 flex-1 overflow-auto">
             {inboxSection === 'sent' ? (
               <WaitingView purpose="sent" owner={mailbox ?? context?.owner} threads={[]} onOpenThread={(id, folder) => void openThread(id, folder)} onCount={setWaitingCount} />

@@ -4,7 +4,15 @@ import { DotField } from './DotField';
 import { Pigeon } from './Pigeon';
 import { useDispatchLayout } from './dispatch-motion';
 
-export type DispatchThread = { threadId: string; sender: string; subject: string; snippet: string; timestamp: string; priority?: string; manual?: boolean };
+export type DispatchThread = { threadId: string; sender: string; subject: string; snippet: string; timestamp: string; priority?: string; manual?: boolean; reasons?: string[] };
+
+/** Opening a thread from PigeonBox tells the importance ranker it mattered (once per thread per page). */
+const reported = new Set<string>();
+function reportOpened(threadId: string) {
+  if (reported.has(threadId) || typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
+  reported.add(threadId);
+  void Promise.resolve(chrome.runtime.sendMessage({ type: 'IMPORTANCE_SIGNAL', threadId, signal: 'opened' })).catch(() => undefined);
+}
 
 export function DispatchThreads(props: { threads: DispatchThread[]; category: string; onOpen: (id: string) => void; onAsk: (question: string) => void; compact?: boolean }) {
   const [selected, setSelected] = useState<string | null>(null);
@@ -26,6 +34,7 @@ export function DispatchThreads(props: { threads: DispatchThread[]; category: st
   function close() { request.current++; setSelected(null); setIntel(null); setReading(false); requestAnimationFrame(() => rowFocus.current?.focus({ preventScroll: true })); }
   function select(thread: DispatchThread, button: HTMLButtonElement) {
     rowFocus.current = button;
+    reportOpened(thread.threadId);
     setSelected(thread.threadId); setIntel(null); setReading(true); setError('');
     const id = ++request.current;
     chrome.runtime.sendMessage({ type: 'GET_THREAD_INTEL', threadId: thread.threadId }, (response?: LocalThreadIntel) => {
@@ -39,7 +48,7 @@ export function DispatchThreads(props: { threads: DispatchThread[]; category: st
   return <ul ref={layout} className="pb-dispatch-list" data-detail={Boolean(selected)} aria-label={`${props.category} threads`}>
     {props.threads.map((thread) => <li key={thread.threadId} data-motion-id={`thread:${thread.threadId}`} className="pb-dispatch-thread" data-selected={selected === thread.threadId} hidden={Boolean(selected && selected !== thread.threadId)}>
       {selected === thread.threadId ? <button ref={backFocus} type="button" className="pb-brief-back" onClick={close}>← {props.category.replaceAll('_', ' ')}</button> : null}
-      <button type="button" className="pb-thread-heading" aria-expanded={selected === thread.threadId} aria-label={`Read brief: ${thread.subject || '(no subject)'}`} onClick={(event) => selected === thread.threadId ? close() : select(thread, event.currentTarget)}>
+      <button type="button" className="pb-thread-heading" aria-expanded={selected === thread.threadId} aria-label={`Read brief: ${thread.subject || '(no subject)'}`} title={thread.reasons?.length ? thread.reasons.join(' · ') : undefined} onClick={(event) => selected === thread.threadId ? close() : select(thread, event.currentTarget)}>
         <span className="pb-thread-sender" data-motion-id={`sender:${thread.threadId}`}><i data-priority={thread.priority === 'HIGH'} aria-hidden="true" />{thread.sender}</span>
         <time className="gi-time" dateTime={thread.timestamp}>{threadTime(thread.timestamp)}</time>
         <span className="pb-thread-subject" data-motion-id={`subject:${thread.threadId}`}>{thread.subject || '(no subject)'}</span>
@@ -53,7 +62,7 @@ export function DispatchThreads(props: { threads: DispatchThread[]; category: st
 
           {brief?.actionItems?.length ? <div className="pb-brief-section"><h3 className="gi-kicker">Next</h3><ul>{brief.actionItems.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
           {brief?.dates?.length ? <div className="pb-brief-section"><h3 className="gi-kicker">Key date</h3><p>{brief.dates.join(' · ')}</p></div> : null}
-          <div className="pb-brief-actions"><button type="button" onClick={() => props.onOpen(thread.threadId)}>Open thread in Gmail <span>↗</span></button><button type="button" onClick={() => props.onAsk(`What needs my attention in the thread "${thread.subject}" from ${thread.sender}?`)}>Ask about thread <span>→</span></button></div>
+          <div className="pb-brief-actions"><button type="button" onClick={() => { reportOpened(thread.threadId); props.onOpen(thread.threadId); }}>Open thread in Gmail <span>↗</span></button><button type="button" onClick={() => props.onAsk(`What needs my attention in the thread "${thread.subject}" from ${thread.sender}?`)}>Ask about thread <span>→</span></button></div>
         </section> : null}</div>
       </div>
     </li>)}

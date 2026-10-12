@@ -24,7 +24,8 @@ import {
   type PromptOptions,
 } from '@pigeonbox/ai';
 import { selectGmailTab, WorkerTabController } from '@pigeonbox/gmail';
-import { filterSplitThreads, getMailboxDb, IndexJobRunner, MailboxIngestor, type IngestThread, type SearchDocumentRow, type SplitView } from '@pigeonbox/mailbox';
+import { filterSplitThreads, getMailboxDb, rankByImportance, IndexJobRunner, MailboxIngestor, type IngestThread, type SearchDocumentRow, type SplitView } from '@pigeonbox/mailbox';
+import { createImportanceRanker } from './importance';
 import { formatCoverageWarning, LexicalSearchIndex } from '@pigeonbox/search';
 import {
   DEFAULT_SETTINGS,
@@ -94,6 +95,7 @@ import { CLOUD_DASHBOARD_URL, DEV_BUILD, EXPERIMENTAL_FEATURES, cloudApiUrl, clo
 import { gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './tracking/notifications';
 
 const db = getMailboxDb();
+const importance = createImportanceRanker(db);
 const queue = new AIJobQueue();
 const ingestor = new MailboxIngestor(db);
 const lexical = new LexicalSearchIndex();
@@ -1205,6 +1207,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type === 'WORKSPACE_THREAD_ACTION') {
       const context = await workspaceContext(sender.tab);
       if (!context.context || context.context.threadId !== message.threadId || context.tabId == null) { sendResponse({ ok: false, reason: 'Reopen this conversation first.' }); return; }
+      if (message.id === 'archive') void importance.learn(String(message.threadId), 'archived').catch(() => undefined);
       sendResponse(await chrome.tabs.sendMessage(context.tabId, { type: 'PIGEONBOX_WORKSPACE_ACTION', id: message.id, threadId: message.threadId, body: typeof message.body === 'string' ? message.body.slice(0, 40000) : undefined })); return;
     }
 
@@ -1261,6 +1264,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             ? (await db.reminders.where('status').equals('pending').toArray()).map((row) => row.threadId)
             : [];
         const matched = filterSplitThreads(threads, category, followUps);
+        const ranked = await importance.rank(matched, threads).catch(() => new Map<string, { importance: number; reasons: string[] }>());
         const rows = [];
         for (const thread of matched) {
           const owner = thread.mailboxEmail ? await mailboxIdentities.forEmail(thread.mailboxEmail) : undefined;
@@ -1274,10 +1278,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             priority: thread.priority,
             manual: Boolean(thread.manualCategory),
             category: thread.classification,
+            importance: ranked.get(thread.threadId)?.importance ?? 0,
+            reasons: ranked.get(thread.threadId)?.reasons ?? [],
           });
         }
-        rows.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
-        sendResponse({ threads: rows, count: rows.length });
+        const sort = message.sort === 'newest' ? 'newest' : 'importance';
+        const sorted = sort === 'newest' || !ranked.size ? rows.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1)) : rankByImportance(rows);
+        sendResponse({ threads: sorted, count: sorted.length, sort });
+        return;
+      }
+      if (message?.type === 'IMPORTANCE_SIGNAL') {
+        // Only PigeonBox's own pages report opens; Gmail pages cannot steer the ranker.
+        const threadId = String(message.threadId || '');
+        if (!isExtensionPageSender(sender) || !threadId || message.signal !== 'opened') { sendResponse({ ok: false }); return; }
+        await importance.learn(threadId, 'opened').catch(() => undefined);
+        sendResponse({ ok: true });
         return;
       }
       if (message?.type === 'SET_CATEGORY') {
@@ -1287,6 +1302,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: false, reason: 'Choose Respond, Waiting, or FYI.' });
           return;
         }
+        // Learn from the move as the thread looked before it, so a misfiled thread teaches the ranker.
+        await importance.learn(threadId, category === 'RESPOND' ? 'moved_respond' : category === 'WAITING' ? 'moved_waiting' : 'moved_fyi').catch(() => undefined);
         await db.thread_overrides.put({
           threadId,
           category: category as 'RESPOND' | 'WAITING' | 'FYI',
