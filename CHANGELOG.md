@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.7.0] — 2026-10-14
+
+### Added
+- **Inbox sorted by importance.** The split inbox puts what matters first, ranked by a small model that runs on your computer and learns from what you do: moving a thread to Respond or FYI, opening it from PigeonBox, archiving it. Hover a thread to see why it ranked where it did. Switch back to Newest first at any time; your choice is kept.
+- **See how Ask got its answer.** While Pidgy works, Ask shows each step live (searching mail, reading a thread, checking the web) and keeps the trace with the answer, with how long it took.
+
+### Changed
+- Follow-up questions in Ask keep the thread of the conversation: earlier sources, prepared emails and choices go along with the next question, so "the second one" or "send that" means what you expect.
+- The floating workspace snaps flush to a screen edge or corner when you drop it nearby.
+- Cloud setup buttons all lead to the same ordered setup path.
+
 ### Fixed
 - Pressing Reply all (or Reply / Forward) in your own tracked thread no longer marks the email as opened. PigeonBox now notices every time Gmail loads your pixel, including the quote it builds out of sight, and claims your thread's tracked messages on every draft save and on send, even when Gmail keeps the trimmed quote off the page.
 - Replies sent with tracking off no longer carry the earlier email's pixel, so recipients reading your reply aren't counted as opening the original.
