@@ -429,4 +429,5 @@ function sleep(ms: number): Promise<void> {
 }
 
 export * from './types.js';
+export * from './importance.js';
 export * from './db.js';
