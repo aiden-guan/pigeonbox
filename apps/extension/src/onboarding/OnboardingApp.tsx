@@ -362,13 +362,7 @@ function Swap({ id, direction, children }: { id: string; direction: 1 | -1; chil
 function PathCard(props: { index: number; icon: ReactNode; title: string; detail: string; tag: string; onClick: (event: MouseEvent<HTMLButtonElement>) => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   return (
-    <button ref={ref} type="button" className="ob-path ob-rise" style={{ '--i': props.index } as CSSProperties} onClick={props.onClick}
-      onPointerMove={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        event.currentTarget.style.setProperty('--mx', `${event.clientX - rect.left}px`);
-        event.currentTarget.style.setProperty('--my', `${event.clientY - rect.top}px`);
-      }}>
-      <span className="ob-path-glow" aria-hidden="true" />
+    <button ref={ref} type="button" className="ob-path ob-rise" style={{ '--i': props.index } as CSSProperties} onClick={props.onClick}>
       <span className="ob-path-icon">{props.icon}</span>
       <span className="ob-path-tag">{props.tag}</span>
       <strong>{props.title}</strong>

@@ -12,7 +12,21 @@ const CLOUD_STATUS_LABEL: Record<string, string> = {
   not_entitled: 'Subscription not active',
   expired: 'Session ended. Sign in again',
   unreachable: 'PigeonBox Cloud is unreachable',
+  update_required: 'PigeonBox needs an update',
 };
+
+const CLOUD_NOTICE: Record<string, string> = {
+  maintenance: 'PigeonBox Cloud is under maintenance. Local mode keeps working.',
+  degraded: 'PigeonBox Cloud is running slower than usual.',
+};
+
+/** "You're using PigeonBox 0.5.8. PigeonBox Cloud requires 0.6.0 or newer." */
+export function updateMessage(update: { required: boolean; installed: string; minimum: string | null; recommended: string | null }): string {
+  const target = update.required ? update.minimum : update.recommended;
+  const using = `You're using PigeonBox ${update.installed}.`;
+  if (!target) return update.required ? `${using} PigeonBox Cloud needs a newer version.` : `${using} A newer version is available.`;
+  return update.required ? `${using} PigeonBox Cloud requires ${target} or newer.` : `${using} Version ${target} is recommended.`;
+}
 
 /**
  * "How should PigeonBox run?" — On this computer, PigeonBox Cloud, or Advanced.
@@ -36,7 +50,8 @@ export function RunModePanel({
   const cloudMode = state.runMode === 'cloud';
   const cloudStatus = state.cloud.status;
   const modeLayout = useDispatchLayout<HTMLDivElement>(state.runMode);
-  const signedIn = cloudStatus === 'ready' || cloudStatus === 'not_entitled' || cloudStatus === 'unreachable';
+  const signedIn = cloudStatus === 'ready' || cloudStatus === 'not_entitled' || cloudStatus === 'unreachable' || cloudStatus === 'update_required';
+  const update = state.cloud.update;
 
   return (
     <div ref={modeLayout} className="space-y-3 pb-run-mode" id="run-mode">
@@ -107,6 +122,16 @@ export function RunModePanel({
             </div>
             {cloudStatus === 'ready' ? <span className="gi-badge">In use</span> : null}
           </div>
+          {state.cloud.notice && CLOUD_NOTICE[state.cloud.notice] ? <p className="mt-2 text-xs gi-muted">{CLOUD_NOTICE[state.cloud.notice]}</p> : null}
+          {update ? (
+            // Required: Cloud stops until the update (Local mode is unaffected). Recommended: one quiet line.
+            <p className={update.required ? 'mt-2 text-xs' : 'mt-2 text-xs gi-muted'} role={update.required ? 'status' : undefined}>
+              {updateMessage(update)}{' '}
+              <button type="button" className="gi-text-btn" disabled={busy} onClick={() => void product.updateExtension()}>
+                Update PigeonBox
+              </button>
+            </p>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             {!signedIn ? (
               <button type="button" className="gi-btn" disabled={busy} onClick={() => openDashboard('cloud', 'cloud')}>

@@ -1,6 +1,6 @@
 {
   "name": "@pigeonbox/extension",
-  "version": "0.5.8",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,8 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.3.0",
-    "@inboxsdk/core": "^2.2.26",
+    "@huggingface/transformers": "^4.3.1",
+    "@inboxsdk/core": "^2.2.29",
     "@pigeonbox/agent": "*",
     "@pigeonbox/ai": "*",
     "@pigeonbox/api-contract": "*",

@@ -218,3 +218,20 @@ export function validateReleaseManifest(manifest) {
   const foreign = connectable.filter((match) => !/^https:\/\/(www\.)?usepigeonbox\.com\/\*$/.test(match));
   return foreign.length ? [`externally_connectable allows pages other than usepigeonbox.com: ${foreign.join(', ')}`] : [];
 }
+
+/**
+ * Every permission and host pattern in the manifest must be justified in
+ * docs/chrome-web-store.md (as `code` in its permission tables).
+ */
+export function undocumentedPermissions(manifest, justification) {
+  const declared = [
+    ...(manifest.permissions ?? []),
+    ...(manifest.optional_permissions ?? []),
+    ...(manifest.host_permissions ?? []),
+    ...(manifest.optional_host_permissions ?? []),
+  ];
+  // Only the first cell of table rows counts: a permission mentioned in prose (say, as removed) is not justified.
+  const cells = justification.split('\n').filter((line) => line.startsWith('|')).map((line) => line.split('|')[1] ?? '');
+  const documented = new Set(cells.flatMap((cell) => [...cell.matchAll(/`([^`]+)`/g)].map((match) => match[1])));
+  return declared.filter((permission) => !documented.has(permission)).map((permission) => `manifest permission ${permission} has no justification in docs/chrome-web-store.md`);
+}

@@ -27,4 +27,6 @@ export * from './memory.js';
 
 export * from './compose.js';
 
+export * from './client-config.js';
+
 export * from './tasks.js';

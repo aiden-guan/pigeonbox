@@ -14,6 +14,8 @@ The protocol between the extension and PigeonBox Cloud is defined once, in `pack
 
 - Clients send `x-pigeonbox-protocol: 1` (`PROTOCOL_VERSION`) on every request, plus `x-pigeonbox-client: extension/<version>` for diagnostics.
 - The server accepts the versions in its `supported` list (`GET /v1/version`) and answers anything else with `426 unsupported_protocol`.
+- The server may also set a minimum extension version. A request whose `x-pigeonbox-client` is `extension/X.Y.Z` below it gets `426 unsupported_protocol` with `error.minimumVersion`. Clients that send no parseable version (source builds, the dashboard) are not gated by version.
+- The extension shows **PigeonBox needs an update** ("You're using PigeonBox 0.5.8. PigeonBox Cloud requires 0.6.0 or newer.") with an Update action, sets Cloud status `update_required`, and stops Cloud polling and checks until it is updated. It never reports this as an outage. Local mode keeps working. A recommended (not required) version shows one quiet line and changes nothing else.
 - Breaking changes (removed route, renamed field, new required request field, changed meaning) bump the version. Additive changes (routes, optional request fields, response fields, capabilities, error codes) do not.
 - Clients ignore unknown response fields and capabilities. Error codes are parsed leniently.
 - Drift guard: `packages/cloud-client/src/contract-compat.ts` fails `npm run typecheck` if the contract's AI request types stop matching the extension's `AIProvider` input types.
@@ -24,6 +26,7 @@ The protocol between the extension and PigeonBox Cloud is defined once, in `pack
 |---|---|---|---|
 | GET | `/v1/health` | none | Liveness |
 | GET | `/v1/version` | none | Server version and supported protocol versions |
+| GET | `/v1/client/config` | none | Remote client config (below). Global, never per user |
 | GET | `/v1/auth/authorize` | none | Browser redirect: starts PKCE sign-in |
 | POST | `/v1/auth/token` | none | Exchange `{ code, codeVerifier, redirectUri }` for a session |
 | POST | `/v1/auth/refresh` | none | Exchange `{ refreshToken }` for a new session |
@@ -68,6 +71,32 @@ In the extension, extension pages reach these routes through the worker's `CLOUD
 AI responses share one envelope: `{ result, usage: { inputTokens?, outputTokens?, totalTokens? }, model?, requestId? }`. Size limits are in `AI_LIMITS`.
 
 The hosted tracker speaks the self-host tracker protocol (see [tracking.md](tracking.md)) at its own origin. Its management routes (`/api/emails…`, `/api/events/recent`) take the Cloud access token as the Bearer credential, require the `cloud_tracking` capability (otherwise `402 entitlement_required`) and only ever see the caller's own records; `/open/:id` and `/c/:id` stay public and keep working for mail that was already sent after a plan ends. Only the service worker calls the management routes, through the Cloud session's token provider. The tracker origin is a build setting (`VITE_PIGEONBOX_CLOUD_TRACKER_URL`) and is requested as an optional host permission when switching to Cloud (the extension's `grant.html` window); if it changes, the dashboard's Email tracking page offers to grant the new origin.
+
+## Remote client config
+
+`GET /v1/client/config` returns `{ schema: 1, revision, ttlSeconds?, config }`. The schema, bounds and defaults are `packages/api-contract/src/client-config.ts`; the server builds the response from its `CLIENT_CONFIG` setting, validated with the same schema.
+
+| Field | Bounds | Effect in the extension |
+|---|---|---|
+| `compose.idleMs` | 250–2000 (default 450) | Typing pause before a compose check |
+| `compose.cooldownMs` | 1000–15000 (default 2800) | Minimum gap between checks in one composer |
+| `compose.cacheMs` | 0–60000 (default 30000) | How long an answer is reused for the same clause |
+| `compose.disabledKinds` | known notice kinds | Those notices are not shown |
+| `notifications.pollMinutes` | 2–30 (default 2) | Cloud notification polling |
+| `disabledFeatures` | `compose_checks`, `compose_completion`, `prepared_drafts`, `cloud_notifications` | Emergency off switch |
+| `compatibility.minimumVersion`, `.recommendedVersion` | `X.Y.Z` | Update required / recommended |
+| `notice.code` | `maintenance`, `degraded` | A fixed, extension-written line in Cloud status |
+| `ttlSeconds` | 300–86400 (default 3600) | Cache lifetime |
+
+Rules:
+
+- **Only less, never more.** Config can switch client features off or slow them down within bounds. It cannot turn on anything the person or their plan has not, and server-side checks (opt-in, entitlements, `CLOUD_ROLLOUT`) still apply.
+- **No code, URLs, routes, permissions, scopes, HTML, CSS or free text**, and no secrets. Messages are enum codes the extension words itself.
+- **Fails safe.** A wrong `schema` is ignored as a whole; an out-of-bounds or malformed field falls back to its default on its own; unknown fields are dropped. The last good config is kept for up to 7 days when Cloud cannot be reached, and a failed fetch is not retried for 5 minutes. With no config at all the extension behaves exactly as the defaults above.
+- **Cloud mode only.** Local mode never requests it.
+- **Revision-aware.** Cached compose answers carry the config revision and are discarded when it changes.
+
+The extension sends `x-pigeonbox-client: extension/<version>` on this request too, so the server can tell old and new clients apart; the response is the same for both.
 
 ## Sign-in
 

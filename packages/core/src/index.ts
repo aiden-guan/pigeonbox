@@ -18,7 +18,11 @@ export { KNOWN_CAPABILITIES };
  * - expired:        the session could not be refreshed
  * - unreachable:    the last request failed at the network level
  */
-export type CloudConnectionStatus = 'not_configured' | 'signed_out' | 'ready' | 'not_entitled' | 'expired' | 'unreachable';
+/** `update_required`: this extension version is too old for the Cloud server (never reported as an outage). */
+export type CloudConnectionStatus = 'not_configured' | 'signed_out' | 'ready' | 'not_entitled' | 'expired' | 'unreachable' | 'update_required';
+
+/** Set when the server asks for a newer extension; `required` blocks Cloud, otherwise it is a recommendation. */
+export type CloudUpdateNotice = { required: boolean; installed: string; minimum: string | null; recommended: string | null };
 
 export type CloudState = {
   status: CloudConnectionStatus;
@@ -26,6 +30,9 @@ export type CloudState = {
   plan: string | null;
   /** Capabilities from `/v1/capabilities`; empty until fetched. */
   capabilities: readonly string[];
+  update?: CloudUpdateNotice;
+  /** Planned maintenance or degraded service, from remote client config. The extension owns the wording. */
+  notice?: 'maintenance' | 'degraded';
 };
 
 export const SIGNED_OUT_CLOUD: CloudState = { status: 'signed_out', email: null, plan: null, capabilities: [] };

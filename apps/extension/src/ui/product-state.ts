@@ -106,6 +106,8 @@ export function useProductState() {
     },
     signOut: () => run({ type: 'CLOUD_SIGN_OUT' }),
     recheck: () => run({ type: 'CLOUD_REFRESH' }),
+    /** Store copies restart into a ready update; otherwise the store or releases page opens. */
+    updateExtension: () => run({ type: 'EXTENSION_UPDATE' }),
     billing: (kind: 'checkout' | 'portal') => run({ type: 'CLOUD_BILLING', kind }),
   };
 }

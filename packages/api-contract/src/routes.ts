@@ -1,5 +1,6 @@
 import { TasksSchema, TaskCreateSchema, TaskUpdateSchema } from './tasks.js';
 import { ComposeCheckRequestSchema, ComposeCheckResponseSchema } from './compose.js';
+import { ClientConfigResponseSchema } from './client-config.js';
 import { MemoryChatRequestSchema, MemoryChatResponseSchema, MemoryListRequestSchema, MemoryListResponseSchema, MemoryIdRequestSchema, MemoryResponseSchema, MemoryUpdateRequestSchema, MemoryPurgeRequestSchema, MemoryPurgeResponseSchema, MemorySubjectsRequestSchema, MemorySubjectsResponseSchema } from './memory.js';
 import type { z } from 'zod';
 import {
@@ -186,6 +187,8 @@ export type RouteDef = {
 export const ROUTES = {
   health: { method: 'GET', path: '/v1/health', auth: 'none', response: HealthResponseSchema },
   version: { method: 'GET', path: '/v1/version', auth: 'none', response: VersionResponseSchema },
+  /** Non-secret client tuning and version minimums; see client-config.ts. Global, never per user. */
+  clientConfig: { method: 'GET', path: '/v1/client/config', auth: 'none', response: ClientConfigResponseSchema },
 
   authToken: { method: 'POST', path: '/v1/auth/token', auth: 'none', request: TokenExchangeRequestSchema, response: SessionResponseSchema },
   authRefresh: { method: 'POST', path: '/v1/auth/refresh', auth: 'none', request: RefreshRequestSchema, response: SessionResponseSchema },

@@ -61,7 +61,7 @@ function productReply(message:{type:string;mode?:string}): unknown {
   demoProduct.capabilities = demoProduct.runMode==="cloud" ? [...demoProduct.cloud.capabilities, "ask_inbox"] : ["ask_inbox"];
   return message.type==="GET_PRODUCT_STATE" ? demoProduct : { ok:true, state:{...demoProduct} };
 }
-const PRODUCT_MESSAGES = new Set(["GET_PRODUCT_STATE","SET_RUN_MODE","CLOUD_SIGN_IN","CLOUD_SIGN_OUT","CLOUD_REFRESH","CLOUD_BILLING"]);
+const PRODUCT_MESSAGES = new Set(["GET_PRODUCT_STATE","SET_RUN_MODE","CLOUD_SIGN_IN","CLOUD_SIGN_OUT","CLOUD_REFRESH","CLOUD_BILLING","EXTENSION_UPDATE"]);
 // This shim lives only on this standalone preview URL.
 Object.defineProperty(window, "chrome", { configurable:true, value: {
   runtime: { connect:()=>demoAskPort(), getURL:(p:string)=>p==='workspace.html' ? '/src/preview/index.html?surface=workspace' : `/${p}`, onMessage:{addListener:(fn:(message:{type:string;appearance?:unknown})=>void)=>messages.add(fn),removeListener:(fn:(message:{type:string;appearance?:unknown})=>void)=>messages.delete(fn)}, openOptionsPage:()=>{location.hash="settings";location.reload();},

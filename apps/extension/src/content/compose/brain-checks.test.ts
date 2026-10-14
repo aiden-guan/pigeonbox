@@ -9,6 +9,7 @@ import {
   BRAIN_IDLE_MS,
   activeBrainChecks,
   attachComposeBrainChecks,
+  invalidateBrainChecks,
   claimDiff,
   claimRange,
   readComposeText,
@@ -587,5 +588,71 @@ describe('smart autofill editor behavior and Pidgy coverage', () => {
     c.body.dispatchEvent(new KeyboardEvent('keydown', {code:'Space',key:' ',ctrlKey:true,shiftKey:true,bubbles:true,cancelable:true}));
     await vi.advanceTimersByTimeAsync(10); expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ includeCompletion: true });
+  });
+});
+
+describe('remote tuning and revision-aware invalidation', () => {
+  it('uses the remotely tuned idle delay and cache lifetime, read on every use', async () => {
+    const c = compose();
+    const { deps, requests } = brain(busy);
+    let tuning = { idleMs: 900, cooldownMs: 1_000, cacheMs: 0, revision: 'r1' };
+    deps.tuning = () => tuning;
+    attachComposeBrainChecks(c.harness.view(), deps);
+    c.type("I'm free tomorrow at 3.");
+    await vi.advanceTimersByTimeAsync(BRAIN_IDLE_MS + 10);
+    expect(requests).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(900);
+    expect(requests).toHaveLength(1);
+    // cacheMs 0: the same clause is asked again rather than answered from cache.
+    tuning = { ...tuning, idleMs: 300 };
+    c.type(' ');
+    c.emit('recipientsChanged');
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(requests).toHaveLength(2);
+  });
+
+  it('never reuses an answer cached under an older config revision', async () => {
+    const c = compose();
+    const { deps, requests } = brain(busy);
+    let revision = 'r1';
+    deps.tuning = () => ({ idleMs: BRAIN_IDLE_MS, cooldownMs: BRAIN_COOLDOWN_MS, cacheMs: BRAIN_CACHE_MS, revision });
+    attachComposeBrainChecks(c.harness.view(), deps);
+    c.type("I'm free tomorrow at 3.");
+    await settle();
+    expect(requests).toHaveLength(1);
+    revision = 'r2';
+    invalidateBrainChecks();
+    expect(c.notice()).toBeNull();
+    await vi.advanceTimersByTimeAsync(BRAIN_COOLDOWN_MS + BRAIN_IDLE_MS);
+    expect(requests).toHaveLength(2);
+  });
+
+  it('withdraws advice and drops an in-flight answer when remembered context changes', async () => {
+    const c = compose();
+    let release: (reply: BrainCheckReply) => void = () => undefined;
+    const { deps, requests } = brain(() => new Promise((resolve) => { release = resolve; }));
+    attachComposeBrainChecks(c.harness.view(), deps);
+    c.type("I'm free tomorrow at 3.");
+    await settle();
+    expect(requests).toHaveLength(1);
+    invalidateBrainChecks();
+    release(busy);
+    await vi.advanceTimersByTimeAsync(0);
+    // The answer predates the change: not shown, not cached.
+    expect(c.notice()).toBeNull();
+    await vi.advanceTimersByTimeAsync(BRAIN_COOLDOWN_MS + BRAIN_IDLE_MS);
+    expect(requests).toHaveLength(2);
+  });
+
+  it('keeps invalidation per compose state: closed composers are untouched and nothing throws', async () => {
+    const a = compose();
+    const b = compose(['sam@example.test']);
+    const first = brain(busy);
+    const second = brain(none);
+    attachComposeBrainChecks(a.harness.view(), first.deps);
+    attachComposeBrainChecks(b.harness.view(), second.deps);
+    a.emit('destroy');
+    expect(activeBrainChecks()).toBe(1);
+    expect(() => invalidateBrainChecks()).not.toThrow();
   });
 });
