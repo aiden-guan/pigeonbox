@@ -46,12 +46,18 @@ test('Cloud Ask shows loading, a cited answer, account-bound sources and keeps t
   await page.getByRole('button', { name: 'Ask', exact: true }).click();
   await page.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('What needs a reply?');
   await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
-  await expect(page.getByText('Searching your mail…')).toBeVisible();
-  // Progress streams in before the answer.
-  await expect(page.locator('.pb-ask-steps li', { hasText: 'Searching Gmail: pricing' })).toBeVisible();
-  await expect(page.locator('.pb-ask-steps li', { hasText: 'Reading "Pricing"' })).toBeVisible();
+  // Progress streams in before the answer: one live line, with the query beside it.
+  const trace = page.locator('.pb-trace');
+  await expect(trace.getByRole('status')).toHaveText('Searching your mail');
+  await expect(trace.locator('.pb-trace-detail')).toHaveText('pricing');
+  await expect(trace.getByRole('status')).toHaveText('Reading a thread');
   await expect(page.locator('.pb-answer-text strong', { hasText: 'Pricing' })).toBeVisible();
-  await expect(page.locator('.pb-ask-steps')).toHaveCount(0);
+  // The path settles into a summary that opens into categorized steps.
+  await expect(trace).not.toHaveAttribute('data-live', /.*/);
+  await expect(trace.getByRole('status')).toHaveText(/^Worked for \d+s$/);
+  await trace.getByRole('button').click();
+  await expect(trace.locator('li', { hasText: 'Search' }).filter({ hasText: 'pricing' })).toBeVisible();
+  await expect(trace.locator('li', { hasText: 'Read' }).filter({ hasText: 'Pricing' })).toBeVisible();
   expect(app.api.calls.filter((call) => call.route === '/v1/ask/stream')).toHaveLength(1);
   await expect(page.locator('.pb-answer-text button.pb-citation-ref')).toHaveText('[01]');
   // Sources start collapsed behind a toggle with a count.

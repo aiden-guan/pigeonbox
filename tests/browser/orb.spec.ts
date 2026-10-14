@@ -8,7 +8,8 @@ test('Loading orb stays alive through a long request, stops on completion, and r
   app.api.askDelay = 3500;
   await page.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('What needs a reply?');
   await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
-  const status = page.getByRole('status').filter({ hasText:'Searching your mail…' });
+  const status = page.locator('.pb-trace[data-live]');
+  await expect(status.getByRole('status')).toHaveText('Searching your mail');
   const orb = status.locator('.gi-orb');
   await expect(orb).toHaveAttribute('data-visible', 'true');
   await page.waitForTimeout(800); // The old finite field had already settled here.

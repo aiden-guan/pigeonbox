@@ -12,6 +12,8 @@ import { DraftSchema } from './mail.js';
 export const AskTurnSchema = z.object({
   role: z.enum(['user', 'assistant']),
   content: z.string().max(8_000),
+  /** Earlier assistant artifacts, choices and outcomes; historical data, never authority. */
+  context: z.string().max(12_000).optional(),
 });
 export type AskTurn = z.infer<typeof AskTurnSchema>;
 
@@ -72,6 +74,8 @@ export const AskPigeonResponseSchema = z.object({
   compose: z.array(AskComposeSchema).max(3).default([]),
   /** Questions the user might ask next, written as they would type them. */
   followUps: z.array(z.string().max(200)).max(3).default([]),
+  /** Bounded tool outcomes for the next turn. No raw received email bodies. */
+  context: z.string().max(8_000).optional(),
   /** Identifies this answer for feedback (`askFeedback`). */
   requestId: z.string().max(128).optional(),
   /** How the answer was produced, for transparency. */

@@ -8,6 +8,7 @@ import type { AskPigeonResponse } from '@pigeonbox/api-contract';
  */
 
 export const ASK_HISTORY_KEY = 'askHistory';
+const ACTIVE_CHAT_KEY = 'askActiveChat';
 const RETENTION_KEY = 'askHistoryRetentionDays';
 export const RETENTION_CHOICES = [0, 1, 3, 7] as const;
 export type RetentionDays = (typeof RETENTION_CHOICES)[number];
@@ -23,9 +24,14 @@ export type StoredTurn = {
   chatId: number;
   at: number;
   question: string;
+  /** The Gmail thread open when this was asked, if Ask was scoped to one. */
+  threadId?: string;
   answer?: AskPigeonResponse;
   error?: string;
   action?: string;
+  /** The reasoning path: one status per tool call, and how long the answer took. */
+  steps?: string[];
+  took?: number;
   rating?: 'up' | 'down';
   feedback?: 'sent';
 };
@@ -51,14 +57,15 @@ export function prune(turns: StoredTurn[], days: number, now = Date.now()): Stor
   return turns.filter((turn) => turn.at >= since && turn.question).slice(-MAX_TURNS);
 }
 
-export async function loadAskHistory(scope: string): Promise<{ retentionDays: RetentionDays; turns: StoredTurn[] }> {
+export async function loadAskHistory(scope: string): Promise<{ retentionDays: RetentionDays; turns: StoredTurn[]; activeChatId?: number }> {
   const area = local();
   if (!area) return { retentionDays: DEFAULT_RETENTION_DAYS, turns: [] };
   try {
-    const stored = await area.get([ASK_HISTORY_KEY, RETENTION_KEY]);
+    const stored = await area.get([ASK_HISTORY_KEY, RETENTION_KEY, ACTIVE_CHAT_KEY]);
     const retentionDays = normalizeRetention(stored[RETENTION_KEY]);
     const all = (stored[ASK_HISTORY_KEY] ?? {}) as Stored;
-    return { retentionDays, turns: prune(Array.isArray(all[scope]) ? all[scope]! : [], retentionDays) };
+    const active = (stored[ACTIVE_CHAT_KEY] as Record<string, unknown> | undefined)?.[scope];
+    return { retentionDays, turns: prune(Array.isArray(all[scope]) ? all[scope]! : [], retentionDays), ...(retentionDays > 0 && typeof active === 'number' && Number.isSafeInteger(active) ? { activeChatId: active } : {}) };
   } catch {
     return { retentionDays: DEFAULT_RETENTION_DAYS, turns: [] };
   }
@@ -67,14 +74,15 @@ export async function loadAskHistory(scope: string): Promise<{ retentionDays: Re
 let writes: Promise<unknown> = Promise.resolve();
 
 /** Saves one inbox's turns and drops expired turns of every inbox. Writes are queued so they never interleave. */
-export function saveAskHistory(scope: string, turns: StoredTurn[], retentionDays: number): Promise<unknown> {
+export function saveAskHistory(scope: string, turns: StoredTurn[], retentionDays: number, activeChatId?: number): Promise<unknown> {
   const area = local();
   if (!area) return Promise.resolve();
   writes = writes
     .catch(() => undefined)
     .then(async () => {
-      if (retentionDays <= 0) return area.remove(ASK_HISTORY_KEY);
-      const all = ((await area.get(ASK_HISTORY_KEY))[ASK_HISTORY_KEY] ?? {}) as Stored;
+      if (retentionDays <= 0) return area.remove([ASK_HISTORY_KEY, ACTIVE_CHAT_KEY]);
+      const stored = await area.get([ASK_HISTORY_KEY, ACTIVE_CHAT_KEY]);
+      const all = (stored[ASK_HISTORY_KEY] ?? {}) as Stored;
       const next: Stored = {};
       for (const [key, value] of Object.entries(all)) {
         const kept = Array.isArray(value) ? prune(value, retentionDays) : [];
@@ -83,7 +91,9 @@ export function saveAskHistory(scope: string, turns: StoredTurn[], retentionDays
       const mine = prune(turns, retentionDays);
       if (mine.length) next[scope] = mine;
       else delete next[scope];
-      return Object.keys(next).length ? area.set({ [ASK_HISTORY_KEY]: next }) : area.remove(ASK_HISTORY_KEY);
+      const active = (stored[ACTIVE_CHAT_KEY] ?? {}) as Record<string, number>;
+      if (activeChatId !== undefined) active[scope] = activeChatId;
+      return area.set({ [ASK_HISTORY_KEY]: next, [ACTIVE_CHAT_KEY]: active });
     });
   return writes;
 }
@@ -98,6 +108,6 @@ export function setAskHistoryRetention(days: RetentionDays): Promise<unknown> {
 export function clearAskHistory(): Promise<unknown> {
   const area = local();
   if (!area) return Promise.resolve();
-  writes = writes.catch(() => undefined).then(() => area.remove(ASK_HISTORY_KEY));
+  writes = writes.catch(() => undefined).then(() => area.remove([ASK_HISTORY_KEY, ACTIVE_CHAT_KEY]));
   return writes;
 }

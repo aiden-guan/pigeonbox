@@ -92,7 +92,7 @@ function ThreadPreview({state}:{state:PigeonState}) {
 }
 function MotionPreview() {
  const [state,setState]=useState<DotState>('analyzing');
- return <div className="preview preview-motion"><header className="preview-nav"><span className="preview-wordmark">PigeonBox / Motion</span><AppearanceButton /></header><main><p className="gi-kicker">Contour study</p><h1>Intelligence, in motion.</h1><p>One copper language. A different gesture for every kind of work.</p><div className="preview-orb-stage"><DotField state={state} size={136}/></div><nav aria-label="Orb states">{(['idle','listening','analyzing','searching','connecting','drafting','resolving','success'] as DotState[]).map(item=><button key={item} aria-pressed={state===item} onClick={()=>setState(item)}>{item}</button>)}</nav><div className="preview-orb-gallery" aria-label="Compare motion states">{(['analyzing','searching','listening','connecting','drafting','resolving'] as const).map(item=><button key={item} aria-pressed={state===item} onClick={()=>setState(item)}><DotField state={item} size={60}/><strong>{item}</strong><small>{{analyzing:'Orbiting contours',searching:'Radar sweep',listening:'Breathing waveform',connecting:'Meeting hemispheres',drafting:'Writing ribbons',resolving:'Focusing aperture'}[item]}</small></button>)}</div><div className="preview-orb-sizes">{[14,20,32,48,72].map(size=><div key={size}><DotField state={state} size={size}/><small>{size}px</small></div>)}</div><div className="preview-orb-context"><p role="status" className="gi-orb-line"><DotField state="searching" size={20}/>Looking through your mail…</p><button className="gi-btn" disabled><DotField state="drafting" onAccent size={16}/>Drafting…</button></div><p className="preview-fixture">Development preview · same artwork used in Gmail and the workspace</p></main></div>;
+ return <div className="preview preview-motion"><header className="preview-nav"><span className="preview-wordmark">PigeonBox / Motion</span><AppearanceButton /></header><main><p className="gi-kicker">Particle study</p><h1>Intelligence, in motion.</h1><p>One copper language. A different gesture for every kind of work.</p><div className="preview-orb-stage"><DotField state={state} size={136}/></div><nav aria-label="Orb states">{(['idle','listening','analyzing','searching','connecting','drafting','resolving','success'] as DotState[]).map(item=><button key={item} aria-pressed={state===item} onClick={()=>setState(item)}>{item}</button>)}</nav><div className="preview-orb-gallery" aria-label="Compare motion states">{(['analyzing','searching','listening','connecting','drafting','resolving'] as const).map(item=><button key={item} aria-pressed={state===item} onClick={()=>setState(item)}><DotField state={item} size={60}/><strong>{item}</strong><small>{{analyzing:'Dissolve and rematerialize',searching:'Blips light as the sweep passes',listening:'Dotted waveform',connecting:'Paired constellations',drafting:'Rippling ink',resolving:'Focusing aperture'}[item]}</small></button>)}</div><div className="preview-orb-sizes">{[14,20,32,48,72].map(size=><div key={size}><DotField state={state} size={size}/><small>{size}px</small></div>)}</div><div className="preview-orb-context"><p role="status" className="gi-orb-line"><DotField state="searching" size={20}/>Looking through your mail…</p><button className="gi-btn" disabled><DotField state="drafting" onAccent size={16}/>Drafting…</button></div><p className="preview-fixture">Development preview · same artwork used in Gmail and the workspace</p></main></div>;
 }
 function Preview(){
  const [dotState,setDotState]=useState<DotState>('analyzing');
@@ -115,7 +115,10 @@ function demoAskPort(){
     onDisconnect:{addListener:()=>undefined},
     disconnect:()=>undefined,
     postMessage:()=>{
-      setTimeout(()=>emit({type:'event',event:{type:'status',text:'Searching Gmail: from:allen'}}),200);
+      const steps=['Looking through your mail','Searching Gmail: from:allen contract','Reading "Contract redlines"','Thinking','Reading "Clause 4 review"','Checking your calendar','Thinking'];
+      steps.forEach((text,i)=>setTimeout(()=>emit({type:'event',event:{type:'status',text}}),200+i*900));
+      const answer='Allen wants to sign the contract by **Monday**. Legal is still reviewing clause 4.';
+      answer.split(/(?<= )/).forEach((text,i)=>setTimeout(()=>emit({type:'event',event:{type:'delta',text}}),200+steps.length*900+i*90));
       setTimeout(()=>emit({type:'event',event:{type:'done',response:{
         answer:'Allen wants to sign the contract by **Monday** [1].\n\n- **Allen Hu** · Tue, Sep 30: sent the redlines and asked to sign by Monday [1]\n- **Legal** · Wed, Oct 1: still reviewing clause 4 [2]',
         claims:[],
@@ -125,7 +128,7 @@ function demoAskPort(){
         followUps:['Draft a reply to Allen','What is left on clause 4?'],
         requestId:'preview-1',
         retrieval:{strategies:['lexical'],candidates:2,used:2,window:{from:null,to:null}},
-      }}}),700);
+      }}}),200+steps.length*900+1600);
     },
   };
 }

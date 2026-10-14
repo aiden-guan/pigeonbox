@@ -25,8 +25,6 @@
 .gi-cloud-reader input.gi-field { min-width: 0; }
 .gi-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 label:has(.gi-file-input:focus-visible) { outline: 2px solid var(--gi-accent); outline-offset: 3px; }
-.gi-scope-chips { display: flex; flex-wrap: wrap; gap: var(--pb-space-1); margin: var(--pb-space-4) 0; }
-.gi-scope-chips span { padding: var(--pb-space-1) var(--pb-space-2); border: 1px solid var(--gi-border); border-radius: var(--pb-radius-sm); font-size: var(--pb-size-meta); color: var(--gi-mist); }
 @media (hover: hover) and (pointer: fine) { .gi-automatic-row:hover, .gi-feature-grid button:hover { background: var(--gi-elevated); border-color: var(--pb-accent-soft); } }
 @media (prefers-reduced-motion: no-preference) { .gi-note { animation: gi-note-appear var(--pb-motion-standard) var(--ease-out); } @keyframes gi-note-appear { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } } }
 @media (prefers-reduced-motion: reduce) { .gi-automatic-row, .gi-feature-grid button { transition: opacity var(--pb-motion-quick) ease; } }

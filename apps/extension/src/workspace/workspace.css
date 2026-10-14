@@ -149,3 +149,12 @@ html,body,#root {width:100%;height:100%;min-width:0;min-height:0;margin:0;backgr
 .pb-current-thread .pb-cc-disclosure{margin-top:var(--pb-space-3);font-size:var(--pb-size-label)}
 .pb-current-thread .pb-cc-detail{margin:var(--pb-space-1) 0 0;color:var(--pb-fg-secondary);line-height:1.5}
 .pb-current-thread .pb-cc-detail p{margin:0 0 var(--pb-space-1)}
+/* Tasks: a quiet disclosure row that matches the Home section labels. */
+.pb-tasks{padding-top:var(--pb-space-2);padding-bottom:var(--pb-space-2)}
+.pb-tasks>details>summary{display:flex;align-items:center;gap:var(--pb-space-2);min-height:32px;list-style:none;color:var(--pb-fg-secondary);font:var(--pb-weight-strong) var(--pb-size-label)/var(--pb-leading-ui) var(--pb-sans);letter-spacing:var(--pb-tracking-label)}
+.pb-tasks>details>summary::-webkit-details-marker{display:none}
+.pb-tasks>details>summary::after{content:'';width:6px;height:6px;margin-left:auto;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform var(--pb-motion-standard) var(--pb-ease)}
+.pb-tasks>details[open]>summary::after{transform:rotate(45deg)}
+.pb-tasks>details>summary:hover{color:var(--pb-fg)}
+.pb-tasks>details>summary:focus-visible{outline:2px solid var(--pb-copper-bright);outline-offset:2px;border-radius:4px}
+@media(prefers-reduced-motion:reduce){.pb-tasks>details>summary::after{transition:none}}

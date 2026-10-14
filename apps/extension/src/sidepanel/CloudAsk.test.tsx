@@ -61,7 +61,7 @@ async function deliver(message: Record<string, unknown>) {
 }
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const { CloudAsk, liveText } = await import('./CloudAsk');
+const { CloudAsk, liveText, historyOf } = await import('./CloudAsk');
 const { joinSpeech, dictationProblem } = await import('./dictation');
 
 const EMAIL = { to: [{ email: 'junoh@berkeley.edu', name: 'Jun Oh' }], cc: [], subject: 'Hi Jun', body: 'Hi Jun,\n\nJust saying hi.\n\nAda' };
@@ -137,7 +137,7 @@ describe('Cloud Ask history', () => {
     // Still the same conversation: it goes along as context.
     await type('and when?');
     await key({ key: 'Enter' });
-    expect(asked[1]!.history).toEqual([{ role: 'user', content: 'what did allen send?' }, { role: 'assistant', content: 'Allen sent the redlines.' }]);
+    expect(asked[1]!.history).toMatchObject([{ role: 'user', content: 'what did allen send?' }, { role: 'assistant', content: 'Allen sent the redlines.' }]);
 
     await act(async () => { (Array.from(host.querySelectorAll('button')).find((button) => button.textContent === 'New chat') as HTMLButtonElement).click(); });
     await type('something else');
@@ -149,6 +149,38 @@ describe('Cloud Ask history', () => {
     // Another inbox has its own history.
     await reopen('other@work.test');
     expect(host.querySelector('.gi-asked')).toBeNull();
+  });
+
+  it('continues a retained chat after a long pause and preserves an explicitly empty New chat', async () => {
+    stored.set('askHistory', { 'ada@work.test': [{ id: 12, chatId: 10, at: Date.now() - 2 * 3_600_000, question: 'Only consider next week.', answer: response({ answer: 'Thursday or Friday?' }) }] });
+    reply = response({ answer: 'Friday selected.' });
+    await render('ada@work.test');
+    await type('Friday');
+    await key({ key: 'Enter' });
+    expect(asked[0]!.history).toMatchObject([{ role: 'user', content: 'Only consider next week.' }, { role: 'assistant', content: 'Thursday or Friday?' }]);
+    await act(async () => { (Array.from(host.querySelectorAll('button')).find((button) => button.textContent === 'New chat') as HTMLButtonElement).click(); });
+    await settle();
+    await reopen('ada@work.test');
+    await type('A separate question');
+    await key({ key: 'Enter' });
+    expect(asked[1]!.history).toBeUndefined();
+  });
+
+  it('isolates history when switching inboxes without unmounting the panel', async () => {
+    reply = response({ answer: 'Work answer.' });
+    await render('ada@work.test');
+    await type('Work question');
+    await key({ key: 'Enter' });
+    await act(async () => { root.render(<CloudAsk capabilities={[]} onOpenThread={() => undefined} mailbox="ada@school.test" />); });
+    await settle();
+    expect(host.textContent).not.toContain('Work question');
+    await type('School question');
+    await key({ key: 'Enter' });
+    expect(asked[1]!.history).toBeUndefined();
+    await settle();
+    const history = stored.get('askHistory') as Record<string, Array<{ question: string }>>;
+    expect(history['ada@work.test']!.map((turn) => turn.question)).toEqual(['Work question']);
+    expect(history['ada@school.test']!.map((turn) => turn.question)).toEqual(['School question']);
   });
 
   it('keeps nothing when history is off, and drops chats older than the chosen days', async () => {
@@ -211,9 +243,9 @@ describe('Cloud Ask', () => {
     reply = response();
     await type('make it shorter');
     await key({ key: 'Enter' });
-    const history = asked[1]!.history as Array<{ role: string; content: string }>;
-    expect(history[1]!.content).toContain('Subject: Hi Jun');
-    expect(history[1]!.content).toContain('Just saying hi.');
+    const history = asked[1]!.history as Array<{ role: string; content: string; context: string }>;
+    expect(history[1]!.context).toContain('Subject: Hi Jun');
+    expect(history[1]!.context).toContain('Just saying hi.');
     expect(sent).toHaveLength(1);
   });
 
@@ -236,6 +268,78 @@ describe('Cloud Ask', () => {
     await act(async () => { chip.click(); });
     await settle();
     expect(asked.at(-1)).toMatchObject({ query: 'Draft a reply to Allen' });
+  });
+
+  it('carries the actual offered choices and outcomes when a suggested follow-up is selected', async () => {
+    reply = response({ answer: 'Two possibilities remain.', followUps: ['Let me choose specific items'], context: '[{"tool":"example","result":"nothing changed"}]' });
+    await render();
+    await type('Only consider undergraduate programs.');
+    await key({ key: 'Enter' });
+    const chip = host.querySelector('.pb-follow-ups button') as HTMLButtonElement;
+    reply = response({ answer: 'Which ones would you like?' });
+    await act(async () => { chip.click(); });
+    const history = asked[1]!.history as Array<{ content: string; context?: string }>;
+    expect(history[0]!.content).toBe('Only consider undergraduate programs.');
+    expect(history[1]!.context).toContain('Let me choose specific items');
+    expect(history[1]!.context).toContain('nothing changed');
+  });
+
+  it('keeps the initiating request and the latest complete artifacts beyond six exchanges', () => {
+    const turns = Array.from({ length: 14 }, (_, i) => ({ id: i, chatId: 1, at: Date.now(), question: i === 0 ? 'Keep graduate programs subscribed.' : `Follow-up ${i}`, answer: response({ answer: 'x'.repeat(7_500) + ' These are the actual choices.', followUps: ['Pick the second one'] }) }));
+    const history = historyOf(turns);
+    expect(history).toHaveLength(20);
+    expect(history[0]!.content).toBe('Keep graduate programs subscribed.');
+    expect(history.at(-1)!.content).toContain('These are the actual choices.');
+    expect(history.at(-1)!.context).toContain('Pick the second one');
+  });
+
+  it('preserves a complete composed email before lengthy lookup metadata', () => {
+    const body = 'a'.repeat(7_800) + ' Preserve this last constraint.';
+    const history = historyOf([{ id: 1, chatId: 1, at: Date.now(), question: 'Write to Jun', answer: response({ compose: [{ ...EMAIL, body }], context: 'x'.repeat(8_000) }) }]);
+    expect(history[1]!.context).toContain('Preserve this last constraint.');
+    expect(history[1]!.context!.length).toBeLessThanOrEqual(12_000);
+  });
+
+  it('includes saved reply drafts so a later revision can identify their thread and wording', () => {
+    const history = historyOf([{ id: 1, chatId: 1, at: Date.now(), question: 'Reply to Maya', answer: response({ drafts: [{ id: 'draft-1', threadId: 'gmail-123', accountId: 'account-1', kind: 'reply', status: 'ready', variants: [{ id: 'variant-1', label: 'recommended', strategy: 'Accepts Friday', subject: 'Friday', body: 'Hi Maya, Friday works. Ada', placeholders: [] }], sources: [], freshness: { createdAt: new Date().toISOString(), basedOnMessageId: null, staleReason: null, refreshAfter: null }, voice: 'default', gmailDraftId: null, placedVariantId: null, errorCode: null }] }) }]);
+    expect(history[1]!.context).toContain('gmail-123');
+    expect(history[1]!.context).toContain('Hi Maya, Friday works. Ada');
+  });
+
+  it('uses conversation context for a follow-up instead of a shortcut for the currently open email', async () => {
+    reply = response({ answer: 'Maya asked about Friday.' });
+    await render();
+    await type('What did Maya ask?');
+    await key({ key: 'Enter' });
+    const shortcut = vi.fn(async () => 'Drafted for the currently open email.');
+    await act(async () => { root.render(<CloudAsk capabilities={[]} onOpenThread={() => undefined} onContextQuestion={shortcut} />); });
+    await type('draft a reply');
+    await key({ key: 'Enter' });
+    expect(shortcut).not.toHaveBeenCalled();
+    expect(asked[1]!.history).toMatchObject([{ content: 'What did Maya ask?' }, { content: 'Maya asked about Friday.' }]);
+  });
+
+  it('keeps open-email shortcuts in a chat that has only been about that email, and drops them after switching emails', async () => {
+    const pricing = { tabId: 7, threadId: 'thread-pricing', subject: 'Pricing', sender: 'Maya', owner: { email: 'ada@example.com', name: 'Ada' } };
+    const shortcut = vi.fn(async () => 'Task saved: Pricing. The source email is attached.');
+    reply = response({ answer: 'Maya wants a quote.' });
+    await render();
+    await act(async () => { root.render(<CloudAsk capabilities={[]} onOpenThread={() => undefined} context={pricing} onContextQuestion={async () => null} />); });
+    await settle();
+    await type('Summarize this thread');
+    await key({ key: 'Enter' });
+    await act(async () => { root.render(<CloudAsk capabilities={[]} onOpenThread={() => undefined} context={pricing} onContextQuestion={shortcut} />); });
+    await type('Add this to my tasks');
+    await key({ key: 'Enter' });
+    expect(shortcut).toHaveBeenCalledWith('Add this to my tasks');
+    expect(host.textContent).toContain('Task saved: Pricing.');
+    // Another email is open now: "this" is ambiguous, so the conversation decides.
+    const before = asked.length;
+    await act(async () => { root.render(<CloudAsk capabilities={[]} onOpenThread={() => undefined} context={{ ...pricing, threadId: 'thread-other', subject: 'Other' }} onContextQuestion={shortcut} />); });
+    await type('draft a reply');
+    await key({ key: 'Enter' });
+    expect(shortcut).toHaveBeenCalledTimes(1);
+    expect(asked).toHaveLength(before + 1);
   });
 
   it('hides citation markers and the follow-ups line while an answer streams', () => {

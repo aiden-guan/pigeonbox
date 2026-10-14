@@ -107,17 +107,19 @@ export function CloudHome(props: {
               <SectionFailure label="Briefing" />
             ) : brief ? (
               <div className="pb-brief-card">
-                <strong>{brief.title}</strong>
-                <span className="pb-meta">Prepared {ago(brief.generatedAt)}</span>
+                <div className="pb-brief-title">
+                  <strong>{brief.title}</strong>
+                  <span className="pb-meta">{ago(brief.generatedAt)}</span>
+                </div>
                 <ul className="gi-brief-preview">
-                  {brief.sections.flatMap((section) => section.items).slice(0, 3).map((item, index) => (
+                  {brief.sections.flatMap((section) => section.items).slice(0, 2).map((item, index) => (
                     <li key={index}>
                       {item.text}
                       <SourceChips sources={brief.sources.filter((source) => item.sourceIds.includes(source.id))} onOpenThread={onOpenThread} />
                     </li>
                   ))}
                 </ul>
-                <button type="button" className="gi-btn gi-btn-ghost" onClick={() => setReader(brief)}>Open full briefing</button>
+                <button type="button" className="gi-text-btn" onClick={() => setReader(brief)}>Open full briefing <span aria-hidden="true">→</span></button>
               </div>
             ) : null}
           </section>
