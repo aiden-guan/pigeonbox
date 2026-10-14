@@ -281,14 +281,35 @@ export function CloudAsk(props: {
   const field = useRef<HTMLTextAreaElement | null>(null);
   const dictation = useDictation(setQuery);
   // The field grows with what is typed or dictated, up to a cap, then scrolls.
-  useEffect(() => {
+  const fitField = useCallback(() => {
     const element = field.current;
     if (!element) return;
     element.style.height = 'auto';
+    // Empty: stay one line. Measuring the placeholder while the panel is collapsing wraps it
+    // a character per line and would pin the field at the cap.
+    if (!element.value) {
+      element.style.height = '';
+      element.style.overflowY = 'hidden';
+      return;
+    }
     element.style.height = `${Math.min(element.scrollHeight, 160)}px`;
     // No scrollbar until the text is taller than the cap.
     element.style.overflowY = element.scrollHeight > 160 ? 'auto' : 'hidden';
-  }, [query]);
+  }, []);
+  useEffect(fitField, [query, fitField]);
+  // A width change rewraps the text, so measure again.
+  useEffect(() => {
+    const element = field.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+    let width = element.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (element.clientWidth === width) return;
+      width = element.clientWidth;
+      fitField();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [fitField]);
   // Connected Gmail accounts: which inbox Ask focuses on, whether this one is connected, and calendar.
   useEffect(() => {
     let mounted = true;
