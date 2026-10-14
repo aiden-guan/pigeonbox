@@ -490,3 +490,53 @@ describe('recipient changes after the tracker exists', () => {
     expect(tracking.sent[0]).toMatchObject({ trackingId: 'trk_1', recipients: ['x@y.com'] });
   });
 });
+
+describe('replies never carry an earlier message\'s pixel', () => {
+  const quote = (id: string) => `<p>Following up</p><div class="gmail_quote"><blockquote>Scope<img src="https://ci3.googleusercontent.com/meips/x=s0-d-e1-ft#https://track.example/open/${id}" width="1" height="1"></blockquote></div>`;
+
+  it('strips the quoted pixel from a reply sent with tracking switched off for it', async () => {
+    resetComposeSessionsForTests();
+    const gmail = new GmailComposeSendHarness('reply');
+    gmail.recipients = [{ emailAddress: 'a@b.com' }, { emailAddress: 'c@d.com' }];
+    gmail.setDraftId('draft-untracked');
+    const tracking = deps({ getSettings: () => ({ ...settings, trackingEnabled: false }) });
+    const id = attachSdkComposeTracking(gmail.view(), tracking);
+    await vi.waitFor(() => expect(getComposeSession(id)?.modifierRegistered).toBe(true));
+    const sent = await gmail.deliverSend(quote('trk_original'));
+    expect(sent.invoked).toBe(true);
+    expect(sent.body).not.toContain('trk_original');
+    expect(sent.body).toContain('Following up');
+    expect(tracking.created).toBe(0);
+  });
+
+  it('holds an untracked reply once for the modifier, and never a new message', () => {
+    const reply = createTrackingSession({ composeSessionId: 'r', kind: 'reply', trackOpens: false, trackLinks: false });
+    expect(decidePresending(reply, false)).toBe('recover');
+    reply.sendRecoveryAttempted = true;
+    expect(decidePresending(reply, false)).toBe('allow');
+    const ready = createTrackingSession({ composeSessionId: 'r2', kind: 'forward', trackOpens: false, trackLinks: false });
+    ready.modifierRegistered = true;
+    expect(decidePresending(ready, false)).toBe('allow');
+    expect(decidePresending(createTrackingSession({ composeSessionId: 'n', kind: 'new', trackOpens: false, trackLinks: false }), false)).toBe('allow');
+  });
+
+  it('keeps a compose\'s own tracking choice when recipients change before the tracker exists', async () => {
+    resetComposeSessionsForTests();
+    const gmail = new GmailComposeSendHarness('reply');
+    const tracking = deps();
+    const id = attachSdkComposeTracking(gmail.view(), tracking);
+    await vi.waitFor(() => expect(getComposeSession(id)?.state).toBe('WAITING_FOR_RECIPIENTS'));
+    gmail.element.querySelector<HTMLButtonElement>('[data-gi-ui="track-toggle"]')?.click();
+    for (const box of document.querySelectorAll<HTMLInputElement>('[data-gi-ui="track-menu"] input')) {
+      box.checked = false;
+      box.dispatchEvent(new Event('change'));
+    }
+    expect(getComposeSession(id)?.trackingChosen).toBe(true);
+    gmail.recipients = [{ emailAddress: 'a@b.com' }];
+    gmail.emit('recipientsChanged');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(getComposeSession(id)?.trackOpens).toBe(false);
+    expect(tracking.created).toBe(0);
+    document.querySelector('[data-gi-ui="track-menu"]')?.remove();
+  });
+});

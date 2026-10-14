@@ -5,7 +5,7 @@ import {
   type TrackedEmailSummary,
   type TrackerBase,
 } from '@pigeonbox/tracking';
-import { resolveMessageId, resolveThreadId, type MessageIdView, type ThreadIdView } from '@pigeonbox/gmail';
+import { readMessageBody, resolveMessageId, resolveThreadId, type MessageIdView, type ThreadIdView } from '@pigeonbox/gmail';
 
 const THREAD_RECOVERY_WINDOW_MS = 48 * 60 * 60 * 1000;
 
@@ -160,7 +160,7 @@ export function createMessageSelfViewHandler(opts: {
       }
 
       // A known pixel does not need to wait for Gmail's async message-ID resolver.
-      const earlyBody = typeof messageView.getBodyElement === 'function' ? messageView.getBodyElement() : null;
+      const earlyBody = readMessageBody(messageView);
       const earlyPixel = earlyBody ? extractTrackingIdFromMessageBody(earlyBody, opts.getTrackerBaseUrl?.() || undefined) : null;
       if (earlyPixel && state.pendingPageReload && opts.pageReload && !pageReloadReported.has(earlyPixel)) {
         pageReloadReported.add(earlyPixel);
@@ -171,13 +171,15 @@ export function createMessageSelfViewHandler(opts: {
       await reportQuotedPixels(state, earlyQuoted, earlyPixel, observedAt, source);
       if (!wasLoaded) return;
       const rawMessageId = await resolveMessageId(messageView);
+      if (activeMessageViews.get(messageView) !== state || messageView.destroyed || (messageView.getElement && !messageView.getElement()?.isConnected) || messageView.getViewState?.() !== 'EXPANDED') return;
       const messageId = normalizeGmailId(rawMessageId);
       const threadView = typeof messageView.getThreadView === 'function' ? messageView.getThreadView() : null;
       const rawThreadId = threadView ? await resolveThreadId(threadView) : null;
+      if (activeMessageViews.get(messageView) !== state || messageView.destroyed || (messageView.getElement && !messageView.getElement()?.isConnected) || messageView.getViewState?.() !== 'EXPANDED') return;
       const viewThreadId = normalizeGmailId(rawThreadId);
       const emails = opts.getEmails();
       const trackerBaseUrl = opts.getTrackerBaseUrl?.() || undefined;
-      const body = typeof messageView.getBodyElement === 'function' ? messageView.getBodyElement() : null;
+      const body = readMessageBody(messageView);
       const pixelTrackingId = body ? extractTrackingIdFromMessageBody(body, trackerBaseUrl) : null;
       const quotedIds = body ? extractQuotedTrackingIdsFromMessageBody(body, trackerBaseUrl) : [];
       await reportQuotedPixels(state, quotedIds, pixelTrackingId, observedAt, source);
@@ -300,7 +302,7 @@ export function createMessageSelfViewHandler(opts: {
       activeMessageViews.set(messageView, state);
     }
 
-    if (typeof messageView.on === 'function') {
+    if (created && typeof messageView.on === 'function') {
       messageView.on('destroy', () => {
         activeMessageViews.delete(messageView);
       });

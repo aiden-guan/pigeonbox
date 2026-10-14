@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- Pressing Reply all (or Reply / Forward) in your own tracked thread no longer marks the email as opened. PigeonBox now notices every time Gmail loads your pixel, including the quote it builds out of sight, and claims your thread's tracked messages on every draft save and on send, even when Gmail keeps the trimmed quote off the page.
+- Replies sent with tracking off no longer carry the earlier email's pixel, so recipients reading your reply aren't counted as opening the original.
+- Turning tracking off for one compose sticks; editing recipients or the subject no longer switches it back on.
+- A computer clock running ahead no longer stops your own views from being recognized.
+
 ---
 
 ## [0.5.8] — 2026-10-09

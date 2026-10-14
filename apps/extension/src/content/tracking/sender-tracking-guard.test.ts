@@ -170,8 +170,15 @@ describe('sender drafting a reply inside their own tracked thread', () => {
     expect(document.body.innerHTML).toBe(before);
   });
 
+  it('reports an owned pixel pasted outside the quote: Chrome loads it all the same', () => {
+    document.body.innerHTML = `<div role="main"></div><div contenteditable="true"><div>reply <img id="pasted" src="${BASE}/open/trk_own"></div></div>`;
+    const { onPixelRender } = install();
+    expect(onPixelRender.mock.calls).toEqual([['trk_own', true]]);
+    expect(document.querySelector('#pasted')!.getAttribute('src')).toBe(`${BASE}/open/trk_own`);
+  });
+
   it('ignores ordinary images, new reply text, other senders, foreign hosts and disabled tracking', async () => {
-    document.body.innerHTML = `<div role="main"></div><div contenteditable="true"><div>reply <img src="${BASE}/open/trk_own"></div><blockquote><img src="https://example.com/logo.png"><img src="${BASE}/open/trk_other"><img src="https://evil.example/open/trk_own"></blockquote></div>`;
+    document.body.innerHTML = `<div role="main"></div><div contenteditable="true"><div>reply <img src="https://example.com/inline.png"></div><blockquote><img src="https://example.com/logo.png"><img src="${BASE}/open/trk_other"><img src="https://evil.example/open/trk_own"></blockquote></div>`;
     const { onPixelRender } = install();
     expect(onPixelRender).not.toHaveBeenCalled();
     guard!.destroy();
@@ -237,7 +244,7 @@ describe('Gmail draft saves upload the trimmed quote with the sender pixel', () 
     expect(onPixelRender).not.toHaveBeenCalled();
     const before = compose().outerHTML;
     guard!.draftSaved(compose());
-    expect(onPixelRender.mock.calls).toEqual([['trk_own', true], ['trk_older', true]]);
+    expect(onPixelRender.mock.calls).toEqual([['trk_own', true, expect.any(Number)], ['trk_older', true, expect.any(Number)]]);
     // Typing between autosaves changes nothing the guard sees; every save still uploads the quote.
     guard!.draftSaved(compose());
     guard!.draftSaved(compose());
@@ -251,7 +258,8 @@ describe('Gmail draft saves upload the trimmed quote with the sender pixel', () 
     onPixelRender.mockClear();
     document.querySelector('input[name="uet"]')!.setAttribute('value', '');
     guard!.draftSaved(compose());
-    expect(onPixelRender.mock.calls).toEqual([['trk_own', true]]);
+    // The pasted pixel outside the quote is uploaded with the draft too.
+    expect(onPixelRender.mock.calls).toEqual([['trk_own', true, expect.any(Number)], ['trk_older', true, expect.any(Number)]]);
     expect(document.querySelector('#q')!.getAttribute('src')).toBe(`${PROXY}#${BASE}/open/trk_own`);
   });
 
@@ -277,4 +285,71 @@ it('matches configured old tracker origins and Gmail link wrappers only', () => 
   expect(senderClickUrl('https://www.google.com/url?q=' + encodeURIComponent(BASE + '/c/clk_own'), ['https://new.example', BASE])).toEqual({ origin: BASE, clickId: 'clk_own' });
   expect(senderClickUrl('https://evil.example/c/clk_own', BASE)).toBeNull();
   expect(senderClickUrl(BASE + '/c/clk_own', null)).toBeNull();
+});
+
+describe('every owned pixel fetch the Gmail page makes, wherever Gmail put the image', () => {
+  const PROXY = 'https://ci3.googleusercontent.com/meips/ADKq_Nb=s0-d-e1-ft';
+  type Entry = { name: string; startTime: number };
+  class FakeObserver {
+    static last: FakeObserver | null = null;
+    pending: Entry[] = [];
+    constructor(private readonly cb: (list: { getEntries: () => Entry[] }) => void) { FakeObserver.last = this; }
+    observe() { /* resource entries are pushed by the test */ }
+    disconnect() { FakeObserver.last = null; }
+    takeRecords() { const out = this.pending; this.pending = []; return out; }
+    deliver(entries: Entry[]) { this.cb({ getEntries: () => entries }); }
+  }
+  function install(owned = ['trk_own', 'trk_thread'], bases: string | null = BASE) {
+    const onPixelRender = vi.fn();
+    guard = installSenderTrackingGuard({ getTrackerBases: () => bases, getOwnedTrackingIds: () => new Set(owned), resolveLink: vi.fn(async () => null), onPixelRender, PerformanceObserver: FakeObserver as unknown as typeof PerformanceObserver }, document);
+    return onPixelRender;
+  }
+
+  it('reports a proxy fetch of a hidden or detached reply quote at the moment the request started', () => {
+    document.body.innerHTML = '<div role="main"></div>';
+    const onPixelRender = install();
+    FakeObserver.last!.deliver([
+      { name: `${PROXY}?w=1#${BASE}/open/trk_own`, startTime: 1200 },
+      { name: `${PROXY}#${BASE}/open/trk_other`, startTime: 1300 },
+      { name: `${PROXY}#https://evil.example/open/trk_own`, startTime: 1350 },
+      { name: 'https://mail.google.com/mail/u/0/images/cleardot.gif', startTime: 1400 },
+    ]);
+    expect(onPixelRender.mock.calls).toEqual([['trk_own', false, Math.round(performance.timeOrigin + 1200)]]);
+  });
+
+  it('stays quiet with tracking off and after teardown', () => {
+    const disabled = install(['trk_own'], null);
+    FakeObserver.last!.deliver([{ name: `${PROXY}#${BASE}/open/trk_own`, startTime: 1 }]);
+    expect(disabled).not.toHaveBeenCalled();
+    guard!.destroy();
+    expect(FakeObserver.last).toBeNull();
+  });
+
+  it('claims the thread\'s owned messages on a save even when the quote exists only in Gmail\'s memory, dated to the save request', () => {
+    document.body.innerHTML = '<div role="main"><div id="compose"><div contenteditable="true">Following up</div></div></div>';
+    const onPixelRender = install();
+    const saveStart = performance.now() - 900;
+    FakeObserver.last!.pending.push({ name: 'https://mail.google.com/sync/u/0/i/s?hl=en&c=12', startTime: saveStart });
+    guard!.draftSaved(document.querySelector('#compose'), ['trk_thread', 'trk_not_mine']);
+    expect(onPixelRender.mock.calls).toEqual([['trk_thread', true, Math.round(performance.timeOrigin + saveStart)]]);
+  });
+
+  it('dates a save to now when no save request was recorded', () => {
+    document.body.innerHTML = '<div id="compose"></div>';
+    const onPixelRender = install();
+    const before = Date.now();
+    guard!.draftSaved(document.querySelector('#compose'), ['trk_thread']);
+    expect(onPixelRender.mock.calls[0]![2]).toBeGreaterThanOrEqual(before);
+  });
+
+  it('remembers owned pixels shown in the open conversation, even after neutralizing them', async () => {
+    document.body.innerHTML = `<div role="main"><div class="a3s"><img src="${PROXY}#${BASE}/open/trk_own"></div></div>`;
+    install();
+    expect([...guard!.conversationIds()]).toEqual(['trk_own']);
+    guard!.refresh();
+    expect([...guard!.conversationIds()]).toEqual(['trk_own']);
+    document.querySelector('[role="main"]')!.innerHTML = '';
+    guard!.refresh();
+    expect([...guard!.conversationIds()]).toEqual([]);
+  });
 });

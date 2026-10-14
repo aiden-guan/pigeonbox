@@ -692,3 +692,16 @@ describe('InboxSDK MessageView view-state and self-view integration', () => {
     expect(onSelfView.mock.calls.filter((call) => call[4] === 'PAGE_RELOAD')).toHaveLength(1);
   });
 });
+
+it('does not inspect an unloaded SDK body or report a message destroyed during ID discovery', async () => {
+  const onSelfView = vi.fn(); const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  const handler = createMessageSelfViewHandler({ getEmails: () => [trackedEmailA], onSelfView });
+  const mv = createMockMessageView({ id: 'abc123', state: 'EXPANDED', loaded: false });
+  mv.getBodyElement = vi.fn(() => { throw new Error('body not ready'); });
+  handler.handleMessageView(mv); await handler.reinspectActive();
+  expect(mv.getBodyElement).not.toHaveBeenCalled(); expect(warn).not.toHaveBeenCalled();
+  mv.getBodyElement = () => null; mv.setLoaded(true);
+  mv.getMessageIDAsync = async () => { mv.destroyed = true; return 'abc123'; };
+  await handler.reinspectActive(); expect(onSelfView).not.toHaveBeenCalled();
+  warn.mockRestore(); handler.destroy();
+});

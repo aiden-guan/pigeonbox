@@ -471,9 +471,10 @@ async function handleSelfView(
   const body = parsed.data;
   // A malformed idempotency key is ignored rather than trusted as a row ID.
   const selfViewEventId = body.selfViewEventId && SELF_VIEW_EVENT_ID_PATTERN.test(body.selfViewEventId) ? body.selfViewEventId : undefined;
-  const ts = body.timestamp && !Number.isNaN(Date.parse(body.timestamp))
-    ? new Date(body.timestamp).toISOString()
-    : new Date().toISOString();
+  // A sender clock running ahead would push the claim past the fetch it covers.
+  const nowMs = Date.now();
+  const claimedMs = body.timestamp ? Date.parse(body.timestamp) : Number.NaN;
+  const ts = new Date(Number.isFinite(claimedMs) ? Math.min(claimedMs, nowMs) : nowMs).toISOString();
   const selfMs = Date.parse(ts);
 
   const normThread = normalizeGmailId(body.gmailThreadId ?? body.gmail_thread_id);

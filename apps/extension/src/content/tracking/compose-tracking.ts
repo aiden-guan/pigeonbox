@@ -4,6 +4,7 @@ import {
   decodeHtmlAttribute,
   normalizeGmailId,
   stableClickId,
+  stripForeignTrackingPixels,
   trackedClickUrl,
   transformOutgoingHtml,
   type CreateTrackedEmailInput,
@@ -277,8 +278,10 @@ async function allocateNow(
     log(session, 'settings-refresh-failed', { error: session.lastError }, deps);
   }
   const settings = deps.getSettings();
-  session.trackOpens = settings.trackOpens;
-  session.trackLinks = settings.trackLinks;
+  if (!session.trackingChosen) {
+    session.trackOpens = settings.trackOpens;
+    session.trackLinks = settings.trackLinks;
+  }
   if (!trackingConfigured(settings) || !wantsTracking(session)) return session;
   const details = trackedDetails(view);
   if (details.recipients.length === 0) {
@@ -446,8 +449,11 @@ async function modifyOutgoing(
     return { body };
   }
   if (!session.trackingId || !session.pixelUrl || !wantsTracking(session)) {
-    log(session, 'modifier-passthrough', { outputBytes: body.length }, deps);
-    return { body };
+    // An untracked reply still must not carry an earlier message's pixel in its
+    // quote: every recipient who reads it would count as opening that message.
+    const stripped = stripForeignTrackingPixels(body);
+    log(session, 'modifier-passthrough', { outputBytes: stripped.html.length, pixelsRemoved: stripped.removed }, deps);
+    return { body: stripped.html };
   }
   const origin = pixelOrigin(session.pixelUrl);
   const trackingId = session.trackingId;
@@ -518,7 +524,10 @@ async function recoverSend(composeSessionId: string, view: SdkComposeView, deps:
   const current = sessions.get(composeSessionId);
   if (!current || current.destroyed) return;
   current.recovering = false;
-  if (!current.modifierRegistered || !current.trackingId) {
+  const tracked = trackingConfigured(deps.getSettings()) && wantsTracking(current);
+  if (!tracked) {
+    log(current, current.modifierRegistered ? 'send-recovery-ready' : 'send-recovery-untracked', { draftId: current.gmailDraftId }, deps);
+  } else if (!current.modifierRegistered || !current.trackingId) {
     current.state = 'FAILED';
     current.lastError = current.lastError || 'Tracking injection failed before send. The message was sent without a pixel.';
     log(current, 'send-recovery-fail-open', { error: current.lastError }, deps);
@@ -814,10 +823,12 @@ function toggleMenu(
   menu.setAttribute('data-gi-ui', 'track-menu');
   menu.append(checkRow('Track opens', session.trackOpens, (on) => {
     session.trackOpens = on;
+    session.trackingChosen = true;
     paintButton();
   }));
   menu.append(checkRow('Track links', session.trackLinks, (on) => {
     session.trackLinks = on;
+    session.trackingChosen = true;
     paintButton();
   }));
   const rect = anchor.getBoundingClientRect();

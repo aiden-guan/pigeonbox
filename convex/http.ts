@@ -419,9 +419,10 @@ http.route({
       quotedRender?: boolean;
       pixelRender?: boolean;
     };
-    const ts = body.timestamp && !Number.isNaN(Date.parse(body.timestamp))
-      ? new Date(body.timestamp).toISOString()
-      : new Date().toISOString();
+    // A sender clock running ahead would push the claim past the fetch it covers.
+    const nowMs = Date.now();
+    const claimedMs = body.timestamp ? Date.parse(body.timestamp) : Number.NaN;
+    const ts = new Date(Number.isFinite(claimedMs) ? Math.min(claimedMs, nowMs) : nowMs).toISOString();
     const ua = request.headers.get("User-Agent");
     const threadId = body.gmailThreadId ?? body.gmail_thread_id ?? null;
     const messageId = body.gmailMessageId ?? body.gmail_message_id ?? null;

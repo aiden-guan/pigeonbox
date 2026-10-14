@@ -116,3 +116,52 @@ test('the packaged Gmail script protects old sender pixels and opens owned links
   await expect(opened).toHaveURL(destination);
   expect(app.api.calls.filter((call) => call.route.startsWith('/c/'))).toEqual([]);
 });
+
+test('reply all in a multi-recipient thread: a quote Gmail builds off-page never counts as an open', async ({ app }) => {
+  test.setTimeout(90_000);
+  resetMemoryStore();
+  const env = { PERSONAL_API_TOKEN: 'synthetic-tracker-only' };
+  const call = (path: string, init: RequestInit = {}) => tracker.fetch(new Request(`${app.api.baseUrl}${path}`, init), env);
+  const authed = (path: string, init: RequestInit = {}) => call(path, { ...init, headers: { Authorization: `Bearer ${env.PERSONAL_API_TOKEN}`, 'Content-Type': 'application/json' } });
+  app.api.forward = (request) => tracker.fetch(request, env);
+  const created = await (await authed('/api/emails', { method: 'POST', body: JSON.stringify({ subject: 'Offsite', sender: 'owner@fixture.test', recipients: ['maya@fixture.test', 'li@fixture.test', 'sam@fixture.test'], gmail_thread_id: 'abc123', gmail_message_id: 'abcd' }) })).json() as { tracking_id: string };
+  const trackingId = created.tracking_id;
+  const old = new Date(Date.now() - 3_600_000).toISOString();
+  await authed(`/api/emails/${trackingId}`, { method: 'PATCH', body: JSON.stringify({ status: 'SENT', sent_at: old }) });
+  const email = async () => (await (await authed(`/api/emails/${trackingId}`)).json()) as { open_count: number };
+
+  const setup = await app.page('workspace');
+  await setup.evaluate(async ({ baseUrl, trackingId, old }) => {
+    const current = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
+    await chrome.storage.local.set({ trackedEmails: [{ trackingId, issuer: `local:${baseUrl}`, status: 'SENT', sender: 'owner@fixture.test', recipients: ['maya@fixture.test', 'li@fixture.test', 'sam@fixture.test'], subject: 'Offsite', gmailThreadId: 'abc123', gmailMessageId: 'abcd', sentAt: old, createdAt: old, openCount: 0, clickCount: 0, firstOpenedAt: null, lastOpenedAt: null }] });
+  }, { baseUrl: app.api.baseUrl, trackingId, old });
+
+  const proxy = 'https://ci3.googleusercontent.com/meips/reply-all=s0-d-e1-ft';
+  const pixel = (n: number) => `${proxy}?r=${n}#${app.api.baseUrl}/open/${trackingId}`;
+  let proxyFetches = 0;
+  await app.context.route(`${proxy}*`, async (route) => {
+    proxyFetches += 1;
+    // Google's proxy reaches the tracker before the browser sees the response.
+    await call(`/open/${trackingId}`, { headers: { 'User-Agent': PROXY_UA } });
+    await route.fulfill({ contentType: 'image/gif', headers: { 'Cache-Control': 'no-store' }, body: GIF });
+  });
+  // The open message is a recipient's reply; the sender's tracked message is collapsed.
+  // Reply all builds the quoted history in a detached node and a hidden trimmed block.
+  await app.context.route('https://mail.google.com/**', (route) => route.fulfill({ contentType: 'text/html', body: `<html><body><a href="https://accounts.google.com/" aria-label="Google Account: Owner (owner@fixture.test)">Owner</a><div role="main" data-thread-perm-id="abc123"><h2 class="hP">Offsite</h2><div data-legacy-message-id="abcd"><span email="owner@fixture.test">me</span><span class="snippet">Agenda attached</span></div><div data-legacy-message-id="abce"><span email="maya@fixture.test">Maya</span><div class="a3s">Works for me!</div></div><button id="reply-all" aria-label="Reply all">Reply all</button><div id="reply-slot"></div></div><script>document.getElementById('reply-all').onclick = () => { const detached = document.createElement('div'); detached.innerHTML = '<div class="gmail_quote"><img src="${pixel(1)}"></div>'; const hidden = document.createElement('div'); hidden.style.display = 'none'; hidden.innerHTML = '<img src="${pixel(2)}">'; document.getElementById('reply-slot').append(hidden); };</script></body></html>` }));
+
+  const gmail = await app.gmail();
+  await gmail.locator('#reply-all').click();
+  await expect.poll(() => proxyFetches).toBe(2);
+  await expect.poll(() => app.api.calls.filter((c) => c.route.endsWith('/self-view') && c.body.pixelRender === true).length).toBeGreaterThanOrEqual(2);
+  await expect.poll(async () => (await email()).open_count).toBe(0);
+  const opens = ((await (await authed(`/api/emails/${trackingId}/events`)).json()) as Array<{ type: string; classification: string }>).filter((e) => e.type === 'OPEN');
+  expect(opens).toHaveLength(2);
+  expect(opens.every((e) => e.classification === 'SELF_LIKELY')).toBe(true);
+
+  // A recipient opening after the sender's claims lapse still counts.
+  await gmail.close();
+  await setup.waitForTimeout(26_000);
+  await call(`/open/${trackingId}`, { headers: { 'User-Agent': PROXY_UA } });
+  expect((await email()).open_count).toBe(1);
+});

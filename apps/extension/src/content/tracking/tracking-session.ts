@@ -29,6 +29,8 @@ export type ComposeTrackingSession = {
   confirmedClickIds: Set<string>;
   trackOpens: boolean;
   trackLinks: boolean;
+  /** The sender set this compose's toggles; settings no longer override them. */
+  trackingChosen: boolean;
   trackerCreatedAt: string | null;
   /** Subject and recipients the tracker last confirmed, so edits are only sent when they differ. */
   syncedDetails: string | null;
@@ -65,6 +67,7 @@ export function createTrackingSession(input: {
     confirmedClickIds: new Set(),
     trackOpens: input.trackOpens,
     trackLinks: input.trackLinks,
+    trackingChosen: false,
     trackerCreatedAt: null,
     syncedDetails: null,
     gmailDraftId: null,
@@ -114,11 +117,15 @@ export type PresendDecision = 'allow' | 'recover';
 /**
  * Allow the send when the modifier is already bound to a tracker.
  * Otherwise cancel once so registration can catch the draft id.
+ * Replies and forwards also wait once for the modifier when untracked.
  * A second presending pass must allow, or Send loops forever.
  */
 export function decidePresending(session: ComposeTrackingSession, trackingConfigured: boolean): PresendDecision {
-  if (!trackingConfigured || !wantsTracking(session)) return 'allow';
   if (session.sendRecoveryAttempted || session.recovering) return 'allow';
+  // A reply or forward needs the modifier even untracked: it strips earlier
+  // messages' pixels from the quote. Gmail has almost always saved by now.
+  if (session.kind !== 'new' && !session.modifierRegistered) return 'recover';
+  if (!trackingConfigured || !wantsTracking(session)) return 'allow';
   if (session.modifierRegistered && session.trackingId && session.pixelUrl) return 'allow';
   return 'recover';
 }

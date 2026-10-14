@@ -81,6 +81,8 @@ const summaryRequestVersions = new Map<string, number>();
 const summaryKeys = new Map<string, string>();
 let cachedTrackedEmails: TrackedEmailSummary[] = [];
 const selfViewDeduplicator = new SelfViewDeduplicator();
+/** Renders of one pixel in the same millisecond are separate fetches and need separate claims. */
+let pixelRenderSeq = 0;
 
 function reportTrackingSelfView(
   trackingId: string,
@@ -100,7 +102,8 @@ function reportTrackingSelfView(
     return Promise.resolve();
   }
 
-  const selfViewEventId = buildSelfViewEventId(trackingId, normMessageId, source, observedAt);
+  const baseEventId = buildSelfViewEventId(trackingId, normMessageId, source, observedAt);
+  const selfViewEventId = pixelRender ? `${baseEventId}_r${++pixelRenderSeq}` : baseEventId;
 
   return send({
     type: 'TRACKING_SELF_VIEW',
@@ -235,8 +238,8 @@ async function boot(): Promise<void> {
       const result = await send<{ destination?: string }>({ type: 'RESOLVE_SENDER_TRACKING_LINK', origin, clickId });
       return result?.destination || null;
     },
-    onPixelRender: (trackingId, quoted) => {
-      void reportTrackingSelfView(trackingId, null, null, Date.now(), 'MESSAGE_LOAD', false, quoted, true);
+    onPixelRender: (trackingId, quoted, observedAt = Date.now()) => {
+      void reportTrackingSelfView(trackingId, null, null, observedAt, 'MESSAGE_LOAD', false, quoted, true);
     },
   });
   window.addEventListener('pagehide', senderTrackingGuard.destroy, { once: true });
@@ -434,6 +437,32 @@ function reportTracking(session: ComposeTrackingSession | null): void {
   });
 }
 
+/**
+ * Owned sent messages a reply or forward may quote: every tracked message in
+ * its thread, and every owned pixel shown in the conversation it was opened from.
+ * Read at save time, so messages that arrive while drafting are included.
+ */
+function quotedOwnedIds(composeView: unknown): Promise<() => Set<string>> {
+  const view = composeView as { isReply?: () => boolean; isForward?: () => boolean; getElement?: () => HTMLElement | null };
+  let replyish = false;
+  try { replyish = Boolean(view.isReply?.() || view.isForward?.()); } catch { replyish = false; }
+  if (!replyish) return Promise.resolve(() => new Set<string>());
+  const openThread = currentThreadId;
+  const inConversation = Boolean(view.getElement?.()?.closest('[role="main"]'));
+  return resolveThreadId(composeView as Parameters<typeof resolveThreadId>[0]).catch(() => null).then((raw) => {
+    const threadIds = new Set([normalizeGmailId(raw), normalizeGmailId(openThread)].filter((id): id is string => Boolean(id)));
+    return () => {
+      const ids = new Set<string>();
+      for (const email of cachedTrackedEmails) {
+        const threadId = normalizeGmailId(email.gmailThreadId);
+        if (email.sentAt && threadId && threadIds.has(threadId)) ids.add(email.trackingId);
+      }
+      if (inConversation) for (const id of senderTrackingGuard?.conversationIds() ?? []) ids.add(id);
+      return ids;
+    };
+  });
+}
+
 function initMessageSelfView(): MessageSelfViewController {
   if (!messageSelfView) {
     const pendingReconcile = new Set<string>();
@@ -509,7 +538,13 @@ export function mountSdkUi(
     onComposeView: (composeView) => {
       attachSdkComposeTracking(composeView as any, trackingDeps());
       const draftView = composeView as { on?: (event: string, cb: () => void) => void; getElement?: () => HTMLElement | null };
-      draftView.on?.('draftSaved', () => senderTrackingGuard?.draftSaved(draftView.getElement?.()));
+      // Gmail uploads a reply's quoted history (and with it the owned pixels of
+      // that thread) on every save and on send, even when the quote is trimmed
+      // out of the page. Google's proxy can fetch those pixels from the upload.
+      const quoted = quotedOwnedIds(composeView);
+      const claimQuoted = () => void quoted.then((ids) => senderTrackingGuard?.draftSaved(draftView.getElement?.() ?? document.createDocumentFragment(), ids()));
+      draftView.on?.('draftSaved', claimQuoted);
+      draftView.on?.('sent', claimQuoted);
       attachPlaceholderGuard(composeView as any);
       void cloudReady().then(() => { if (cloudCapabilities.includes('cloud_documents')) attachDocumentAction(composeView as any, () => cloudAvailable && cloudCapabilities.includes('cloud_documents')); });
       // Real-time Pidgy checks and prepared replies: Cloud mode only. Local mode never hands draft text to the worker.

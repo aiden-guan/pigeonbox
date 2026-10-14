@@ -445,15 +445,20 @@ describe('local memory tracker', () => {
     expect(emailAfterRecipient.open_count).toBe(1);
 
     // Later (>15s after recipient open), sender views own message
-    const laterSelfViewTime = new Date(Date.now() + 30_000).toISOString();
-    await worker.fetch(
-      new Request(`http://127.0.0.1:8787/api/emails/${tracking_id}/self-view`, {
-        method: 'POST',
-        headers: senderViewHeaders(),
-        body: JSON.stringify({ timestamp: laterSelfViewTime }),
-      }),
-      env,
-    );
+    const later = Date.now() + 30_000;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(later);
+    try {
+      await worker.fetch(
+        new Request(`http://127.0.0.1:8787/api/emails/${tracking_id}/self-view`, {
+          method: 'POST',
+          headers: senderViewHeaders(),
+          body: JSON.stringify({ timestamp: new Date(later).toISOString() }),
+        }),
+        env,
+      );
+    } finally {
+      clock.mockRestore();
+    }
 
     const emailAfterSelfView = (await (
       await worker.fetch(new Request(`http://127.0.0.1:8787/api/emails/${tracking_id}`, { headers: authHeaders() }), env)
@@ -1903,6 +1908,19 @@ const SENDER_DRAFTING: DraftStep[] = [
   [53_100, 'proxy'], [53_400, 'quoted', 53_000],
   [60_000, 'render'], [60_250, 'proxy'],
 ];
+
+it('clamps a claim from a sender clock running ahead to the tracker\'s time', async () => {
+  const { tracking_id } = await createSentTracked(new Date(Date.now() - 3_600_000).toISOString());
+  // The proxy fetch Gmail made for the sender's render arrives first.
+  await worker.fetch(new Request(`http://127.0.0.1:8787/open/${tracking_id}`, { headers: proxyHeaders() }), env);
+  await postSelfView(tracking_id, {
+    timestamp: new Date(Date.now() + 45_000).toISOString(),
+    source: 'MESSAGE_LOAD',
+    pixelRender: true,
+    selfViewEventId: `sv_${tracking_id}_nomessage_MESSAGE_LOAD_skew`,
+  });
+  expect(await readOpenCount(tracking_id)).toBe(0);
+});
 
 describe('sender drafting a reply inside their own tracked thread', () => {
   async function replay(trackingId: string, start: number, steps: DraftStep[]) {
