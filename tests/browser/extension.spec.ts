@@ -71,10 +71,12 @@ test('Cloud Ask shows loading, a cited answer, account-bound sources and keeps t
   await expect(page.locator('.gi-asked').first()).toHaveText('What needs a reply?');
   await expect(page.locator('.pb-answer-text')).toHaveCount(2);
   const followUp = app.api.calls.filter((call) => call.route === '/v1/ask/stream')[1]!;
-  expect(followUp.body.history).toEqual([
+  expect(followUp.body.history).toMatchObject([
     { role: 'user', content: 'What needs a reply?' },
-    { role: 'assistant', content: 'Maya needs pricing.\n\nShe asked in the **Pricing** thread. ' },
+    { role: 'assistant', content: 'Maya needs pricing.\n\nShe asked in the **Pricing** thread. [1]' },
   ]);
+  // Citation numbers stay meaningful on the next turn: the sources they point at ride along as context.
+  expect(followUp.body.history[1].context).toContain('"citation":1,"id":"thread:abc123"');
 });
 test('Cloud Ask falls back to a one-shot answer when Cloud cannot stream', async ({ app }) => {
   const page = await app.page('sidepanel', true);
