@@ -19,6 +19,7 @@ import { Room } from "./scenes/Room";
 import { Rooftops } from "./scenes/Rooftops";
 import { Street } from "./scenes/Street";
 import { T } from "./lib";
+import { KineticCompositions } from "./kinetic/Compositions";
 
 const V = { width: 1920, height: 1080, fps: T.fps };
 const len = (s: keyof typeof T.shots) => T.shots[s][1] - T.shots[s][0];
@@ -27,6 +28,7 @@ export const RemotionRoot: React.FC = () => {
   return (
     <>
       <Composition id="PigeonBoxLaunch" component={LaunchFilm} durationInFrames={T.total} {...V} />
+      <KineticCompositions />
       <Folder name="Scenes">
         <Composition id="Room" component={Room} durationInFrames={len("room")} {...V} />
         <Composition id="Compose" component={Compose} durationInFrames={len("compose")} {...V} />

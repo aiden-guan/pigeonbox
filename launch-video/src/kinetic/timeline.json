@@ -1,0 +1,20 @@
+{
+  "bpm": 120,
+  "shots": [
+    ["counter", 3],
+    ["strobe", 4],
+    ["wall", 3],
+    ["question", 4],
+    ["sort", 4],
+    ["wordmark", 4],
+    ["triage", 8],
+    ["summary", 8],
+    ["draft", 10],
+    ["ask", 10],
+    ["tracking", 8],
+    ["rapid", 8],
+    ["payoff", 4],
+    ["privacy", 8],
+    ["end", 12]
+  ]
+}
