@@ -4,8 +4,13 @@
 set -e
 cd "$(dirname "$0")/.."
 OUT=${1:-out/pigeonbox-kinetic.mp4}
-TOTAL=$(node -e 'const t=require("./src/kinetic/timeline.json");console.log(t.shots.reduce((n,s)=>n+s[1],0)*30)')
+TOTAL=$(node -e 'const t=require("./src/kinetic/timeline.json");console.log(Math.round(t.shots.reduce((n,s)=>n+s[1],0)*60*60/t.bpm))')
 CHUNK=${CHUNK:-360}
+FREE_KB=$(df -Pk . | awk 'NR==2 {print $4}')
+if [ "$FREE_KB" -lt 6291456 ]; then
+  echo "need at least 6 GiB free for a chunked 3x render" >&2
+  exit 1
+fi
 mkdir -p out/chunks
 rm -f out/chunks/*.mp4 out/chunks/list.txt
 npx remotion bundle --out-dir out/chunks/bundle --log=error >/dev/null

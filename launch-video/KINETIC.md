@@ -23,12 +23,12 @@ Kickbacks 7.7M, Anything, Lovable) and from Linear-style product films:
 
 | # | Time (s) | Shot | On screen |
 |---|---|---|---|
-| 1 | 0.0–1.5 | Counter | Ink. Odometer rolls to **2,847** unread |
+| 1 | 0.0–1.5 | Counter | Ink. Counter rolls to **2,847** unread |
 | 2 | 1.5–3.5 | Subject strobe | 8 subject lines, 1/8-note cuts, copper / paper / ink |
 | 3 | 3.5–5.0 | Inbox wall | Tilted endless inbox scrolling faster, counter still climbing |
-| 4 | 5.0–7.0 | Question | Silence. Paper. "Which ones actually need you?" word on beat |
-| 5 | 7.0–9.0 | Halftone sort | Rows become dots; three turn copper, gather and collapse to a point |
-| 6 | 9.0–11.0 | Wordmark | The drop. Copper. The point bursts into dots; **PigeonBox** lands letter by letter |
+| 4 | 5.0–7.0 | Question | The groove drops away. Paper. A selection locks onto "you?" |
+| 5 | 7.0–9.0 | Halftone sort | Three copper rows become a dot-matrix **3**, then collapse to a point |
+| 6 | 9.0–11.0 | Wordmark | Copper. The point bursts into dots; three type slices assemble **PigeonBox** |
 | 7 | 11.0–15.0 | Triage | "Sorted." → workspace: Respond 3 · Waiting 5 · FYI 12 · Notifications 41 |
 | 8 | 15.0–19.0 | Summary | "Long thread? Three lines." → companion card writes itself, date chip, to-do |
 | 9 | 19.0–24.0 | Draft | "Replies, in your voice." → reply streams into Gmail → "You press Send." → the press |
@@ -36,12 +36,16 @@ Kickbacks 7.7M, Anything, Lovable) and from Linear-style product films:
 | 11 | 29.0–33.0 | Tracking | "Know when it lands." → ✓ Opened · open toast · notify-if-no-reply |
 | 12 | 33.0–37.0 | Rapid fire | Follow-ups · Key dates · To-dos · Cited answers · Works with AI off · your AI, your choice |
 | 13 | 37.0–39.0 | Wide payoff | The whole Gmail window, sorted, with the workspace beside it |
-| 14 | 39.0–43.0 | Privacy | "No PigeonBox account. No Gmail API access. Your mail stays on your computer." |
-| 15 | 43.0–49.0 | End card | Copper, fine dot field. **PigeonBox** · Find what needs a reply. · usepigeonbox.com |
+| 14 | 39.0–43.0 | Privacy | A computer-window boundary closes around the privacy promise |
+| 15 | 43.0–49.0 | End card | Paper. **2,847 → 3**. Three fields become dots. **PigeonBox** · usepigeonbox.com |
 
 ## Sound
 
-No synthesised music. `scripts/gen_kinetic_sfx.py` builds the sound design from the cut list:
+No synthesised music. The selected soundtrack is **“Dry Gin” by Michael Ramir C.** (Mixkit),
+120 BPM, licensed for commercial online video without required attribution. See [MUSIC.md](MUSIC.md)
+for source, license links, hash, timing measurement and the exact mux command.
+
+`scripts/gen_kinetic_sfx.py` builds the sound design from the cut list:
 whooshes on cuts, low impacts on the big moments, and clicks and key ticks for every visible
 action. Lay a licensed track under it with `scripts/mux-kinetic.sh`, which needs no re-render:
 
@@ -50,7 +54,8 @@ scripts/mux-kinetic.sh out/pigeonbox-kinetic-silent.mp4 out/pigeonbox-kinetic-mu
 ```
 
 The cut list runs at 120 BPM (`src/kinetic/timeline.json`). For a track at another tempo, change
-`bpm` and the beat lengths there and re-render so the cuts land on its beats.
+`bpm` and the beat lengths there, review local shot animation and foley timings too, and re-render
+so the cuts land on its beats.
 
 ## Build it
 
@@ -75,12 +80,21 @@ scripts/kstills.sh /tmp/stills K-ask:200 K-end:200    # spot-check frames
 
 Where the film stands (October 14, 2026):
 
-- **Picture is done** for this round: 15 shots, 49 s, 1080p60. The render lands at
+- **Picture has a graphic revision**: 15 shots, 49 s, 1080p60. A shared “2,847 → 3” motif now links
+  the question, sorting, wordmark and ending; the privacy promise is enclosed by a computer frame.
+  Product demonstrations retain the original light UI and 3× camera raster. See
+  [MOTION-REFERENCES.md](MOTION-REFERENCES.md) for the researched references and original adaptations.
+  The render lands at
   `out/pigeonbox-kinetic.mp4` (sound design only) and `out/pigeonbox-kinetic-silent.mp4` (no audio).
   `out/` is gitignored, so render again from a fresh checkout.
-- **Music is the open item.** The film has no music yet. Next step: lay a real track under the
-  silent master with `scripts/mux-kinetic.sh` (no re-render). If the track is not 120 BPM, change
-  `bpm` and the beat lengths in `src/kinetic/timeline.json` and re-render so cuts land on its beats.
+- **Music export is complete.** “Dry Gin” matches 120 BPM; no re-timing or time stretch.
+  The finished soundtrack export is `out/pigeonbox-kinetic-music.mp4`. The mux script ducks the
+  question and privacy sections and fades the ending. See [MUSIC.md](MUSIC.md) for licensing.
+- **Verified:** settled and transitional frames through `kstills.sh`, including Ask and Send;
+  TypeScript and kinetic ESLint; full output decode; 2,940 frames at 1920×1080 / 60 fps with
+  49-second AAC audio. The mix measures −17.4 LUFS integrated / −1.1 dB true peak. The revised
+  graphic sections were rendered and assembled with the existing product footage; the ignored
+  `out/review/` folder retains the original masters, patch ranges and render provenance.
 - Possible follow-ups: a vertical 9:16 or 4:5 cut for mobile feeds; music-synced re-timing.
 
 ### Taste rules from the owner (do not regress)

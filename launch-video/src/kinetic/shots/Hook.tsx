@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { CameraRig } from "../Camera";
-import { Rise, Slam } from "../type";
+import { Rise } from "../type";
 import { b, ci, display, ease, K, mono, PB, rnd, sans } from "../tokens";
 
 const fmt = (n: number) => Math.floor(n).toLocaleString("en-US");
@@ -24,10 +24,10 @@ export const Counter: React.FC = () => {
       <div style={{ position: "absolute", left: 84, top: 72, fontFamily: mono, fontSize: 22, letterSpacing: "0.08em", color: K.inkText, opacity: 0.6 }}>
         Inbox ({fmt(v)}) - Gmail
       </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 60, transform: `scale(${1.02 + f * 0.0006})` }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 42, transform: `scale(${1.02 + f * 0.0003})` }}>
         <Count value={v} size={300} color={K.inkText} />
         <Rise f={f} at={58} dur={14}>
-          <span style={{ fontFamily: display, fontWeight: 600, fontSize: 300, letterSpacing: "-0.045em", lineHeight: 1, color: K.copperBright }}>unread</span>
+          <span style={{ fontFamily: display, fontWeight: 600, fontSize: 236, letterSpacing: "-0.045em", lineHeight: 1, color: K.copperBright }}>unread</span>
         </Rise>
       </div>
     </AbsoluteFill>
@@ -193,19 +193,31 @@ export const Wall: React.FC = () => {
 /** Shot 4: the music cuts out. One question. */
 export const Question: React.FC = () => {
   const f = useCurrentFrame();
+  // A scanning selection becomes a deliberate frame around the person, rather than the mail.
+  const lock = ci(f, [b(1.75), b(2.7)], [0, 1], ease.expo);
+  const left = 112 + 950 * lock;
+  const top = 258 + 107 * lock;
+  const width = 1696 - 950 * lock;
+  const height = 568 - 128 * lock;
   return (
-    <Slam
-      f={f}
-      bg={K.paper}
-      color={K.ink}
-      size={190}
-      words={[
-        { t: "Which", at: 0 },
-        { t: "ones", at: b(0.5) },
-        { t: "actually", at: b(1), italic: true, color: K.copper, br: true },
-        { t: "need", at: b(2), br: true },
-        { t: "you?", at: b(2.5) },
-      ]}
-    />
+    <AbsoluteFill style={{ background: K.paper, color: K.ink }}>
+      <div style={{ position: "absolute", left: 124, top: 100, fontFamily: mono, fontSize: 22, letterSpacing: "0.12em", color: K.muted }}>2,847 UNREAD. ONE QUESTION.</div>
+      <div style={{ position: "absolute", left: 124, top: 290, fontFamily: display, fontWeight: 600, fontSize: 152, letterSpacing: "-0.04em", lineHeight: 1.03 }}>
+        <div><Rise f={f} at={0}>Which</Rise>{" "}<Rise f={f} at={b(0.5)}>ones</Rise></div>
+        <div style={{ color: K.copper }}><Rise f={f} at={b(1)}>actually</Rise></div>
+        <div><Rise f={f} at={b(2)}>need</Rise></div>
+      </div>
+      <div style={{ position: "absolute", left: 1120, top: 386, fontFamily: display, fontWeight: 700, fontSize: 296, letterSpacing: "-0.045em", lineHeight: 1, color: K.copper }}>
+        <Rise f={f} at={b(2.5)}>you?</Rise>
+      </div>
+      <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
+        {[[left, top, 1, 1], [left + width, top, -1, 1], [left, top + height, 1, -1], [left + width, top + height, -1, -1]].map(([x, y, dx, dy], i) => (
+          <path key={i} d={`M ${x} ${y + 34 * dy} V ${y} H ${x + 34 * dx}`} stroke={K.copper} strokeWidth={3} fill="none" />
+        ))}
+      </svg>
+      <div style={{ position: "absolute", left: 1120, top: 868, display: "flex", gap: 18, opacity: lock }}>
+        {[0, 1, 2].map((i) => <span key={i} style={{ width: 12, height: 12, borderRadius: "50%", background: K.copper }} />)}
+      </div>
+    </AbsoluteFill>
   );
 };

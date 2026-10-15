@@ -1,6 +1,7 @@
 import { Easing, interpolate } from "remotion";
 import { loadFont as loadDisplay } from "@remotion/google-fonts/InterTight";
 import { mono, sans } from "../theme";
+import timeline from "./timeline.json";
 
 export { mono, sans };
 
@@ -8,7 +9,7 @@ export { mono, sans };
 export const display = loadDisplay("normal", { weights: ["500", "600", "700"], subsets: ["latin"] }).fontFamily;
 
 export const FPS = 60;
-export const BPM = 120;
+export const BPM = timeline.bpm;
 /** Seconds to frames. */
 export const s = (sec: number) => Math.round(sec * FPS);
 /** Beats (quarter notes at 120 BPM) to frames. */

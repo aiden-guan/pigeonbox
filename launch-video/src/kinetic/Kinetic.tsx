@@ -30,7 +30,7 @@ const SHOT: Record<string, React.FC> = {
 export const SHOTS = (() => {
   let at = 0;
   return (timeline.shots as [string, number][]).map(([name, beats]) => {
-    const s = { name, from: b(at), dur: b(beats), C: SHOT[name] };
+    const s = { name, from: b(at), dur: b(at + beats) - b(at), C: SHOT[name] };
     at += beats;
     return s;
   });

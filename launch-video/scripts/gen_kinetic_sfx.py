@@ -162,6 +162,8 @@ for bt in [0, 0.5, 1, 2, 2.5]:
 for k in range(40):
     add(tick(0.05, 5000 + rng.random() * 3000), fr("sort", k * 0.5) + rng.random() * 0.02, pan=rng.uniform(-0.7, 0.7))
 add(stipple(0.8, 0.12), fr("sort", 26))
+add(stipple(0.5, 0.10), fr("sort", 60))
+add(tick(0.10, 4200), fr("sort", 89))
 add(swell(2 * BEAT, 0.3, 400, 10000), START["wordmark"] - 2)
 add(impact(0.95), START["wordmark"])
 add(sparkle(1.8, 0.14), START["wordmark"])
@@ -209,7 +211,7 @@ add(impact(0.6), START["payoff"])
 add(lp(rng.standard_normal(at(4)), 2500) * np.sin(np.linspace(0, np.pi, at(4))) * 0.05, START["payoff"])
 
 # Privacy: quiet; one key per line.
-for bt in [0, 1.5, 3]:
+for bt in [0, 1.5, 3, 3.75]:
     add(key(0.2), START["privacy"] + bt)
 add(swell(1.0 * BEAT * 2, 0.26, 300, 8000), START["end"] - 2)
 

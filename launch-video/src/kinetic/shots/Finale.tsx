@@ -264,31 +264,31 @@ export const Payoff: React.FC = () => {
 
 export const Privacy: React.FC = () => {
   const f = useCurrentFrame();
-  const dimOld = ci(f, [b(5), b(5.5)], [1, 0.35]);
-  const line = (n: number) => (n < 2 ? dimOld : 1);
-  const L: { w: { t: string; italic?: boolean; color?: string }[]; at: number }[] = [
-    { w: [{ t: "No" }, { t: "PigeonBox" }, { t: "account." }], at: 0 },
-    { w: [{ t: "No" }, { t: "Gmail" }, { t: "API" }, { t: "access." }], at: b(1.5) },
-    { w: [{ t: "Your" }, { t: "mail" }, { t: "stays" }, { t: "on" }, { t: "your" }, { t: "computer.", italic: true, color: K.copperBright }], at: b(3) },
-  ];
+  const close = ci(f, [b(2.5), b(4.5)], [0, 1], ease.inOut);
   return (
-    <AbsoluteFill style={{ background: K.ink, justifyContent: "center", padding: "0 150px" }}>
+    <AbsoluteFill style={{ background: K.ink, color: K.inkText }}>
       <Kicker n="06" t="PRIVATE BY DEFAULT" f={f} color={K.inkText} />
-      <div style={{ fontFamily: display, fontWeight: 600, fontSize: 106, lineHeight: 1.14, letterSpacing: "-0.04em", color: K.inkText, transform: `scale(${1 + f * 0.00012})`, transformOrigin: "0 50%" }}>
-        {L.map((l, li) => (
-          <div key={li} style={{ opacity: line(li), whiteSpace: "nowrap" }}>
-            {l.w.map((w, wi) => (
-              <React.Fragment key={wi}>
-                {wi ? " " : null}
-                <Rise f={f} at={l.at + wi * 4}>
-                  <span style={{ color: w.color }}>{w.t}</span>
-                </Rise>
-              </React.Fragment>
-            ))}
-          </div>
-        ))}
-        <div style={{ marginTop: 50, fontFamily: mono, fontSize: 28, letterSpacing: "0.2em", color: K.inkText, opacity: ci(f, [b(5), b(5.5)], [0, 0.8]) }}>
+      <svg width={1920} height={1080} style={{ position: "absolute", inset: 0 }}>
+        <rect x={100} y={180} width={1720} height={740} rx={16} fill="none" stroke="#414341" strokeWidth={2} />
+        <rect x={100} y={180} width={1720} height={740} rx={16} fill="none" stroke={K.copperBright} strokeWidth={3} pathLength={1} strokeDasharray={1} strokeDashoffset={1 - close} />
+        <path d="M 100 250 H 1820" stroke="#414341" strokeWidth={2} />
+        {[0, 1, 2].map((i) => <circle key={i} cx={140 + i * 24} cy={216} r={5} fill={K.inkText} opacity={0.4} />)}
+      </svg>
+      <div style={{ position: "absolute", right: 134, top: 202, fontFamily: mono, fontSize: 20, letterSpacing: "0.14em", color: K.copperBright }}>YOUR COMPUTER</div>
+      <div style={{ position: "absolute", left: 156, top: 300, fontFamily: display, fontWeight: 600, fontSize: 54, letterSpacing: "-0.035em", lineHeight: 1.22 }}>
+        <div><Rise f={f} at={0}>No PigeonBox account.</Rise></div>
+        <div><Rise f={f} at={b(1.5)}>No Gmail API access.</Rise></div>
+      </div>
+      <div style={{ position: "absolute", left: 156, top: 486, fontFamily: display, fontWeight: 600, fontSize: 132, letterSpacing: "-0.04em", lineHeight: 1.08 }}>
+        <div><Rise f={f} at={b(3)}>Your mail stays</Rise></div>
+        <div style={{ color: K.copperBright }}><Rise f={f} at={b(3.75)}>on your computer.</Rise></div>
+      </div>
+      <div style={{ position: "absolute", left: 158, right: 156, top: 830, display: "flex", alignItems: "center", justifyContent: "space-between", opacity: ci(f, [b(5), b(5.5)], [0, 1]) }}>
+        <div style={{ fontFamily: mono, fontSize: 23, letterSpacing: "0.1em" }}>
           LOCAL BY DEFAULT · FREE &amp; OPEN SOURCE (MIT)
+        </div>
+        <div style={{ display: "flex", gap: 16 }}>
+          {[0, 1, 2].map((i) => <span key={i} style={{ width: 12, height: 12, borderRadius: "50%", background: K.copperBright }} />)}
         </div>
       </div>
     </AbsoluteFill>
@@ -301,41 +301,38 @@ export const Privacy: React.FC = () => {
 
 export const EndCard: React.FC = () => {
   const f = useCurrentFrame();
-  // A fine dot field settles behind the type: the brand's halftone, used as texture only.
+  // Three mail-shaped fields converge into three reply dots: a callback to the sorting shot.
   const draw = (ctx: CanvasRenderingContext2D) => {
-    ctx.fillStyle = "rgba(243,240,232,0.16)";
+    const settle = ci(f, [0, b(3)], [0, 1], ease.expo);
+    ctx.fillStyle = K.copper;
     ctx.beginPath();
-    const cell = 22;
-    for (let y = cell / 2; y < 1080; y += cell) {
-      for (let x = cell / 2; x < 1920; x += cell) {
-        const dx = (x - 960) / 960;
-        const dy = (y - 540) / 540;
-        const d = Math.sqrt(dx * dx + dy * dy);
-        const p = ease.expo(clamp01((f - d * 30) / 30));
-        fillDot(ctx, x, y, 2.6 * Math.min(1, d * 1.1) * p);
+    for (let row = 0; row < 3; row++) {
+      for (let y = 0; y < 4; y++) {
+        for (let x = 0; x < 12; x++) {
+          fillDot(ctx, 1660 + (x - 5.5) * 18 * (1 - settle), 380 + row * 112 + (y - 1.5) * 18 * (1 - settle), 3 + settle * 13);
+        }
       }
     }
     ctx.fill();
   };
-  const letters = "PigeonBox".split("");
   return (
-    <AbsoluteFill style={{ background: K.copper, alignItems: "center", justifyContent: "center" }}>
+    <AbsoluteFill style={{ background: K.paper, color: K.ink }}>
       <DotCanvas draw={draw} deps={[f]} />
-      <div style={{ textAlign: "center", color: K.paper, transform: `scale(${1 + 0.02 * ci(f, [0, 300], [0, 1], ease.linear)})` }}>
-        <div style={{ fontFamily: display, fontWeight: 700, fontSize: 250, lineHeight: 1.05, letterSpacing: "-0.05em" }}>
-          {letters.map((ch, i) => (
-            <Rise key={i} f={f} at={4 + i * 1.6} dur={16}>
-              {ch}
-            </Rise>
-          ))}
-        </div>
-        <div style={{ fontFamily: display, fontWeight: 500, fontSize: 64, marginTop: 18, letterSpacing: "-0.02em", opacity: 0.92 }}>
-          <Rise f={f} at={30} dur={16}>Find what needs a reply.</Rise>
-        </div>
-        <div style={{ display: "flex", justifyContent: "center", gap: 30, marginTop: 70, fontFamily: mono, fontSize: 27, letterSpacing: "0.12em", opacity: ci(f, [52, 68], [0, 1]) }}>
-          <span style={{ background: K.paper, color: K.copper, padding: "12px 22px", borderRadius: 8 }}>usepigeonbox.com</span>
-          <span style={{ padding: "12px 0", opacity: 0.85 }}>FREE FOR GMAIL</span>
-        </div>
+      <div style={{ position: "absolute", left: 124, top: 100, fontFamily: mono, fontSize: 24, letterSpacing: "0.1em", color: K.muted }}>
+        <span style={{ textDecoration: "line-through", textDecorationColor: K.copper }}>2,847 UNREAD</span>
+        <span style={{ padding: "0 30px", color: K.copper }}>→</span>
+        <span style={{ color: K.copper }}>3 NEED YOU.</span>
+      </div>
+      <div style={{ position: "absolute", left: 124, top: 310, fontFamily: display, fontWeight: 700, fontSize: 246, lineHeight: 1.12, letterSpacing: "-0.035em" }}>
+        <Rise f={f} at={4} dur={26}>PigeonBox</Rise>
+      </div>
+      <div style={{ position: "absolute", left: 130, top: 610, fontFamily: display, fontWeight: 600, fontSize: 68, letterSpacing: "-0.035em" }}>
+        <Rise f={f} at={32} dur={18}>Find what needs a reply.</Rise>
+      </div>
+      <div style={{ position: "absolute", left: 124, right: 124, top: 832, height: 2, background: K.ink, opacity: 0.16 }} />
+      <div style={{ position: "absolute", left: 124, right: 124, top: 880, display: "flex", alignItems: "center", justifyContent: "space-between", fontFamily: mono, fontSize: 30, letterSpacing: "0.06em", opacity: ci(f, [52, 68], [0, 1]) }}>
+        <span style={{ color: K.copper }}>usepigeonbox.com ↗</span>
+        <span style={{ fontSize: 22, color: K.muted }}>FREE FOR GMAIL · LOCAL BY DEFAULT</span>
       </div>
     </AbsoluteFill>
   );
