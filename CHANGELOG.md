@@ -8,8 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.8.0] — 2026-10-14
+
+### Added
+- **Chat can organize your Gmail, with your permission.** Ask Chat to label, file, archive, mark, star or clean up mail, or to create, rename or delete labels. Pidgy finds the exact emails, then shows every change it wants to make with **Allow** and **Deny**, the way a coding assistant asks before running a command. Nothing changes until you allow it, and only what you saw is done. "Delete" moves mail to Trash, which Gmail empties after 30 days; deleting a label keeps its emails. Requires PigeonBox Cloud with the Organize mail permission.
+- Chat can tell which of many threads got a reply, so requests like "the cold emails that got a reply" work in one step.
+
+### Changed
+- **Ask is now Chat.** The tab, the message box ("Message Pigeon") and the command palette use the new name. Unsubscribing from Chat now asks first, too.
+
 ### Fixed
-- The Ask box no longer gets stuck tall and empty after the side panel is resized or minimized.
+- The Chat box no longer gets stuck tall and empty after the side panel is resized or minimized.
 
 ---
 
