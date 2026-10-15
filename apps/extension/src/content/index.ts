@@ -267,6 +267,14 @@ async function boot(): Promise<void> {
       const res = await send<{ timeline?: TrackingTimelineEntry[] }>({ type: 'GET_TRACKING_TIMELINE', trackingId });
       return Array.isArray(res?.timeline) ? res.timeline : null;
     },
+    loadDocumentActivity: async (threadId) => {
+      const res = await send<{ ok?: boolean; events?: Array<{ type: string; at: string; explanation: string }> }>({ type: 'CLOUD_DOCUMENT_ACTIVITY', threadId });
+      return res?.ok && Array.isArray(res.events) ? res.events.map(event => ({
+        type: event.type === 'document_view' ? 'DOCUMENT_VIEW' as const : 'DOCUMENT_DOWNLOAD' as const,
+        timestamp: event.at,
+        detail: event.explanation,
+      })) : [];
+    },
     onSelfView: (trackingId, gmailThreadId, gmailMessageId, observedAt, source) => {
       reportTrackingSelfView(trackingId, gmailThreadId, gmailMessageId, observedAt, source || 'ROW_INTERACTION');
     },

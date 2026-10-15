@@ -485,6 +485,14 @@ ${orbCss}
 @keyframes pb-route-draw { 0% { stroke-dashoffset:100;opacity:0; } 20%,80% { opacity:1; } 100% { stroke-dashoffset:0;opacity:0; } }
 ${systemCSS}
 
+.gi-document-picker { box-sizing:border-box; width:min(390px,calc(100vw - 32px)); padding:24px; border:1px solid var(--pb-border); border-radius:var(--pb-radius); background:var(--pb-surface-raised); color:var(--pb-fg); box-shadow:var(--pb-shadow-menu); font:var(--pb-size-label)/1.5 var(--pb-sans); }
+.gi-document-picker::backdrop { background:rgba(0,0,0,.3); }
+.gi-document-picker h2 { margin:0 0 12px; font:500 var(--pb-size-title)/1.3 var(--pb-sans); }
+.gi-document-picker p { margin:12px 0; }
+.gi-document-picker input { width:100%; margin:8px 0; color:inherit; font:inherit; }
+.gi-document-picker .gi-document-hint { font-size:var(--pb-size-meta); color:var(--pb-fg-muted); }
+.gi-document-menu-hint { max-width:220px; margin:4px 8px 8px; color:var(--pb-fg-muted); font:var(--pb-size-meta)/1.45 var(--pb-sans); }
+
 `;
 
 export function ensureSurface(): void {

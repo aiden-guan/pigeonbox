@@ -50,6 +50,48 @@ function row(threadId: string, email: string, subject: string): void {
 }
 
 describe('sent mail open status', () => {
+  it('does not put sent or opened badges on Gmail draft rows', () => {
+    row('thread-1', 'aiden@example.com', 'Hello');
+    row('other-thread', 'sam@example.com', 'Follow up');
+    for (const [index, sender] of [...document.querySelectorAll('.yW')].entries()) {
+      sender.insertAdjacentHTML('beforeend', `<span class="boq">${index ? 'Brouillon' : 'Draft'}</span>`);
+    }
+    paintRows(document, [opened, waiting], 'https://track.example', () => undefined);
+    expect(document.querySelector('.gi-track-slot')).toBeNull();
+    expect(document.querySelector('[data-gi-tracked]')).toBeNull();
+  });
+
+  it('removes a reused row badge and its self-view binding when Gmail turns it into a draft', () => {
+    row('thread-1', 'aiden@example.com', 'Hello');
+    const selfView = vi.fn();
+    paintRows(document, [opened], 'https://track.example', () => undefined, selfView);
+    const mailRow = document.querySelector<HTMLElement>('tr.zA')!;
+    expect(mailRow.dataset.giTrackingId).toBe(opened.trackingId);
+    mailRow.querySelector('.yW')!.insertAdjacentHTML('beforeend', '<span class="boq">Draft</span>');
+    paintRows(document, [opened], 'https://track.example', () => undefined, selfView);
+    expect(mailRow.querySelector('.gi-track-slot')).toBeNull();
+    expect(mailRow.dataset.giTrackingId).toBeUndefined();
+    mailRow.querySelector('.bog')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    expect(selfView).not.toHaveBeenCalled();
+    mailRow.querySelector('.boq')!.remove();
+    paintRows(document, [opened], 'https://track.example', () => undefined, selfView);
+    expect(mailRow.querySelector('.gi-track-btn')).not.toBeNull();
+  });
+
+  it('never treats the Conversations list heading as an opened email', () => {
+    row('thread-1', 'aiden@example.com', 'Hello');
+    const main = document.createElement('div');
+    main.setAttribute('role', 'main');
+    main.innerHTML = '<h2>Conversations</h2><span class="gi-track-slot" data-gi-ui="track"></span>';
+    main.append(document.querySelector('table')!);
+    document.body.append(main);
+    paintConversation(document, [opened], 'https://track.example', () => undefined);
+    expect(main.querySelector('h2')!.nextElementSibling?.classList.contains('gi-track-slot')).toBe(false);
+    const status = installSentStatus({ emails: [opened], onNotify: () => undefined });
+    expect(status.openThreadStatus()).toBeNull();
+    status.destroy();
+  });
+
   it('places the message status beside the sender name, away from the avatar and recipient line', () => {
     document.body.innerHTML = `<div role="listitem" data-legacy-thread-id="thread-1">
       <div class="avatar"><img alt="Sender avatar"></div>
@@ -337,6 +379,15 @@ describe('sent mail open status', () => {
 });
 
 describe('tracking detail card', () => {
+  it('loads PDF events even with no email opens and refreshes independently of email counters', async () => {
+    const loadDocumentActivity = vi.fn(async () => [{ type: 'DOCUMENT_VIEW' as const, timestamp: '2026-09-22T15:02:00.000Z', detail: 'Proposal.pdf' }]);
+    const controller = installSentStatus({ emails: [waiting], onNotify: () => undefined, loadDocumentActivity });
+    row('thread-2', 'sam@example.com', 'Follow up'); controller.paint();
+    document.querySelector<HTMLElement>('.gi-track-btn')?.click();
+    await vi.waitFor(() => expect(document.querySelector('.gi-track-activity')?.textContent).toContain('PDF opened · Proposal.pdf'));
+    expect(loadDocumentActivity).toHaveBeenCalledWith('thread-2');
+    controller.destroy();
+  });
   it('uses a distinct mark for sent, opened and link-clicked mail', () => {
     row('thread-1', 'aiden@example.com', 'Hello');
     row('thread-2', 'sam@example.com', 'Follow up');

@@ -122,6 +122,8 @@ export class TrackingClient {
     const send = (token: string) =>
       fetcher(`${trim(this.baseUrl)}${path}`, {
         method: init.method ?? 'GET',
+        redirect: 'error',
+        credentials: 'omit',
         headers: {
           ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
           Authorization: `Bearer ${token}`,
@@ -440,6 +442,8 @@ export function summaryFromRemote(
 }
 
 export type TrackingRowQuery = {
+  /** A Gmail draft row must never inherit a sent message's activity. */
+  isDraft?: boolean;
   threadIds: string[];
   subject: string;
   emails: string[];
@@ -452,6 +456,7 @@ export function matchTrackedEmail(
   row: TrackingRowQuery,
   emails: TrackedEmailSummary[],
 ): TrackedEmailSummary | null {
+  if (row.isDraft) return null;
   const delivered = emails.filter(isDeliveredTrackedEmail);
 
   // 1. Exact Gmail message ID match (strongest identity)

@@ -14,6 +14,7 @@ import {
 import { findSendButton, SELECTORS } from '@pigeonbox/gmail';
 import { ensureSurface } from '../shell/surface';
 import { createOrb } from '../../ui/orb-markup';
+import { documentActionForCompose } from '../compose/documents';
 import {
   composeTrackingLabel,
   createTrackingSession,
@@ -779,7 +780,7 @@ function mountTrackingControl(compose: HTMLElement, composeSessionId: string, de
   button.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    toggleMenu(button, composeSessionId, deps, render);
+    toggleMenu(button, composeSessionId, deps, render, compose);
   });
   // The badge lives inline, immediately left of Send, inside Send's own
   // container (the same spot it has always had). Do not move it into an
@@ -809,6 +810,7 @@ function toggleMenu(
   composeSessionId: string,
   deps: ComposeTrackingDeps,
   paintButton: () => void,
+  compose: HTMLElement,
 ): void {
   const existing = document.querySelector('[data-gi-ui="track-menu"]');
   if (existing) {
@@ -831,6 +833,14 @@ function toggleMenu(
     session.trackingChosen = true;
     paintButton();
   }));
+  const trackPdf = documentActionForCompose(compose);
+  if (trackPdf) {
+    const pdf = document.createElement('button'); pdf.type = 'button'; pdf.className = 'gi-menu-row'; pdf.textContent = 'Track PDF…';
+    pdf.addEventListener('click', () => { menu.remove(); trackPdf(); });
+    menu.append(pdf);
+    const hint = Object.assign(document.createElement('p'), { className: 'gi-document-menu-hint', textContent: 'PDF opens require a tracked link. Gmail paperclip attachments don’t report opens.' });
+    menu.append(hint);
+  }
   const rect = anchor.getBoundingClientRect();
   menu.style.left = `${Math.max(8, rect.left - 80)}px`;
   menu.style.top = `${rect.bottom + 6}px`;

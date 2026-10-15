@@ -45,6 +45,10 @@ const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   // Owned link destination only; the tracker credential stays in the worker.
   'RESOLVE_SENDER_TRACKING_LINK',
   'RESOLVE_SENDER_DOCUMENT_LINK',
+  // Explicit in-compose PDF upload and its Gmail send receipt; no general Cloud calls.
+  'CLOUD_COMPOSE_DOCUMENT',
+  'CLOUD_COMPOSE_DOCUMENT_SENT',
+  'CLOUD_DOCUMENT_ACTIVITY',
   'SET_CATEGORY',
   'REMIND_THREAD',
   'FOCUS_SIDEPANEL',

@@ -10,6 +10,7 @@ import { forgetComposeCheckPreference, handleComposeCheck } from './compose-chec
 import { cloudSection } from '../../ui/cloud-features';
 import { diagnostics, durationBucket } from '../diagnostics';
 import { CLOUD_WAITLIST_URL, cloudApiUrl } from '../../config';
+import { composeDocument } from './compose-documents';
 
 type Deps = {
   settings: () => ExtensionSettings;
@@ -42,6 +43,9 @@ export async function handleCloudRequest(
       'CLOUD_OPEN',
       'CLOUD_DOCUMENT_UPLOAD',
       'INSERT_DOCUMENT_LINK',
+      'CLOUD_COMPOSE_DOCUMENT',
+      'CLOUD_COMPOSE_DOCUMENT_SENT',
+      'CLOUD_DOCUMENT_ACTIVITY',
     ].includes(String(message.type)) &&
     !senderMaySend(sender, message.type)
   )
@@ -140,6 +144,20 @@ export async function handleCloudRequest(
       webUrl: deps.webUrl(),
     };
   }
+  if (['CLOUD_COMPOSE_DOCUMENT', 'CLOUD_COMPOSE_DOCUMENT_SENT', 'CLOUD_DOCUMENT_ACTIVITY'].includes(String(message.type))) {
+    const state = await deps.readState();
+    if (deps.settings().runMode !== 'cloud' || state.status !== 'ready' || !state.capabilities.includes('cloud_documents'))
+      return { ok: false, reason: 'Turn on PigeonBox Cloud to track PDFs.' };
+    const client = await deps.client();
+    if (!client) return { ok: false, reason: 'Sign in to PigeonBox Cloud to track PDFs.' };
+    if (message.type !== 'CLOUD_DOCUMENT_ACTIVITY') return composeDocument(message, client, cloudApiUrl(deps.settings()) ?? '');
+    if (!state.capabilities.includes('cloud_tracking') || typeof message.threadId !== 'string' || !gmailId.test(message.threadId))
+      return { ok: false, reason: 'PDF activity is unavailable for this conversation.' };
+    try {
+      const { events } = await client.call('threadSignals', { threadId: message.threadId });
+      return { ok: true, events: events.filter(event => (event.type === 'document_view' || event.type === 'document_download') && event.eventClass === 'RECIPIENT_LIKELY') };
+    } catch (error) { return { ok: false, reason: cloudErrorMessage(error).message }; }
+  }
   if (!['CLOUD_CALL', 'CLOUD_OPEN', 'CLOUD_DOCUMENT_UPLOAD', 'INSERT_DOCUMENT_LINK'].includes(String(message.type)))
     return undefined;
   if (!isExtensionPageSender(sender))
@@ -192,7 +210,7 @@ export async function handleCloudRequest(
     const stored = await chrome.storage.session.get('documentComposeTarget');
     const target = stored.documentComposeTarget as { tabId?: number; composeId?: string } | undefined;
     if (typeof target?.tabId !== 'number' || !target.composeId)
-      return { ok: false, reason: 'Choose “Track with PigeonBox” in the Gmail composer first.' };
+      return { ok: false, reason: 'Choose “Track PDF” then “More options” in the Gmail composer first.' };
     const tab = await chrome.tabs.get(target.tabId);
     if (!tab.url?.startsWith('https://mail.google.com/'))
       return { ok: false, reason: 'The selected Gmail composer is no longer available.' };

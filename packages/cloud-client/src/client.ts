@@ -1,5 +1,7 @@
 import {
   AUTHORIZE_PATH,
+  ASK_REQUEST_TIMEOUT_MS,
+  ASK_STREAM_TIMEOUT_MS,
   CLIENT_HEADER,
   ErrorBodySchema,
   PROTOCOL_HEADER,
@@ -206,6 +208,7 @@ export class PigeonBoxCloudClient {
    * overrides the client default for latency-sensitive UI calls.
    */
   async call<N extends RouteName>(name: N, body?: RouteRequest<N>, options: CallOptions = {}): Promise<RouteResponse<N>> {
+    if (name === 'askPigeon') options = { ...options, timeoutMs: options.timeoutMs ?? ASK_REQUEST_TIMEOUT_MS };
     const route = ROUTES[name];
     let payload: unknown;
     if ('request' in route) {
@@ -245,7 +248,9 @@ export class PigeonBoxCloudClient {
     const payload = parsed?.data;
     let token = (await this.tokens?.get()) ?? null;
     if (route.auth === 'user' && !token) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Sign in to PigeonBox Cloud first.' });
-    const streamOptions = { ...options, accept: 'application/x-ndjson' };
+    const timeoutMs = options.timeoutMs ?? (name === 'askPigeonStream' ? ASK_STREAM_TIMEOUT_MS : this.timeoutMs);
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const streamOptions = { ...options, timeoutMs, signal: combineSignals(options.signal, timeout), accept: 'application/x-ndjson' };
     let response = await this.send(route.method, route.path, payload, token, streamOptions);
     if (response.status === 401 && route.auth === 'user' && this.tokens) {
       token = await this.tokens.refresh();
@@ -288,6 +293,7 @@ export class PigeonBoxCloudClient {
       await reader.cancel().catch(() => undefined);
       if (error instanceof CloudApiError) throw error;
       if (options.signal?.aborted) throw new CloudApiError({ code: 'aborted', retryable: false, message: 'The request was cancelled.' });
+      if (timeout.aborted) throw new CloudApiError({ code: 'timeout', retryable: true, requestId, message: 'PigeonBox Cloud did not respond in time.' });
       throw new CloudApiError({ code: 'network', retryable: true, requestId, message: 'The connection to PigeonBox Cloud dropped.' });
     }
   }

@@ -103,6 +103,7 @@ import {
   DocumentLinkCreateRequestSchema,
   DocumentLinkResponseSchema,
   DocumentLinkRevokeRequestSchema,
+  DocumentLinkAssociateRequestSchema,
   DocumentsResponseSchema,
 } from './documents.js';
 import { CloudOverviewRequestSchema, CloudOverviewResponseSchema } from './overview.js';
@@ -308,6 +309,7 @@ export const ROUTES = {
   documents: { method: 'GET', path: '/v1/documents', auth: 'user', response: DocumentsResponseSchema, capability: 'cloud_documents' },
   documentLinkCreate: { method: 'POST', path: '/v1/documents/links/create', auth: 'user', request: DocumentLinkCreateRequestSchema, response: DocumentLinkResponseSchema, capability: 'cloud_documents' },
   documentLinkRevoke: { method: 'POST', path: '/v1/documents/links/revoke', auth: 'user', request: DocumentLinkRevokeRequestSchema, response: DocumentLinkResponseSchema, capability: 'cloud_documents' },
+  documentLinkAssociate: { method: 'POST', path: '/v1/documents/links/associate', auth: 'user', request: DocumentLinkAssociateRequestSchema, response: OkResponseSchema, capability: 'cloud_documents' },
   documentAnalytics: { method: 'POST', path: '/v1/documents/analytics', auth: 'user', request: DocumentAnalyticsRequestSchema, response: DocumentAnalyticsResponseSchema, capability: 'cloud_documents' },
 
   // Notifications for the extension and web app.

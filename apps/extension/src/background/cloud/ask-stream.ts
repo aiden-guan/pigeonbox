@@ -5,7 +5,7 @@
  * which stops the agent on the server. A Cloud without the streaming route
  * gets the one-shot `askPigeon` call instead.
  */
-import type { AskPigeonResponse, RouteRequest } from '@pigeonbox/api-contract';
+import { ASK_STREAM_TIMEOUT_MS, type AskPigeonResponse, type RouteRequest } from '@pigeonbox/api-contract';
 import { CloudApiError, cloudErrorMessage, type PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
 import { isExtensionPageSender } from '../messaging';
 import { ASK_STREAM_PORT, type AskStreamPortMessage } from './ask-stream-protocol';
@@ -40,12 +40,17 @@ export function serveAskStream(port: chrome.runtime.Port, client: () => Promise<
       const cloud = await client();
       if (!cloud) return post({ type: 'failed', code: 'not_configured', reason: 'Turn on Cloud and sign in to use this.' });
       try {
+        let terminal = false;
         await cloud.stream(
           'askPigeonStream',
           message.body as RouteRequest<'askPigeonStream'>,
-          (event) => post({ type: 'event', event: event.type === 'error' ? { ...event, message: reason(event.code, event.message) } : event }),
-          { signal: cancel.signal, timeoutMs: 110_000 },
+          (event) => {
+            terminal ||= event.type === 'done' || event.type === 'error';
+            post({ type: 'event', event: event.type === 'error' ? { ...event, message: reason(event.code, event.message) } : event });
+          },
+          { signal: cancel.signal, timeoutMs: ASK_STREAM_TIMEOUT_MS },
         );
+        if (!terminal) post({ type: 'failed', code: 'network', reason: 'The connection ended before the answer finished. Try again.' });
       } catch (error) {
         if (cancel.signal.aborted) return;
         // An older Cloud without the streaming route answers in one piece.

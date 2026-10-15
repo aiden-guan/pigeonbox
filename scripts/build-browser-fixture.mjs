@@ -8,6 +8,7 @@ const outputDir = process.env.PIGEONBOX_BROWSER_EXTENSION_PATH || 'apps/extensio
 const fixtures = [
   { entry: 'tests/browser/tracking-runtime.ts', name: 'browser-fixture' },
   { entry: 'tests/browser/brain-runtime.ts', name: 'brain-fixture' },
+  { entry: 'tests/browser/document-runtime.ts', name: 'document-fixture' },
 ];
 
 for (const fixture of fixtures) {

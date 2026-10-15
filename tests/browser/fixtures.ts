@@ -189,6 +189,7 @@ export type FixtureApi = {
   composeWriting?: string;
   composeDelayMs?: number;
   documentPreviews?: Record<string, string>;
+  documentActivity?: boolean;
   engagement?: boolean;
   calls: { route: string; body: Record<string, unknown> }[];
   baseUrl: string;
@@ -381,7 +382,7 @@ export const test = base.extend<{ app: App }>({
       else if (def === 'taskUpdate') { tasks = tasks.map((task) => task.id === body.id ? { ...task, status: body.status as SavedTask['status'] } : task); data = { tasks }; }
       else if (def === 'approvals') data = { approvals: [], pending: 0 };
       else if (def === 'followUps') data = { followUps: api.engagement ? [{ subject: 'Waiting on pricing', who: 'Maya', followUp: { id: uuid(80), threadId: 'abc123', accountId, stage: 'waiting', expectedFrom: ['maya@fixture.test'], dueAt: at, reason: 'You asked for confirmation.', rule: 'manual', lastOutboundAt: at, lastInboundAt: null, engagement: null, draftId: null, snoozedUntil: null } }] : [] };
-      else if (def === 'threadSignals') data = { signals: [], events: [{ at, type: 'open', eventClass: 'RECIPIENT_LIKELY', confidence: 0.9, explanation: 'A recipient open was observed.' }], attributionNote: 'Opens are observations, not proof of reading.' };
+      else if (def === 'threadSignals') data = { signals: [], events: api.documentActivity ? [{ at, type: 'document_view', eventClass: 'RECIPIENT_LIKELY', confidence: 0.75, explanation: 'Proposal.pdf · Displayed in the PDF viewer.' }, { at, type: 'document_download', eventClass: 'RECIPIENT_LIKELY', confidence: 0.75, explanation: 'Proposal.pdf · Downloaded from the PDF viewer.' }] : [{ at, type: 'open', eventClass: 'RECIPIENT_LIKELY', confidence: 0.9, explanation: 'A recipient open was observed.' }], attributionNote: 'Opens are observations, not proof of reading.' };
       else if (def === 'auditList') data = { events: [], nextCursor: null };
       else if (def === 'automationRuns') data = { runs: [] };
       else if (def === 'briefings') data = { briefings: [briefing] };
@@ -424,7 +425,7 @@ export const test = base.extend<{ app: App }>({
           link: {
             id: uuid(10),
             documentId: body.documentId,
-            url: `${api.baseUrl}/d/${'a'.repeat(30)}`,
+            url: `${api.baseUrl}/d/${'a'.repeat(32)}`,
             recipientEmail: body.recipientEmail ?? null,
             expiresAt: body.expiresAt ?? null,
             allowDownload: body.allowDownload ?? false,
@@ -434,6 +435,7 @@ export const test = base.extend<{ app: App }>({
             createdAt: at,
           },
         };
+      else if (def === 'documentLinkAssociate') data = { ok: true };
       else if (def === 'viewCompile')
         data = {
           draft: {

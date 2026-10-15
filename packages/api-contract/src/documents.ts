@@ -53,6 +53,8 @@ export const DocumentLinkCreateRequestSchema = z.object({
 });
 export const DocumentLinkResponseSchema = z.object({ link: DocumentLinkSchema });
 export const DocumentLinkRevokeRequestSchema = z.object({ linkId: IdSchema });
+/** Associate an owned compose link with Gmail's receipt after the user sends. */
+export const DocumentLinkAssociateRequestSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{32}$/), threadId: GmailIdSchema }).strict();
 
 export const DocumentLinkStatsSchema = z.object({
   link: DocumentLinkSchema,

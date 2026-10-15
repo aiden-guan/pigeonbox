@@ -162,6 +162,23 @@ describe('sent mail status', () => {
     ).toBe('trk_1');
   });
 
+  it('never matches a draft to a tracked send, even with the same message, thread or subject', () => {
+    const sent = { ...base, gmailMessageId: 'msg-1', openCount: 2 };
+    for (const identity of [
+      { threadIds: ['thread-1'], messageId: 'msg-1' },
+      { threadIds: ['thread-1'] },
+      { threadIds: ['another-thread'] },
+      { threadIds: [] },
+    ]) {
+      expect(matchTrackedEmail({
+        ...identity,
+        isDraft: true,
+        subject: 'Hello',
+        emails: ['a@b.com'],
+      }, [sent])).toBeNull();
+    }
+  });
+
   it('matches a sent row when a category chip is glued to the subject', () => {
     expect(normalizeSubject('sdefsfseWaiting')).toBe('sdefsfse');
     expect(

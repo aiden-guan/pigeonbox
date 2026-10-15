@@ -1,4 +1,4 @@
-import type { AskPigeonResponse, AskStreamEvent, RouteName, RouteRequest, RouteResponse } from '@pigeonbox/api-contract';
+import { ASK_REQUEST_TIMEOUT_MS, ASK_STREAM_TIMEOUT_MS, type AskPigeonResponse, type AskStreamEvent, type RouteName, type RouteRequest, type RouteResponse } from '@pigeonbox/api-contract';
 import { ASK_STREAM_PORT, type AskStreamPortMessage } from '../background/cloud/ask-stream-protocol';
 export type CallResult<T> = { ok: true; data: T } | { ok: false; code: string; reason: string };
 
@@ -10,7 +10,7 @@ export function cloudCall<T>(route: string, body?: unknown): Promise<CallResult<
   return new Promise((resolve) => {
     let done = false;
     const finish = (result: CallResult<T>) => { if (!done) { done = true; clearTimeout(timer); resolve(result); } };
-    const timer = setTimeout(() => finish({ ok: false, code: 'timeout', reason: 'Cloud did not respond in time. Try again.' }), 65_000);
+    const timer = setTimeout(() => finish({ ok: false, code: 'timeout', reason: 'Cloud did not respond in time. Try again.' }), route === 'askPigeon' ? ASK_REQUEST_TIMEOUT_MS + 5_000 : 65_000);
     try {
       chrome.runtime.sendMessage({ type: 'CLOUD_CALL', route, body }, (response?: CallResult<T>) => {
         finish(chrome.runtime.lastError ? { ok: false, code: 'network', reason: 'Reconnect PigeonBox and try again.' } : response ?? { ok: false, code: 'network', reason: 'PigeonBox did not respond. Try again.' });
@@ -28,14 +28,16 @@ export function cloudAskStream(body: RouteRequest<'askPigeonStream'>, onEvent: (
   return new Promise((resolve) => {
     let port: chrome.runtime.Port | null = null;
     let done = false;
+    let keepAlive: ReturnType<typeof setInterval> | undefined;
     const finish = (result: CallResult<AskPigeonResponse>) => {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      clearInterval(keepAlive);
       try { port?.disconnect(); } catch { /* already closed */ }
       resolve(result);
     };
-    const timer = setTimeout(() => finish({ ok: false, code: 'timeout', reason: 'Cloud did not respond in time. Try again.' }), 120_000);
+    const timer = setTimeout(() => finish({ ok: false, code: 'timeout', reason: 'Cloud did not respond in time. Try again.' }), ASK_STREAM_TIMEOUT_MS + 5_000);
     try {
       port = chrome.runtime.connect({ name: ASK_STREAM_PORT });
     } catch {
@@ -51,5 +53,11 @@ export function cloudAskStream(body: RouteRequest<'askPigeonStream'>, onEvent: (
       else onEvent(event);
     });
     port.postMessage({ body });
+    // An open port alone does not keep a Manifest V3 worker alive. Only ping
+    // while this request is active, including quiet model/tool rounds.
+    if (!done) keepAlive = setInterval(() => {
+      try { port?.postMessage({ type: 'keepalive' }); }
+      catch { finish({ ok: false, code: 'network', reason: 'The connection to PigeonBox dropped. Try again.' }); }
+    }, 20_000);
   });
 }

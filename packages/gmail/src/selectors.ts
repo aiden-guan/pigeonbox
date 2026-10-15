@@ -20,9 +20,12 @@ export const SELECTORS = {
   threadRowSubject: ['span[data-thread-id]', '.bog', '.bqe', '[data-legacy-thread-id] span[email]', '.y6 span'],
   threadRowSnippet: ['.y2', '.Zt'],
   threadRowSender: ['.yW span[email]', '.yP', '.zF', 'span[email]', '[data-hovercard-id]'],
+  /** Gmail's Draft marker in the sender cell, independent of the UI language. */
+  threadRowDraft: ['.yW .boq'],
   threadIdAttr: ['data-legacy-thread-id', 'data-thread-perm-id', 'data-thread-id'],
   messageIdAttr: ['data-legacy-message-id', 'data-message-id'],
   openThread: ['div[role="main"] h2.hP', 'h2[data-thread-perm-id]', '[data-legacy-thread-id].nH'],
+  conversationHeading: ['h2.hP', 'h2[data-legacy-thread-id]', 'h2[data-thread-perm-id]'],
   messageBody: [
     '.a3s.aiL',
     '.a3s',

@@ -101,7 +101,7 @@ export function DocumentsView() {
     );
     setBusy(false);
     if (result.ok) setNotice('Inserted into Gmail. Nothing was sent.');
-    else setError(result.reason || 'Choose “Track with PigeonBox” in the Gmail composer first, then try again.');
+    else setError(result.reason || 'Choose “Track PDF” then “More options” in the Gmail composer first, then try again.');
   }
   async function inspect(document: DocumentSummary) {
     setError('');

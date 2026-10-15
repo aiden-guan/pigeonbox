@@ -7,9 +7,11 @@ import {
   type TrackingStatusCopy,
   type TrackingTimelineEntry,
 } from '@pigeonbox/tracking';
-import { findThreadRows, threadIdFromLocation } from '@pigeonbox/gmail';
+import { findThreadRows, SELECTORS, threadIdFromLocation } from '@pigeonbox/gmail';
 import { ensureSurface } from '../shell/surface';
 import type { SelfViewSource } from './message-self-view';
+
+export type SentActivityEntry = TrackingTimelineEntry | { type: 'DOCUMENT_VIEW' | 'DOCUMENT_DOWNLOAD'; timestamp: string; detail: string };
 
 export type SentStatusController = {
   setEmails(emails: TrackedEmailSummary[]): void;
@@ -82,6 +84,7 @@ export function installSentStatus(opts: {
   onLink?: (trackingId: string, gmailThreadId: string) => void;
   /** Counted opens and clicks for the detail card, from the tracker. Null when unavailable. */
   loadActivity?: (trackingId: string) => Promise<TrackingTimelineEntry[] | null>;
+  loadDocumentActivity?: (threadId: string) => Promise<SentActivityEntry[]>;
   onSelfView?: (
     trackingId: string,
     gmailThreadId?: string | null,
@@ -97,6 +100,8 @@ export function installSentStatus(opts: {
   let statusSignature = '';
   const recentSelfViews = new Map<string, { observedAt: number; source: SelfViewSource }>();
   activityLoader = opts.loadActivity ?? null;
+  documentActivityLoader = opts.loadDocumentActivity ?? null;
+  const activityTimer = opts.loadDocumentActivity ? setInterval(() => refreshOpenCard(emails, trackerBaseUrl, true), 15_000) : null;
   ensureStyles();
   setTrackerBaseAttribute(trackerBaseUrl);
 
@@ -161,6 +166,7 @@ export function installSentStatus(opts: {
     destroy() {
       observer?.disconnect();
       if (timer) clearTimeout(timer);
+      if (activityTimer) clearInterval(activityTimer);
       closeCard();
     },
   };
@@ -189,6 +195,7 @@ export function readRowQuery(row: Element): TrackingRowQuery {
     if (email.includes('@')) emails.add(email);
   });
   return {
+    isDraft: Boolean(row.querySelector(SELECTORS.threadRowDraft.join(','))),
     threadIds,
     messageId: messageIds[0] || null,
     messageIds,
@@ -293,6 +300,11 @@ export function paintConversation(
   onLink?: (trackingId: string, gmailThreadId: string) => void,
 ): void {
   const heading = conversationHeading(root);
+  // Gmail keeps and reuses list views. Remove a badge left beside a list heading
+  // instead of treating "Conversations" as the subject of a sent email.
+  root.querySelectorAll('h2 + .gi-track-slot').forEach((slot) => {
+    if (slot.previousElementSibling !== heading) slot.remove();
+  });
   if (!heading) return;
   const match = matchConversation(root, emails);
   const next = heading.nextElementSibling;
@@ -331,7 +343,7 @@ function subjectText(heading: HTMLElement): string {
 }
 
 function conversationHeading(root: ParentNode): HTMLElement | null {
-  const heading = root.querySelector?.('h2.hP, h2[data-legacy-thread-id], h2[data-thread-perm-id], [role="main"] h2');
+  const heading = root.querySelector?.(SELECTORS.conversationHeading.join(','));
   return heading instanceof HTMLElement ? heading : null;
 }
 
@@ -507,21 +519,38 @@ function controlStyle(color: string): string {
 }
 
 let activityLoader: ((trackingId: string) => Promise<TrackingTimelineEntry[] | null>) | null = null;
+let documentActivityLoader: ((threadId: string) => Promise<SentActivityEntry[]>) | null = null;
 
 /** Rows shown in the card before older detections are summarized. */
 const ACTIVITY_ROWS = 6;
 
 async function loadCardActivity(list: HTMLElement, email: TrackedEmailSummary): Promise<void> {
-  if (!activityLoader || (email.openCount === 0 && email.clickCount === 0)) return;
+  if ((!activityLoader && !documentActivityLoader) || list.dataset.loading === 'true') return;
+  list.dataset.loading = 'true';
   const signature = `${email.openCount}:${email.clickCount}`;
   list.dataset.loaded = signature;
-  const entries = await activityLoader(email.trackingId).catch(() => null);
+  const [entries, documents] = await Promise.all([
+    activityLoader?.(email.trackingId).catch(() => null) ?? null,
+    email.gmailThreadId ? documentActivityLoader?.(email.gmailThreadId).catch(() => []) ?? [] : [],
+  ]);
+  delete list.dataset.loading;
   if (!list.isConnected || list.dataset.loaded !== signature) return;
-  renderActivity(list, email, entries);
+  renderActivity(list, email, [...entries ?? [], ...documents].sort((a, b) => a.timestamp.localeCompare(b.timestamp)));
+  list.dataset.pdfStatus = documents.some(entry => entry.type === 'DOCUMENT_VIEW') ? 'PDF opened' : documents.length ? 'PDF downloaded' : '';
+  paintDocumentStatus(list, email);
+}
+
+function paintDocumentStatus(list: HTMLElement, email: TrackedEmailSummary): void {
+  if (email.openCount || !list.dataset.pdfStatus) return;
+  const card = list.closest('.gi-track-card');
+  const headline = card?.querySelector('.gi-track-headline');
+  const count = card?.querySelector('.gi-track-count');
+  if (headline) headline.textContent = 'No email open detected yet.';
+  if (count) count.textContent = list.dataset.pdfStatus;
 }
 
 /** Sent, then the most recent counted detections, oldest first. Self and machine fetches never appear. */
-export function renderActivity(list: HTMLElement, email: TrackedEmailSummary, entries: TrackingTimelineEntry[] | null, now = Date.now()): void {
+export function renderActivity(list: HTMLElement, email: TrackedEmailSummary, entries: SentActivityEntry[] | null, now = Date.now()): void {
   const rows: Array<{ at: string | null; label: string; more?: boolean }> = [];
   if (email.sentAt) rows.push({ at: email.sentAt, label: 'Sent' });
   const detections = entries ?? [];
@@ -531,6 +560,11 @@ export function renderActivity(list: HTMLElement, email: TrackedEmailSummary, en
     rows.push({ at: null, label: `${earlier} earlier detection${earlier === 1 ? '' : 's'}`, more: true });
   }
   for (const entry of shown) {
+    if ('detail' in entry) {
+      const filename = entry.detail.replace(/ · (Displayed in|Downloaded from) the PDF viewer\.$/, '');
+      rows.push({ at: entry.timestamp, label: `${entry.type === 'DOCUMENT_VIEW' ? 'PDF opened' : 'PDF downloaded'} · ${filename}` });
+      continue;
+    }
     const on = entry.device ? ` on ${entry.device}` : '';
     rows.push({ at: entry.timestamp, label: entry.type === 'CLICK' ? clickLabel(entry.destination, on) : `Open detected${on}` });
   }
@@ -732,7 +766,7 @@ function placeCard(card: HTMLElement, anchor: HTMLElement): void {
   }
 }
 
-function refreshOpenCard(emails: TrackedEmailSummary[], trackerBaseUrl: string): void {
+function refreshOpenCard(emails: TrackedEmailSummary[], trackerBaseUrl: string, refreshActivity = false): void {
   if (!openCard?.isConnected || !openTrackingId) return;
   const email = emails.find((item) => item.trackingId === openTrackingId);
   if (!email) return;
@@ -758,7 +792,8 @@ function refreshOpenCard(emails: TrackedEmailSummary[], trackerBaseUrl: string):
     count.className = copy.opened ? 'gi-track-count is-open' : 'gi-track-count';
   }
   const activity = openCard.querySelector<HTMLElement>('.gi-track-activity');
-  if (activity && activity.dataset.loaded !== `${email.openCount}:${email.clickCount}`) void loadCardActivity(activity, email);
+  if (activity && (refreshActivity || activity.dataset.loaded !== `${email.openCount}:${email.clickCount}`)) void loadCardActivity(activity, email);
+  if (activity) paintDocumentStatus(activity, email);
 }
 
 function closeCard(): void {

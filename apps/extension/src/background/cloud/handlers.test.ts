@@ -45,6 +45,15 @@ it('rejects content, foreign-extension and hostile-origin privileged calls befor
       });
   expect(client).not.toHaveBeenCalled();
 });
+it('gates in-compose PDF uploads and read-only document activity before a network call', async () => {
+  const client = vi.fn(deps.client);
+  for (const type of ['CLOUD_COMPOSE_DOCUMENT', 'CLOUD_COMPOSE_DOCUMENT_SENT', 'CLOUD_DOCUMENT_ACTIVITY']) {
+    expect(await handleCloudRequest({ type }, { ...gmail, origin: 'https://evil.test' }, { ...deps, client })).toMatchObject({ ok: false, code: 'forbidden' });
+    expect(await handleCloudRequest({ type }, gmail, { ...deps, client, settings: () => ({ ...DEFAULT_SETTINGS, runMode: 'local' }) })).toMatchObject({ ok: false });
+    expect(await handleCloudRequest({ type }, gmail, { ...deps, client, readState: async () => ({ ...state, capabilities: [] }) })).toMatchObject({ ok: false });
+  }
+  expect(client).not.toHaveBeenCalled();
+});
 it('never loads Cloud thread context in Local mode', async () => {
   const client = vi.fn(deps.client);
   expect(

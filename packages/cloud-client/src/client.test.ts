@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PROTOCOL_HEADER, PROTOCOL_VERSION } from '@pigeonbox/api-contract';
+import { ASK_REQUEST_TIMEOUT_MS, ASK_STREAM_TIMEOUT_MS, PROTOCOL_HEADER, PROTOCOL_VERSION } from '@pigeonbox/api-contract';
 import { CloudApiError, InflightCache, PigeonBoxCloudClient, cloudErrorMessage, createCloudAIProvider, createPkcePair, normalizeBaseUrl, pkceChallenge } from './index';
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -32,6 +32,26 @@ describe('normalizeBaseUrl', () => {
 });
 
 describe('PigeonBoxCloudClient', () => {
+  it('uses longer Chat budgets without changing other API defaults or explicit overrides', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    const client = new PigeonBoxCloudClient({ baseUrl: 'https://cloud.test', fetch: async () => { throw new Error('offline'); }, tokens: { get: async () => 'fixture', refresh: async () => null } });
+    await expect(client.call('askPigeon', { query: 'Help with mail' })).rejects.toMatchObject({ code: 'network' });
+    expect(timeout).toHaveBeenLastCalledWith(ASK_REQUEST_TIMEOUT_MS);
+    await expect(client.stream('askPigeonStream', { query: 'Help with mail' }, () => undefined)).rejects.toMatchObject({ code: 'network' });
+    expect(timeout).toHaveBeenLastCalledWith(ASK_STREAM_TIMEOUT_MS);
+    await expect(client.call('health')).rejects.toMatchObject({ code: 'network' });
+    expect(timeout).toHaveBeenLastCalledWith(30_000);
+    await expect(client.call('askPigeon', { query: 'Help with mail' }, { timeoutMs: 12_345 })).rejects.toMatchObject({ code: 'network' });
+    expect(timeout).toHaveBeenLastCalledWith(12_345);
+    timeout.mockRestore();
+  });
+
+  it('reports a timeout during the streamed response body as a timeout', async () => {
+    const client = new PigeonBoxCloudClient({ baseUrl: 'https://cloud.test', tokens: { get: async () => 'fixture', refresh: async () => null }, fetch: async (_url, init) => new Response(new ReadableStream({
+      start(controller) { init!.signal!.addEventListener('abort', () => controller.error(init!.signal!.reason), { once: true }); },
+    })) });
+    await expect(client.stream('askPigeonStream', { query: 'Help with mail' }, () => undefined, { timeoutMs: 15 })).rejects.toMatchObject({ code: 'timeout', retryable: true });
+  });
   it('uses bounded, validated authenticated memory controls without exposing SQL internals', async () => {
     const paths: string[] = [];
     const id = '11111111-1111-4111-8111-111111111111';
