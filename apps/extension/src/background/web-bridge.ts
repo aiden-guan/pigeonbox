@@ -57,6 +57,8 @@ const ACTIONS = new Set(['clear_index', 'index_inbox', 'pause_index', 'reset_wor
 const LINK_KEY = 'cloudLink';
 const LINK_TTL_MS = 15 * 60_000;
 
+export type SettingsSync = { userId: string; at: string };
+
 type PendingLink = { state: string; verifier: string; redirectUri: string; apiBaseUrl: string; createdAt: number };
 
 export type WebBridgeDeps = {
@@ -85,6 +87,12 @@ export type WebBridgeDeps = {
   noteDashboardTab: (tabId: number | null) => Promise<void>;
   openGrant: (origins: string[]) => Promise<void>;
   session: { get(key: string): Promise<Record<string, unknown>>; set(items: Record<string, unknown>): Promise<void>; remove(key: string): Promise<void> };
+  /**
+   * Which PigeonBox account this install last matched its settings with. Kept
+   * in local storage, so it survives updates and is gone after a reinstall:
+   * then the dashboard restores the settings saved to the account.
+   */
+  settingsSync: { get(): Promise<SettingsSync | null>; set(value: SettingsSync): Promise<void> };
   now?: () => number;
 };
 
@@ -162,6 +170,7 @@ export async function handleWebMessage(message: unknown, sender: Sender, deps: W
         product: await deps.productState(),
         account: await deps.currentAccount(),
         accountLink: true,
+        settingsSync: await deps.settingsSync.get().catch(() => null),
       };
     }
     case 'BYE':
@@ -194,6 +203,12 @@ export async function handleWebMessage(message: unknown, sender: Sender, deps: W
       const lines = Array.isArray(msg.lines) ? msg.lines.filter((line): line is string => typeof line === 'string').map((line) => line.trim().slice(0, 500)).filter(Boolean).slice(0, 100) : [];
       await deps.saveAgentRules(lines);
       return { ok: true, rules: await deps.agentRules().catch(() => lines) };
+    }
+    case 'SETTINGS_SYNCED': {
+      if (typeof msg.userId !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(msg.userId)) return { ok: false, reason: 'Unknown account.' };
+      const value = { userId: msg.userId, at: new Date(now).toISOString() };
+      await deps.settingsSync.set(value);
+      return { ok: true, settingsSync: value };
     }
     case 'SET_ANALYTICS':
       await deps.analytics.set(msg.enabled === true);

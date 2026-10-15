@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./float-drag', () => ({ installFloatDrag: vi.fn(), placeFloat: vi.fn() }));
+vi.mock('./float-drag', () => ({ DEFAULT_SIZE: { width: 420, height: 600 }, installFloatDrag: vi.fn(), placeFloat: vi.fn() }));
 vi.mock('../../ui/appearance', () => ({ watchAppearance: vi.fn(), knownAppearance: () => 'light' }));
 
 const box = (width: number, height: number) => new DOMRect(100, 80, width, height);

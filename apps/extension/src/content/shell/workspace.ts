@@ -1,4 +1,4 @@
-import { installFloatDrag, placeFloat } from './float-drag';
+import { DEFAULT_SIZE, installFloatDrag, placeFloat } from './float-drag';
 import { DEFAULT_WORKSPACE, workspaceState, type WorkspaceState } from '../../workspace/state';
 import productTokens from '../../ui/product-tokens.css?inline';
 import { applyTheme, knownAppearance, normalizeAppearance, watchAppearance } from '../../ui/appearance';
@@ -6,7 +6,7 @@ import { motionOptions, prefersReducedMotion } from '../../ui/motion';
 const CSS = `${productTokens}
 :host{all:initial;position:fixed;right:24px;top:80px;z-index:1100;display:block;color:var(--pb-fg);font:var(--pb-size-secondary) var(--pb-sans);isolation:isolate;contain:layout style}
 *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--pb-border-focus);outline-offset:3px}
-.gi-shell{width:var(--gi-w,380px);height:var(--gi-h,600px);max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);display:flex;flex-direction:column;background:var(--pb-surface-raised);border:1px solid var(--pb-border-strong);border-radius:var(--pb-radius-shell);overflow:hidden;box-shadow:var(--pb-shadow-float);transform-origin:top right}
+.gi-shell{width:var(--gi-w,${DEFAULT_SIZE.width}px);height:var(--gi-h,${DEFAULT_SIZE.height}px);max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);display:flex;flex-direction:column;background:var(--pb-surface-raised);border:1px solid var(--pb-border-strong);border-radius:var(--pb-radius-shell);overflow:hidden;box-shadow:var(--pb-shadow-float);transform-origin:top right}
 header{height:38px;flex-shrink:0;display:flex;align-items:center;padding:0 var(--pb-space-2) 0 46px;gap:var(--pb-space-2);background:var(--pb-surface-raised);border-bottom:1px solid var(--pb-border);touch-action:none;cursor:grab}header span{flex:1;color:var(--pb-fg-muted);font-size:var(--pb-size-meta)}header button{border:0;background:transparent;padding:var(--pb-space-1);width:var(--pb-target);height:var(--pb-target);border-radius:var(--pb-radius-sm)}
 iframe{border:0;flex:1;min-height:0;width:100%;background:var(--pb-surface)}
 .gi-pill{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-start;padding:0 var(--pb-space-3) 0 44px;background:transparent;border:0;border-radius:var(--pb-radius-pill);touch-action:none;text-align:left}.gi-pill span{font-size:var(--pb-size-label);font-weight:var(--pb-weight-medium)}

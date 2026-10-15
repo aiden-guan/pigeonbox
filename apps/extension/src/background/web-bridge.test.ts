@@ -30,6 +30,10 @@ function deps(overrides: Partial<WebBridgeDeps> = {}) {
     noteDashboardTab: async () => undefined,
     hasOrigins: async () => false,
     openGrant: vi.fn(async () => undefined),
+    settingsSync: {
+      get: async () => (store.get('settingsSync') as { userId: string; at: string } | undefined) ?? null,
+      set: async (value) => void store.set('settingsSync', value),
+    },
     session: {
       get: async (key) => ({ [key]: store.get(key) }),
       set: async (items) => void Object.entries(items).forEach(([key, item]) => store.set(key, item)),
@@ -124,5 +128,14 @@ describe('dashboard bridge', () => {
     expect(await handleWebMessage({ type: 'GRANT', origins: ['<all_urls>', 'https://*/*'] }, DASHBOARD, d)).toMatchObject({ ok: false });
     await handleWebMessage({ type: 'GRANT', origins: ['https://track.example/*'] }, DASHBOARD, d);
     expect(openGrant).toHaveBeenCalledWith(['https://track.example/*']);
+  });
+
+  it('remembers which account the settings were matched with, and reports it on HELLO', async () => {
+    const { deps: d } = deps({ now: () => Date.parse('2026-10-15T12:00:00Z') });
+    expect(await handleWebMessage({ type: 'HELLO' }, DASHBOARD, d)).toMatchObject({ settingsSync: null });
+    expect(await handleWebMessage({ type: 'SETTINGS_SYNCED', userId: 'not an id!' }, DASHBOARD, d)).toMatchObject({ ok: false });
+    expect(await handleWebMessage({ type: 'SETTINGS_SYNCED', userId: '6f1c2c1e-1111-4222-8333-444455556666' }, DASHBOARD, d)).toMatchObject({ ok: true });
+    expect(await handleWebMessage({ type: 'HELLO' }, DASHBOARD, d)).toMatchObject({ settingsSync: { userId: '6f1c2c1e-1111-4222-8333-444455556666', at: '2026-10-15T12:00:00.000Z' } });
+    expect(await handleWebMessage({ type: 'SETTINGS_SYNCED', userId: 'u1' }, { origin: 'https://evil.example' }, d)).toMatchObject({ ok: false, code: 'forbidden' });
   });
 });

@@ -92,7 +92,7 @@ import { handleCloudRequest } from './cloud/handlers';
 import { resolveSenderDocumentLink } from './cloud/document-preview';
 import { serveAskStream } from './cloud/ask-stream';
 import { cloudSection, dashboardSection, panelSection } from '../ui/cloud-features';
-import { handleWebMessage, type WebBridgeDeps } from './web-bridge';
+import { handleWebMessage, type SettingsSync, type WebBridgeDeps } from './web-bridge';
 import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, isGmailContentScript, senderMaySend } from './messaging';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
@@ -2176,6 +2176,7 @@ function cloudWebUrl(section = 'overview'): string | null {
 }
 
 const DASHBOARD_TAB_KEY = 'dashboardTab';
+const SETTINGS_SYNC_KEY = 'accountSettingsSync';
 
 /**
  * Open the dashboard, reusing the tab that shows it. Without the "tabs"
@@ -2507,6 +2508,13 @@ const webBridge: WebBridgeDeps = {
     await chrome.windows.create({ url: chrome.runtime.getURL(`grant.html?${new URLSearchParams({ origins: origins.join(',') })}`), type: 'popup', width: 440, height: 420, focused: true });
   },
   session: chrome.storage.session,
+  settingsSync: {
+    get: async () => {
+      const value = (await chrome.storage.local.get(SETTINGS_SYNC_KEY))[SETTINGS_SYNC_KEY] as SettingsSync | undefined;
+      return value && typeof value.userId === 'string' ? value : null;
+    },
+    set: (value) => chrome.storage.local.set({ [SETTINGS_SYNC_KEY]: value }),
+  },
 };
 
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {

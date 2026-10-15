@@ -18,6 +18,8 @@ export const SNAP_ZONE = 48;
 export const SNAP_GAP = 16;
 const SNAP_MS = 220;
 export const SIZE_LIMITS = { minWidth: 280, maxWidth: 680, minHeight: 240 };
+/** The card's size until someone resizes it, and after Reset. */
+export const DEFAULT_SIZE = { width: 420, height: 600 };
 
 export function clampPos(pos: FloatPos, box: Box, viewport: Box): FloatPos {
   const maxRight = Math.max(MARGIN, viewport.width - box.width - MARGIN);
@@ -221,7 +223,7 @@ export function installFloatDrag(host: HTMLElement, fallback: () => FloatPos, op
   );
 
   const reset = () => {
-    if (options) options.save({ position: fallback(), size: { width: 380, height: 600 } });
+    if (options) options.save({ position: fallback(), size: { ...DEFAULT_SIZE } });
     else { save(POS_KEY, null); save(SIZE_KEY, null); }
     placeFloat(host, fallback(), options?.geometry());
   };
