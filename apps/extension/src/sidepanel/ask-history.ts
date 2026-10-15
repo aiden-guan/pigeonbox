@@ -34,6 +34,8 @@ export type StoredTurn = {
   took?: number;
   rating?: 'up' | 'down';
   feedback?: 'sent';
+  /** The user's answer to proposed changes in this turn. */
+  decided?: 'allowed' | 'denied';
 };
 
 type Stored = Record<string, StoredTurn[]>;

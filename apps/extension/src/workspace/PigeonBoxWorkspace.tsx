@@ -238,7 +238,7 @@ function WorkspaceContent() {
   const commands: WorkspaceCommand[] = [
     { id: 'home', label: 'Home', detail: 'Current conversation and work that needs you', icon: 'inbox', run: () => navigate('home') },
     { id: 'inbox', label: 'Inbox', detail: 'Sorted mail, sent emails and follow-ups', icon: 'inbox', run: () => navigate('inbox') },
-    { id: 'ask', label: 'Ask Pigeon', detail: cloudMode ? 'Your synced mailbox' : 'Mail on this computer', icon: 'sparkles', run: () => navigate('ask') },
+    { id: 'ask', label: 'Chat with Pigeon', detail: cloudMode ? 'Your synced mailbox' : 'Mail on this computer', icon: 'sparkles', run: () => navigate('ask') },
     ...(context ? [
       { id: 'summarize', label: 'Summarize this thread', detail: context.subject, icon: 'document' as const, run: () => chrome.runtime.sendMessage({ type: 'WORKSPACE_THREAD_ACTION', id: 'summarize', threadId: context.threadId }) },
       { id: 'draft-reply', label: 'Draft a reply', detail: context.subject, icon: 'edit' as const, run: () => chrome.runtime.sendMessage({ type: 'WORKSPACE_THREAD_ACTION', id: 'draft', threadId: context.threadId }) },
@@ -306,7 +306,7 @@ function WorkspaceContent() {
         <div className="pb-workspace-navigation"><nav className="pb-panel-nav" aria-label="Workspace">
           <Tab active={mode === 'home'} onClick={() => navigate('home')}>Home</Tab>
           <Tab active={mode === 'inbox'} onClick={() => navigate('inbox')}>Inbox</Tab>
-          <Tab active={mode === 'ask'} onClick={() => navigate('ask')}>Ask</Tab>
+          <Tab active={mode === 'ask'} onClick={() => navigate('ask')}>Chat</Tab>
         </nav><div className="pb-window-controls"><IconButton label="Open PigeonBox Settings" data-settings-entry onClick={() => openSettings('workspace_header', cloudMode ? 'cloud' : 'local')}><WorkspaceIcon name="settings" size={16} /></IconButton><button type="button" className="pb-icon-btn" aria-label={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} title={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} onClick={() => { setDisplayError(''); void requestWorkspaceDisplay(location.pathname.includes('sidepanel') ? 'float' : 'dock').catch(() => setDisplayError('Could not move the workspace. Try again.')); }}><WorkspaceIcon name="dock" size={16} /></button></div></div>
       </header>
       {displayError ? <p className="gi-warn px-4" role="alert">{displayError}</p> : null}
@@ -391,8 +391,8 @@ function WorkspaceContent() {
           >
             <Input
               className="min-w-0 flex-1"
-              aria-label="Ask about mail on this computer"
-              placeholder="Ask, or draft an email…"
+              aria-label="Message Pigeon about mail on this computer"
+              placeholder="Message Pigeon, or draft an email…"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />

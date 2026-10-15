@@ -1,5 +1,5 @@
 export const VISIBLE_COMMANDS = [
-  { id: 'ask', label: 'Ask Pigeon' },
+  { id: 'ask', label: 'Chat' },
   { id: 'summarize', label: 'Summarize Thread' },
   { id: 'draft', label: 'Draft Reply' },
   { id: 'remind', label: 'Remind Me' },

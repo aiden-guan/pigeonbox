@@ -5,13 +5,13 @@ test('MV3 worker boots; Local starts first and survives a failed Cloud', async (
   app.api.fail = true;
   const page = await app.page('sidepanel');
   expect(app.worker.url()).toContain('/background.js');
-  await expect(page.getByRole('navigation', { name: 'Workspace' }).getByRole('button')).toHaveText(['Home', 'Inbox', 'Ask']);
+  await expect(page.getByRole('navigation', { name: 'Workspace' }).getByRole('button')).toHaveText(['Home', 'Inbox', 'Chat']);
   await expect(page.getByRole('button', { name: 'Cloud', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await expect(page.getByText('Needs your reply', { exact: true })).toBeVisible();
   await page.locator('[data-command-launcher]').click();
-  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Inbox');
-  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
+  await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).fill('Inbox');
+  await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).press('Enter');
   await expect(page.getByRole('heading', { name: 'Nothing needs you here.' })).toBeVisible();
 });
 test('Cloud overview loads through the real worker/client and retains sections on partial failure', async ({ app }) => {
@@ -43,9 +43,9 @@ test('Cloud disconnection offers Google setup; failure preserves the last loaded
 });
 test('Cloud Ask shows loading, a cited answer, account-bound sources and keeps the conversation', async ({ app }) => {
   const page = await app.page('sidepanel', true);
-  await page.getByRole('button', { name: 'Ask', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('What needs a reply?');
-  await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Message Pigeon', exact: true }).fill('What needs a reply?');
+  await page.locator('form').getByRole('button', { name: 'Send', exact: true }).click();
   // Progress streams in before the answer: one live line, with the query beside it.
   const trace = page.locator('.pb-trace');
   await expect(trace.getByRole('status')).toHaveText('Searching your mail');
@@ -65,8 +65,8 @@ test('Cloud Ask shows loading, a cited answer, account-bound sources and keeps t
   await page.locator('.pb-answer-sources summary').click();
   await expect(page.getByRole('button', { name: /^Pricing/ })).toBeVisible();
   await expect(page.getByText('Only fixture mail was checked.')).toBeVisible();
-  await page.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('And what else?');
-  await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Message Pigeon', exact: true }).fill('And what else?');
+  await page.locator('form').getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.locator('.pb-ask-turn')).toHaveCount(2);
   await expect(page.locator('.gi-asked').first()).toHaveText('What needs a reply?');
   await expect(page.locator('.pb-answer-text')).toHaveCount(2);
@@ -81,9 +81,9 @@ test('Cloud Ask shows loading, a cited answer, account-bound sources and keeps t
 test('Cloud Ask falls back to a one-shot answer when Cloud cannot stream', async ({ app }) => {
   const page = await app.page('sidepanel', true);
   app.api.noStream = true;
-  await page.getByRole('button', { name: 'Ask', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('What needs a reply?');
-  await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Message Pigeon', exact: true }).fill('What needs a reply?');
+  await page.locator('form').getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.locator('.pb-answer-text strong', { hasText: 'Pricing' })).toBeVisible();
   expect(app.api.calls.map((call) => call.route)).toEqual(expect.arrayContaining(['/v1/ask/stream', '/v1/ask']));
 });
@@ -103,9 +103,9 @@ test('Gmail SPA lifecycle mounts one companion, palette restores focus and ignor
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
   const workspace = page.frameLocator('iframe[title="PigeonBox"]');
   await expect(workspace.getByRole('dialog')).toBeVisible();
-  await workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('ArrowDown');
-  await expect(workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' })).toHaveAttribute('aria-activedescendant', /command/);
-  await workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Escape');
+  await workspace.getByRole('combobox', { name: 'Message Pigeon or run a command' }).press('ArrowDown');
+  await expect(workspace.getByRole('combobox', { name: 'Message Pigeon or run a command' })).toHaveAttribute('aria-activedescendant', /command/);
+  await workspace.getByRole('combobox', { name: 'Message Pigeon or run a command' }).press('Escape');
   await expect(workspace.getByRole('dialog')).toHaveCount(0);
 });
 test('prepared variants render from the real Cloud transport; insert changes compose without sending', async ({
@@ -132,9 +132,9 @@ test('prepared variants render from the real Cloud transport; insert changes com
 });
 test('side panel mode persists across reload and reduced motion stops decorative loops', async ({ app }) => {
   const page = await app.page('sidepanel', true);
-  await page.getByRole('button', { name: 'Ask', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
   await page.reload();
-  await expect(page.getByRole('textbox', { name: 'Ask Pigeon', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Message Pigeon', exact: true })).toBeVisible();
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const animation = await page
     .locator('.gi-pigeon-frame')
@@ -147,7 +147,7 @@ test('side panel palette opens capability-aware tools and submits Cloud question
   const page = await app.page('sidepanel', true);
   await page.locator('body').click({ position: { x: 4, y: 4 } });
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
-  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('What needs a reply?');
+  await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).fill('What needs a reply?');
   await page.keyboard.press('Enter');
   await expect(page.getByText('Maya needs pricing.', { exact: true })).toBeVisible();
   expect(app.api.calls.filter((call) => call.route.startsWith('/v1/ask')).length).toBeLessThanOrEqual(1);
@@ -155,8 +155,8 @@ test('side panel palette opens capability-aware tools and submits Cloud question
 test('Smart View previews explainable actions and saves only in Shadow Mode', async ({ app }) => {
   const page = await app.page('sidepanel', true);
   await page.locator('[data-command-launcher]').click();
-  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Open Smart Views');
-  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
+  await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).fill('Open Smart Views');
+  await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).press('Enter');
   await page.getByLabel('Describe the mail and what should happen').fill('Archive receipts');
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.getByText('PigeonBox understood: Receipts')).toBeVisible();
@@ -170,8 +170,8 @@ test('PDF upload uses authenticated worker transport and creates recipient-speci
 }) => {
   const page = await app.page('sidepanel', true);
   await page.locator('[data-command-launcher]').click();
-  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Open Documents');
-  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
+  await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).fill('Open Documents');
+  await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).press('Enter');
   await page
     .getByLabel('Upload PDF')
     .setInputFiles({
@@ -263,9 +263,9 @@ test('profiles synthetic Cloud overview, Ask, thread mount and SPA navigation wi
   const timings: Record<string, number> = {};
   let start = Date.now(); const page = await app.page('sidepanel', true);
   await expect(page.getByText('Needs you', { exact: true })).toBeVisible(); timings.overviewSetupToReadyMs = Date.now() - start;
-  await page.getByRole('button', { name: 'Ask', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Ask Pigeon' }).fill('What needs a reply?');
-  start = Date.now(); await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Message Pigeon' }).fill('What needs a reply?');
+  start = Date.now(); await page.locator('form').getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByText('Maya needs pricing.', { exact: true })).toBeVisible(); timings.askIncluding300msFixtureMs = Date.now() - start;
   start = Date.now(); const gmail = await app.gmail();
   await expect(gmail.frameLocator('iframe[title="PigeonBox"]').getByRole('button', { name: 'Use reply', exact: true })).toBeVisible(); timings.gmailNavigationAndThreadMountMs = Date.now() - start;
@@ -278,7 +278,7 @@ test('profiles synthetic Cloud overview, Ask, thread mount and SPA navigation wi
 
 test('Local Ask stays local and responds when Cloud is failing', async ({ app }) => {
   app.api.fail = true; const page = await app.page('sidepanel');
-  await page.getByRole('button', { name: 'Ask', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
   await expect(page.getByText('AI is off. Results are local matches.')).toBeVisible();
   await page.locator('form input').fill('Who needs a reply?');
   await page.locator('form').getByRole('button', { name: 'Send', exact: true }).click();

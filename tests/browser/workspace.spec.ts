@@ -38,12 +38,12 @@ test('floating workspace preserves bounds, geometry, navigation and keyboard con
   const header = host.locator('header'); await header.focus(); await header.press('ArrowLeft'); await header.press('Shift+ArrowLeft');
   await expect.poll(() => shell.evaluate(element => element.getAnimations().every(animation => animation.playState !== 'running' && !animation.pending))).toBe(true);
   const first = await shell.boundingBox();
-  await workspace.getByRole('button', { name: 'Ask', exact: true }).click();
-  await workspace.getByRole('textbox', { name: 'Ask about mail on this computer' }).fill('Unfinished question');
+  await workspace.getByRole('button', { name: 'Chat', exact: true }).click();
+  await workspace.getByRole('textbox', { name: 'Message Pigeon about mail on this computer' }).fill('Unfinished question');
   await host.getByRole('button', { name: 'Collapse PigeonBox' }).click();
   await expect(host.getByRole('button', { name: 'Reopen PigeonBox' })).toBeVisible();
   await host.getByRole('button', { name: 'Reopen PigeonBox' }).click();
-  await expect(workspace.getByRole('textbox', { name: 'Ask about mail on this computer' })).toHaveValue('Unfinished question');
+  await expect(workspace.getByRole('textbox', { name: 'Message Pigeon about mail on this computer' })).toHaveValue('Unfinished question');
   await gmail.evaluate(() => { location.hash = '#sent'; }); await gmail.evaluate(() => { location.hash = '#inbox/abc123'; });
   await expect(host).toHaveCount(1);
   // Compare settled geometry, rather than sampling the collapsed-to-open morph.
@@ -84,30 +84,30 @@ test('reopening a collapsed docked workspace emits no invalid animation keyframe
 
 test('float and dock render one workspace and preserve unfinished input in trusted session storage', async ({ app }) => {
   await app.page('workspace'); const gmail = await app.gmail(); const frame = gmail.frameLocator('iframe[title="PigeonBox"]');
-  await frame.getByRole('button', { name: 'Ask', exact: true }).click();
-  await frame.getByRole('textbox', { name: 'Ask about mail on this computer' }).fill('Question before docking');
+  await frame.getByRole('button', { name: 'Chat', exact: true }).click();
+  await frame.getByRole('textbox', { name: 'Message Pigeon about mail on this computer' }).fill('Question before docking');
   // Exercise the genuine click gesture for Chrome's native sidePanel.open.
   await frame.getByRole('button', { name: 'Dock to side' }).click();
   await expect.poll(async () => (await app.worker.evaluate(async () => (await chrome.storage.local.get('workspaceState')).workspaceState.display))).toBe('dock');
   await expect(gmail.locator('[data-gi-ui="workspace"]')).toBeHidden();
   const dock = await app.context.newPage(); await dock.goto(`chrome-extension://${app.id}/sidepanel.html`);
-  await expect(dock.getByRole('textbox', { name: 'Ask about mail on this computer' })).toHaveValue('Question before docking');
+  await expect(dock.getByRole('textbox', { name: 'Message Pigeon about mail on this computer' })).toHaveValue('Question before docking');
   await dock.evaluate(() => chrome.runtime.sendMessage({ type: 'WORKSPACE_DISPLAY', display: 'float', open: true }));
   await expect(gmail.locator('[data-gi-ui="workspace"]')).toBeVisible();
-  await expect(frame.getByRole('textbox', { name: 'Ask about mail on this computer' })).toHaveValue('Question before docking');
+  await expect(frame.getByRole('textbox', { name: 'Message Pigeon about mail on this computer' })).toHaveValue('Question before docking');
   expect(await dock.locator('.pb-panel').count()).toBe(0);
 });
 
 test('current conversation follows Gmail, Ask carries account-bound context, and explicit tasks stay traceable', async ({ app }) => {
   await app.page('workspace', true); const gmail = await app.gmail(); const frame = gmail.frameLocator('iframe[title="PigeonBox"]');
   await expect(frame.getByRole('region', { name: 'Current conversation' })).toContainText('Pricing');
-  await frame.getByRole('button', { name: 'Ask', exact: true }).click();
-  await frame.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('Summarize this thread');
-  await frame.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
+  await frame.getByRole('button', { name: 'Chat', exact: true }).click();
+  await frame.getByRole('textbox', { name: 'Message Pigeon', exact: true }).fill('Summarize this thread');
+  await frame.locator('form').getByRole('button', { name: 'Send', exact: true }).click();
   await expect(frame.getByText('Maya needs pricing.', { exact: true })).toBeVisible();
   expect(app.api.calls.find((call) => call.route === '/v1/ask/stream')?.body).toMatchObject({ threadId: 'abc123', mailbox: 'owner@fixture.test' });
-  await frame.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('Add this to my tasks');
-  await frame.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
+  await frame.getByRole('textbox', { name: 'Message Pigeon', exact: true }).fill('Add this to my tasks');
+  await frame.locator('form').getByRole('button', { name: 'Send', exact: true }).click();
   await expect(frame.getByText('Task saved: Pricing. The source email is attached.')).toBeVisible();
   await frame.getByRole('button', { name: 'Home', exact: true }).click();
   await expect(frame.getByRole('checkbox', { name: 'Complete Pricing' })).toBeVisible();
@@ -121,10 +121,10 @@ test('current conversation follows Gmail, Ask carries account-bound context, and
 test('workspace command discovery remains keyboard accessible and restores focus', async ({ app }) => {
   const page = await app.page('workspace', true);
   const launcher = page.locator('[data-command-launcher]'); await launcher.focus(); await page.keyboard.press(shortcut);
-  await expect(page.getByRole('combobox', { name: 'Ask Pigeon or run a command' })).toBeFocused();
-  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Open approvals'); await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
+  await expect(page.getByRole('combobox', { name: 'Message Pigeon or run a command' })).toBeFocused();
+  await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).fill('Open approvals'); await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).press('Enter');
   await expect(page.getByRole('heading', { name: 'Approvals', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Cloud', exact: true })).toHaveCount(0);
   expect(await page.evaluate(async () => chrome.runtime.getManifest().action?.default_popup)).toBeUndefined();
-  await launcher.click(); await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Escape'); await expect(launcher).toBeFocused();
+  await launcher.click(); await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).press('Escape'); await expect(launcher).toBeFocused();
 });

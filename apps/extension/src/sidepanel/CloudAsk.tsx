@@ -1,6 +1,6 @@
 import type { WorkspaceContext } from '../workspace/context';
 import { trackProductEvent } from '../ui/analytics';
-import type { AskCompose, AskPigeonResponse, AskTurn, SourceRef } from '@pigeonbox/api-contract';
+import type { AskApproval, AskCompose, AskPigeonResponse, AskTurn, SourceRef } from '@pigeonbox/api-contract';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ContextCard } from '../ui/Primitives';
 import { cloudAskStream, cloudCall } from './cloud-api';
@@ -36,6 +36,8 @@ type Turn = {
   /** Thumbs up or down, and whether the "what went wrong" note is open or sent. */
   rating?: 'up' | 'down';
   feedback?: 'writing' | 'sent';
+  /** The user's answer to this turn's proposed changes. */
+  decided?: 'allowed' | 'denied';
 };
 
 /** Opens a composed email in the user's Gmail tab. PigeonBox never sends it. */
@@ -99,6 +101,54 @@ export function liveText(text: string): string {
     .replace(/\n\s*(?:[-*]\s*)?(?:\*\*)?(?:n(?:e(?:x(?:t)?)?)?|follow[- ]?u?p?s?)?(?:\*\*)?\s*(?::[^\n]*)?$/i, (tail) => (/^\n\s*$/.test(tail) ? tail : ''))
     .replace(/\s*\[(?:\s*S\d+\s*[,;]?)+\]/gi, '')
     .replace(/\s*\[S?\d*,?\s*$/i, '');
+}
+
+type ApprovalState = 'pending' | 'allowed' | 'denied' | 'unanswered' | 'expired';
+
+const APPROVAL_OUTCOME: Record<Exclude<ApprovalState, 'pending'>, string> = {
+  allowed: 'Allowed.',
+  denied: 'Not allowed. Nothing changed.',
+  unanswered: 'Not answered. Nothing changed.',
+  expired: 'Expired. Nothing changed; ask again to see the changes fresh.',
+};
+
+/**
+ * Changes Pigeon wants to make, asked the way Claude asks before running a
+ * command: every step, with Allow and Deny. Nothing has happened yet.
+ */
+export function ApprovalCard(props: { approval: AskApproval; state: ApprovalState; disabled?: boolean; onDecide: (allow: boolean) => void }) {
+  const { approval, state } = props;
+  return (
+    <section className="pb-approval" aria-label="Pigeon wants to change your mailbox" data-state={state}>
+      <p className="pb-approval-kicker">Pigeon wants to</p>
+      <p className="pb-approval-title">{approval.title}</p>
+      <ol className="pb-approval-steps">
+        {approval.steps.map((step, index) => (
+          <li key={index} data-destructive={step.destructive || undefined}>
+            <span>{step.text}</span>
+            {step.examples.length ? (
+              <span className="pb-approval-examples">
+                {step.examples.join(' · ')}
+                {step.count && step.count > step.examples.length ? ` · +${step.count - step.examples.length} more` : ''}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+      {state === 'pending' ? (
+        <div className="pb-approval-actions">
+          <button type="button" className="gi-btn gi-btn-ghost" disabled={props.disabled} onClick={() => props.onDecide(false)}>
+            Deny
+          </button>
+          <button type="button" className="gi-btn" disabled={props.disabled} onClick={() => props.onDecide(true)}>
+            Allow
+          </button>
+        </div>
+      ) : (
+        <p className="pb-approval-outcome" role="status">{APPROVAL_OUTCOME[state]}</p>
+      )}
+    </section>
+  );
 }
 
 /** Thumbs up or down on an answer. Down asks, optionally, what went wrong. */
@@ -168,6 +218,7 @@ function toStored(turn: Turn): StoredTurn | null {
     ...(turn.took ? { took: turn.took } : {}),
     ...(turn.rating ? { rating: turn.rating } : {}),
     ...(turn.feedback === 'sent' ? { feedback: 'sent' as const } : {}),
+    ...(turn.decided ? { decided: turn.decided } : {}),
   };
 }
 
@@ -190,6 +241,7 @@ export function historyOf(turns: Turn[]): AskTurn[] {
         const variant = draft.variants.find((item) => item.label === 'recommended') ?? draft.variants[0];
         if (variant) context.push(`[Reply draft · Gmail thread: ${draft.threadId} · Account: ${draft.accountId} · Status: ${draft.status} · Subject: ${variant.subject || ''}]\n${variant.body}`);
       }
+      if (answer.approval) context.push(`[Proposed changes · ${turn.decided === 'allowed' ? 'the user allowed them' : turn.decided === 'denied' ? 'the user denied them; nothing changed' : 'not answered; nothing changed'} · ${answer.approval.title}]\n${answer.approval.steps.map((step) => `- ${step.text}`).join('\n')}`);
       if (answer.context) context.push(`Tool outcomes and candidates: ${answer.context}`);
       if (answer.sources.length) context.push(`Earlier sources (citation numbers are local to this answer; look them up for current evidence): ${JSON.stringify(answer.sources.map((source, index) => ({ citation: index + 1, ...source })))}`);
       if (!answer.coverage.complete || answer.unverified.length) context.push(`Uncertainty: ${answer.coverage.note} ${answer.unverified.join('; ')}`);
@@ -249,7 +301,7 @@ export function CloudAsk(props: {
   useEffect(() => {
     if (retention === null || loadedScope.current !== historyScope) return;
     const finished = turns.map(toStored).filter((turn): turn is StoredTurn => Boolean(turn));
-    const signature = `${chatId}|` + finished.map((turn) => `${turn.id}:${turn.rating ?? ''}:${turn.feedback ?? ''}`).join('|');
+    const signature = `${chatId}|` + finished.map((turn) => `${turn.id}:${turn.rating ?? ''}:${turn.feedback ?? ''}:${turn.decided ?? ''}`).join('|');
     if (signature === savedSignature.current) return;
     savedSignature.current = signature;
     void saveAskHistory(historyScope, finished, retention, chatId);
@@ -334,9 +386,9 @@ export function CloudAsk(props: {
     setConnecting('');
     await chrome.tabs.create({ url: result.data.url });
   };
-  const runQuestion = useCallback(async (input: string) => {
+  const runQuestion = useCallback(async (input: string, decision?: { token: string; allow: boolean }) => {
     const question = input.trim();
-    if (!question || inFlight.current || loadedScope.current !== historyScope) return;
+    if (!question || inFlight.current || loadedScope.current !== historyScope) return false;
     inFlight.current = true;
     trackProductEvent('ask_pigeon_used', { surface: 'sidepanel', mode: 'cloud' });
     const id = nextId.current++;
@@ -353,8 +405,8 @@ export function CloudAsk(props: {
     setQuery('');
     setBusy(true);
     try {
-      const action = history.length && !shortcutsApply ? null : await onContextQuestion?.(question);
-      if (action) { update({ action }); return; }
+      const action = decision || (history.length && !shortcutsApply) ? null : await onContextQuestion?.(question);
+      if (action) { update({ action }); return true; }
       const steps: string[] = [];
       let live = '';
       let thinking = false;
@@ -364,8 +416,9 @@ export function CloudAsk(props: {
           // The inbox the user is in: Ask searches it first. A thread is looked up in its own mailbox.
           ...(props.context?.owner ? { threadId: props.context.threadId, mailbox: props.context.owner.email } : props.mailbox ? { mailbox: props.mailbox } : {}),
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          features: ['compose'],
+          features: ['compose', 'approval'],
           ...(history.length ? { history } : {}),
+          ...(decision ? { decision } : {}),
         },
         (event) => {
           if (event.type === 'status') {
@@ -387,11 +440,11 @@ export function CloudAsk(props: {
           const opened = await openInGmail(first);
           update((turn) => ({ opened: { ...turn.opened, 0: opened ? 'opened' : 'failed' } }));
         }
+        return true;
       }
-      else {
-        update({ error: result.reason, live: undefined, thinking: false, took: Date.now() - startedAt });
-        setQuery(question);
-      }
+      update({ error: result.reason, live: undefined, thinking: false, took: Date.now() - startedAt });
+      if (!decision) setQuery(question);
+      return false;
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -413,6 +466,25 @@ export function CloudAsk(props: {
       setTurns((current) => current.map((turn) => (turn.id === turnId ? { ...turn, opened: { ...turn.opened, [index]: state } } : turn)));
     mark('opening');
     mark((await openInGmail(compose)) ? 'opened' : 'failed');
+  };
+  /** Allow or Deny: recorded on the card, then sent as the next message so Pigeon can carry on. */
+  const decide = (turn: Turn, allow: boolean) => {
+    const token = turn.answer?.approval?.token;
+    if (!token || busy) return;
+    const mark = (decided: Turn['decided']) => setTurns((current) => current.map((item) => (item.id === turn.id ? { ...item, decided } : item)));
+    mark(allow ? 'allowed' : 'denied');
+    // If the answer never reached PigeonBox, the card stays open to try again.
+    void runQuestion(allow ? 'Allow' : 'Deny', { token, allow }).then((sent) => {
+      if (!sent) mark(undefined);
+    });
+  };
+  const approvalState = (turn: Turn): ApprovalState => {
+    const approval = turn.answer?.approval;
+    if (turn.decided) return turn.decided;
+    // Still open while nothing has been answered since (a failed send doesn't count).
+    const index = chatTurns.findIndex((item) => item.id === turn.id);
+    if (!approval || index < 0 || chatTurns.slice(index + 1).some((item) => item.answer || item.action)) return 'unanswered';
+    return Date.parse(approval.expiresAt) < Date.now() ? 'expired' : 'pending';
   };
   const submit = () => {
     if (dictation.listening) dictation.stop();
@@ -511,6 +583,7 @@ export function CloudAsk(props: {
             {turn.answer ? (
               <section className="pb-answer">
                 <AnswerText text={turn.answer.answer} sources={turn.answer.sources} onOpenSource={openSource} />
+                {turn.answer.approval ? <ApprovalCard approval={turn.answer.approval} state={approvalState(turn)} disabled={busy} onDecide={(allow) => decide(turn, allow)} /> : null}
                 {(turn.answer.compose ?? []).map((compose, index) => (
                   <ComposeCard key={index} compose={compose} state={turn.opened?.[index]} onOpen={() => void openCompose(turn.id, index, compose)} />
                 ))}
@@ -560,7 +633,7 @@ export function CloudAsk(props: {
         ))}
         {!chatTurns.length ? (
           <div className="gi-ask-start" data-after-history={turns.length ? true : undefined}>
-            <h2>Ask Pigeon</h2>
+            <h2>Chat with Pigeon</h2>
             <p>
               {props.context
                 ? `This thread · ${props.context.subject || 'Current conversation'}`
@@ -610,8 +683,8 @@ export function CloudAsk(props: {
             ref={field}
             rows={1}
             className="pb-ask-field"
-            aria-label="Ask Pigeon"
-            placeholder={dictation.state === 'listening' ? 'Listening…' : dictation.state === 'starting' ? 'Starting the microphone…' : chatTurns.length ? 'Ask a follow-up' : 'Ask Pigeon anything'}
+            aria-label="Message Pigeon"
+            placeholder={dictation.state === 'listening' ? 'Listening…' : dictation.state === 'starting' ? 'Starting the microphone…' : chatTurns.length ? 'Reply to Pigeon' : 'Message Pigeon'}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -627,7 +700,7 @@ export function CloudAsk(props: {
             className="pb-ask-icon pb-mic"
             data-state={dictation.state}
             aria-pressed={dictation.listening}
-            aria-label={dictation.listening ? 'Stop dictating' : 'Dictate your question'}
+            aria-label={dictation.listening ? 'Stop dictating' : 'Dictate your message'}
             title={dictation.listening ? 'Stop dictating' : 'Dictate'}
             onClick={() => (dictation.listening ? dictation.stop() : void dictation.start(query))}
           >
@@ -640,7 +713,7 @@ export function CloudAsk(props: {
               </svg>
             )}
           </button>
-          <button type="submit" className="pb-ask-icon pb-ask-send" aria-label="Ask" title="Ask (Enter)" disabled={busy || !query.trim()}>
+          <button type="submit" className="pb-ask-icon pb-ask-send" aria-label="Send" title="Send (Enter)" disabled={busy || !query.trim()}>
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 19V5M5 12l7-7 7 7" />
             </svg>

@@ -100,7 +100,7 @@ async function render(mailbox?: string, wait = true) {
   await act(async () => { root.render(<CloudAsk capabilities={[]} onOpenThread={() => undefined} mailbox={mailbox} />); });
   if (wait) await settle();
 }
-const field = () => host.querySelector('textarea[aria-label="Ask Pigeon"]') as HTMLTextAreaElement;
+const field = () => host.querySelector('textarea[aria-label="Message Pigeon"]') as HTMLTextAreaElement;
 async function type(value: string) {
   const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
   await act(async () => {
@@ -354,7 +354,7 @@ describe('Cloud Ask', () => {
     reply = response();
     await render();
     await type('Email Jun');
-    const mic = () => host.querySelector('button[aria-label="Dictate your question"], button[aria-label="Stop dictating"]') as HTMLButtonElement;
+    const mic = () => host.querySelector('button[aria-label="Dictate your message"], button[aria-label="Stop dictating"]') as HTMLButtonElement;
     await act(async () => { mic().click(); });
     await settle();
     const start = sent.find((message) => message.type === 'PB_DICTATION')!;
@@ -368,14 +368,14 @@ describe('Cloud Ask', () => {
     await deliver({ session: start.session, event: 'text', final: 'about Friday', interim: '' });
     await deliver({ session: start.session, event: 'end' });
     expect(field().value).toBe('Email Jun about Friday');
-    expect(mic().getAttribute('aria-label')).toBe('Dictate your question');
+    expect(mic().getAttribute('aria-label')).toBe('Dictate your message');
     expect(listeners.size).toBe(0);
   });
 
   it('says how to allow the microphone when Chrome blocks it', async () => {
     reply = response();
     await render();
-    await act(async () => { (host.querySelector('button[aria-label="Dictate your question"]') as HTMLButtonElement).click(); });
+    await act(async () => { (host.querySelector('button[aria-label="Dictate your message"]') as HTMLButtonElement).click(); });
     await settle();
     const start = sent.find((message) => message.type === 'PB_DICTATION')!;
     await deliver({ session: start.session, event: 'error', error: 'not-allowed' });
@@ -388,7 +388,7 @@ describe('Cloud Ask', () => {
     reply = response();
     dictationReply = { ok: false, reason: 'no_gmail' };
     await render();
-    await act(async () => { (host.querySelector('button[aria-label="Dictate your question"]') as HTMLButtonElement).click(); });
+    await act(async () => { (host.querySelector('button[aria-label="Dictate your message"]') as HTMLButtonElement).click(); });
     await settle();
     expect(host.querySelector('[role="alert"]')!.textContent).toMatch(/Open Gmail/);
     dictationReply = { ok: true };
@@ -406,7 +406,7 @@ describe('Cloud Ask', () => {
       reply = response();
       dictationReply = { ok: true };
       await render(undefined, false);
-      await act(async () => { (host.querySelector('button[aria-label="Dictate your question"]') as HTMLButtonElement).click(); });
+      await act(async () => { (host.querySelector('button[aria-label="Dictate your message"]') as HTMLButtonElement).click(); });
       await act(async () => { vi.advanceTimersByTime(4_100); });
       expect(host.querySelector('[role="alert"]')!.textContent).toMatch(/Reload your Gmail tab/);
       expect(listeners.size).toBe(0);
@@ -445,5 +445,61 @@ describe('Cloud Ask', () => {
     expect(joinSpeech('', 'hello')).toBe('hello');
     expect(joinSpeech('line\n', 'next')).toBe('line\nnext');
     expect(joinSpeech('kept', '  ')).toBe('kept');
+  });
+});
+
+describe('Chat permission prompts', () => {
+  const APPROVAL = {
+    title: 'File replied cold emails and clear KV Outreach',
+    steps: [
+      { text: 'Add the label “Cold replies” to 1 thread', count: 1, examples: ['A concept for Humbowl'], destructive: false },
+      { text: 'Move 42 threads to Trash. Gmail deletes them for good after 30 days.', count: 42, examples: ['Partnering with Lumen'], destructive: true },
+    ],
+    token: 'sealed-token',
+    expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+  };
+  const button = (name: string) => [...host.querySelectorAll('.pb-approval button')].find((item) => item.textContent === name) as HTMLButtonElement | undefined;
+
+  it('shows every step, sends Allow with the sealed token, and records the answer', async () => {
+    reply = response({ answer: 'One cold email got a reply.', sources: [], approval: APPROVAL });
+    await render('ada@work.test');
+    await type('organize the cold emails that got a reply and delete KV Outreach');
+    await key({ key: 'Enter' });
+    expect(asked[0]!.features).toEqual(['compose', 'approval']);
+    const card = host.querySelector('.pb-approval')!;
+    expect(card.getAttribute('data-state')).toBe('pending');
+    expect(card.textContent).toContain('Pigeon wants to');
+    expect(card.textContent).toContain('+41 more');
+    expect(card.querySelector('li[data-destructive]')!.textContent).toContain('Move 42 threads to Trash');
+
+    reply = response({ answer: 'Done: filed 1 thread and trashed 42.', sources: [] });
+    await act(async () => { button('Allow')!.click(); });
+    await settle();
+    expect(asked[1]).toMatchObject({ query: 'Allow', decision: { token: 'sealed-token', allow: true } });
+    expect(JSON.stringify(asked[1]!.history)).toContain('Proposed changes');
+    expect(host.querySelector('.pb-approval')!.getAttribute('data-state')).toBe('allowed');
+    expect(button('Allow')).toBeUndefined();
+    expect(host.textContent).toContain('Done: filed 1 thread');
+  });
+
+  it('closes the prompt without changes when the user denies it or moves on', async () => {
+    reply = response({ answer: 'Ready.', sources: [], approval: APPROVAL });
+    await render('ada@work.test');
+    await type('clean up KV Outreach');
+    await key({ key: 'Enter' });
+    reply = response({ answer: 'Okay, I didn\'t change anything.', sources: [] });
+    await act(async () => { button('Deny')!.click(); });
+    await settle();
+    expect(asked[1]).toMatchObject({ query: 'Deny', decision: { allow: false } });
+    expect(host.querySelector('.pb-approval')!.textContent).toContain('Not allowed. Nothing changed.');
+
+    reply = response({ answer: 'Ready again.', sources: [], approval: APPROVAL });
+    await type('try again');
+    await key({ key: 'Enter' });
+    reply = response({ answer: 'Something else.', sources: [] });
+    await type('actually, what needs a reply?');
+    await key({ key: 'Enter' });
+    expect(asked[3]!.decision).toBeUndefined();
+    expect(host.querySelectorAll('.pb-approval')[1]!.getAttribute('data-state')).toBe('unanswered');
   });
 });

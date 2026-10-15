@@ -114,7 +114,27 @@ function demoAskPort(){
     onMessage:{addListener:(fn:(message:unknown)=>void)=>listeners.add(fn)},
     onDisconnect:{addListener:()=>undefined},
     disconnect:()=>undefined,
-    postMessage:()=>{
+    postMessage:({body}:{body?:{query?:string;decision?:{allow:boolean}}}={})=>{
+      const base={claims:[],sources:[],coverage:{complete:true,note:'',since:null},unverified:[],actions:[],drafts:[],compose:[],followUps:[],retrieval:{strategies:['lexical'],candidates:0,used:0,window:{from:null,to:null}}};
+      if(body?.decision){
+        emit({type:'event',event:{type:'status',text:'Making the changes: File replied cold emails and clear KV Outreach'}});
+        setTimeout(()=>emit({type:'event',event:{type:'done',response:{...base,requestId:'preview-3',answer:body.decision!.allow ? 'Done. **1 thread** is filed under “Cold replies”, **42 threads** are in Trash, and the “KV Outreach” label is gone.' : 'Okay, I didn’t change anything.'}}}),900);
+        return;
+      }
+      if(/organi[sz]e|label|delete|clean/i.test(body?.query||'')){
+        ['Looking through your mail','Checking your labels','Checking threads: label:"KV Outreach"','Thinking','Preparing: File replied cold emails and clear KV Outreach'].forEach((text,i)=>setTimeout(()=>emit({type:'event',event:{type:'status',text}}),200+i*500));
+        setTimeout(()=>emit({type:'event',event:{type:'done',response:{...base,requestId:'preview-2',
+          answer:'One of your 43 cold emails in KV Outreach got a reply: **A concept for Humbowl** from Jo [1]. Allow the changes below to file it under a new “Cold replies” label, trash the other 42 and delete the KV Outreach label.',
+          sources:[{id:'thread:h',kind:'thread',title:'A concept for Humbowl',gmailThreadId:'h',who:'Jo Park <jo@humbowl.test>'}],
+          approval:{title:'File replied cold emails and clear KV Outreach',token:'preview',expiresAt:new Date(Date.now()+30*60000).toISOString(),steps:[
+            {text:'Create the label “Cold replies”',examples:[],destructive:false},
+            {text:'Add the label “Cold replies” to 1 thread',count:1,examples:['A concept for Humbowl'],destructive:false},
+            {text:'Move 42 threads to Trash. Gmail deletes them for good after 30 days.',count:42,examples:['Partnering with Lumen','Idea for Oakline','Quick question for Fernway'],destructive:true},
+            {text:'Delete the label “KV Outreach”. Its emails stay in your mailbox.',examples:[],destructive:true},
+          ]},
+        }}}),2900);
+        return;
+      }
       const steps=['Looking through your mail','Searching Gmail: from:allen contract','Reading "Contract redlines"','Thinking','Reading "Clause 4 review"','Checking your calendar','Thinking'];
       steps.forEach((text,i)=>setTimeout(()=>emit({type:'event',event:{type:'status',text}}),200+i*900));
       const answer='Allen wants to sign the contract by **Monday**. Legal is still reviewing clause 4.';

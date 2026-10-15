@@ -4,10 +4,10 @@ import { test, expect } from './fixtures';
 
 test('Loading orb stays alive through a long request, stops on completion, and respects reduced motion', async ({ app }) => {
   const page = await app.page('sidepanel', true);
-  await page.getByRole('button', { name: 'Ask', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
   app.api.askDelay = 3500;
-  await page.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('What needs a reply?');
-  await page.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Message Pigeon', exact: true }).fill('What needs a reply?');
+  await page.locator('form').getByRole('button', { name: 'Send', exact: true }).click();
   const status = page.locator('.pb-trace[data-live]');
   await expect(status.getByRole('status')).toHaveText('Searching your mail');
   const orb = status.locator('.gi-orb');

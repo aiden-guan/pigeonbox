@@ -283,3 +283,16 @@ button.pb-citation-ref:hover { text-decoration:underline; }
 .pb-connect-inbox { margin:var(--pb-space-3) 0; padding:var(--pb-space-3); border:1px solid var(--pb-ink-rule); border-radius:var(--pb-radius-sm); font-size:var(--pb-size-meta); line-height:1.45; }
 .pb-connect-inbox p { margin:0 0 var(--pb-space-2); overflow-wrap:anywhere; }
 .pb-connect-inbox strong { font-weight:600; }
+/* Chat asking permission before it changes the mailbox. */
+.pb-approval { margin-top:var(--pb-space-3); border:1px solid var(--pb-ink-rule); border-radius:var(--pb-radius-sm); padding:var(--pb-space-3); font-size:var(--pb-size-meta); line-height:1.45; }
+.pb-approval[data-state="pending"] { border-color:var(--pb-copper-bright); box-shadow:0 0 0 3px color-mix(in srgb, var(--pb-copper-bright) 12%, transparent); }
+.pb-approval-kicker { margin:0; font-size:var(--pb-size-label); letter-spacing:.04em; text-transform:uppercase; opacity:.6; }
+.pb-approval-title { margin:2px 0 var(--pb-space-2); font-weight:600; font-size:var(--pb-size-secondary); overflow-wrap:anywhere; }
+.pb-approval-steps { margin:0; padding-left:1.25em; display:grid; gap:var(--pb-space-2); }
+.pb-approval-steps li { overflow-wrap:anywhere; }
+.pb-approval-steps li[data-destructive] > span:first-child { color:var(--pb-danger); }
+.pb-approval-examples { display:block; opacity:.6; font-size:var(--pb-size-label); }
+.pb-approval-actions { display:flex; justify-content:flex-end; gap:var(--pb-space-2); margin-top:var(--pb-space-3); }
+.pb-approval-actions .gi-btn { padding:var(--pb-space-2) var(--pb-space-4); }
+.pb-approval-outcome { margin:var(--pb-space-2) 0 0; opacity:.7; }
+.pb-approval:not([data-state="pending"]) .pb-approval-steps { opacity:.75; }

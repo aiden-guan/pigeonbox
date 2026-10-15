@@ -18,13 +18,13 @@ export function CommandLauncher(props: { onOpen: () => void; open?: boolean }) {
     <button
       className="pb-command-launcher"
       type="button"
-      aria-label="Open Ask Pigeon command palette"
+      aria-label="Open Chat command palette"
       aria-expanded={Boolean(props.open)}
       data-command-launcher
       onClick={props.onOpen}
     >
       <WorkspaceIcon name="search" size={18} />
-      <span>Ask Pigeon or run a command</span>
+      <span>Message Pigeon or run a command</span>
       <kbd>{shortcut}</kbd>
     </button>
   );
@@ -94,8 +94,8 @@ export function CommandPalette(props: {
     if (!exactCommand) {
       return [{
         id: 'ask-query',
-        label: `Ask Pigeon: ${query.trim()}`,
-        detail: props.cloud ? 'Ask about your synced mailbox' : 'Search and ask about indexed mail',
+        label: `Chat: ${query.trim()}`,
+        detail: props.cloud ? 'Chat about your synced mailbox' : 'Search and ask about indexed mail',
         icon: 'sparkles' as const,
         run: () => onAskQuery(query.trim()),
       }, ...matching.filter((command) => command.id !== 'ask')];
@@ -146,18 +146,18 @@ export function CommandPalette(props: {
 
   return (
     <div className={props.inline ? 'pb-command-inline' : 'pb-command-scrim'} onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-      <section ref={dialogRef} className="pb-command-dialog" role="dialog" aria-modal="true" aria-label="Ask Pigeon or run a command" data-pb-command-dialog>
+      <section ref={dialogRef} className="pb-command-dialog" role="dialog" aria-modal="true" aria-label="Message Pigeon or run a command" data-pb-command-dialog>
         <div className="pb-command-input-row">
           <WorkspaceIcon name="search" size={20} />
           <input
             ref={inputRef}
             type="text"
             role="combobox"
-            aria-label="Ask Pigeon or run a command"
+            aria-label="Message Pigeon or run a command"
             aria-expanded="true"
             aria-controls="pb-command-results"
             aria-activedescendant={items[activeIndex] ? `pb-command-${items[activeIndex].id}` : undefined}
-            placeholder="Ask Pigeon or run a command…"
+            placeholder="Message Pigeon or run a command…"
             value={query}
             onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }}
             onKeyDown={onKeyDown}

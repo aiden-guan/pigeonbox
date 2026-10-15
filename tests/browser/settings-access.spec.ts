@@ -37,8 +37,8 @@ test('the floating Gmail workspace opens Settings from its gear without disturbi
   await frame.getByRole('button', { name: 'Waiting & follow-ups →' }).click();
   await frame.getByRole('button', { name: 'Mail', exact: true }).click();
   await frame.getByRole('combobox', { name: 'Inbox category' }).selectOption('FYI');
-  await frame.getByRole('button', { name: 'Ask', exact: true }).click();
-  await frame.getByRole('textbox', { name: 'Ask about mail on this computer' }).fill('Unfinished question');
+  await frame.getByRole('button', { name: 'Chat', exact: true }).click();
+  await frame.getByRole('textbox', { name: 'Message Pigeon about mail on this computer' }).fill('Unfinished question');
   await expect.poll(async () => (await app.worker.evaluate(async () => (await chrome.storage.local.get('workspaceState')).workspaceState))).toMatchObject({ mode: 'ask', splitCategory: 'FYI' });
   const before = await app.worker.evaluate(async () => (await chrome.storage.local.get('workspaceState')).workspaceState);
   const geometry = await shell.boundingBox();
@@ -61,8 +61,8 @@ test('the floating Gmail workspace opens Settings from its gear without disturbi
   await expect(host).toHaveAttribute('data-display', 'float');
   const after = await shell.boundingBox();
   expect(Math.abs(after!.x - geometry!.x)).toBeLessThan(2); expect(Math.abs(after!.width - geometry!.width)).toBeLessThan(2);
-  await expect(frame.getByRole('textbox', { name: 'Ask about mail on this computer' })).toHaveValue('Unfinished question');
-  await expect(frame.getByRole('button', { name: 'Ask', exact: true })).toHaveAttribute('data-active', 'true');
+  await expect(frame.getByRole('textbox', { name: 'Message Pigeon about mail on this computer' })).toHaveValue('Unfinished question');
+  await expect(frame.getByRole('button', { name: 'Chat', exact: true })).toHaveAttribute('data-active', 'true');
   await settings.close();
 });
 
@@ -90,7 +90,7 @@ test('an enabled Cloud workspace opens Settings on the dashboard of its configur
 test('the command palette still opens Settings', async ({ app }) => {
   const page = await app.page('workspace');
   await page.locator('[data-command-launcher]').click();
-  const input = page.getByRole('combobox', { name: 'Ask Pigeon or run a command' });
+  const input = page.getByRole('combobox', { name: 'Message Pigeon or run a command' });
   await input.fill('Settings');
   const settings = await opensSettings(app.context, () => input.press('Enter'));
   await settings.close();

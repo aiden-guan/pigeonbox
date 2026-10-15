@@ -14,8 +14,8 @@ test('semantic themes stay readable at compact widths and appearance survives re
   const page = await app.page('sidepanel', true);
   const appearance = async (label: string) => {
     await page.locator('[data-command-launcher]').click();
-    await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill(label);
-    await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
+    await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).fill(label);
+    await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).press('Enter');
   };
   // Light is the default; no command needed to get there.
   await expect(page.locator('html')).toHaveAttribute('data-pb-theme', 'light');
@@ -64,8 +64,8 @@ test('Pidgy and the shell remain one spatial object through interruption and red
   const workspace = gmail.frameLocator('iframe[title="PigeonBox"]');
   const appearance = async (label: string) => {
     await workspace.locator('[data-command-launcher]').click();
-    await workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill(label);
-    await workspace.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
+    await workspace.getByRole('combobox', { name: 'Message Pigeon or run a command' }).fill(label);
+    await workspace.getByRole('combobox', { name: 'Message Pigeon or run a command' }).press('Enter');
   };
   // Light is the default; no command needed to get there.
   await expect(host).toHaveAttribute('data-pb-theme','light');

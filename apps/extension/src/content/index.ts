@@ -1148,7 +1148,7 @@ async function runCommand(id: string): Promise<void> {
   const command = id as CommandId;
   if (command === 'ask') {
     const res = await send<{ ok?: boolean; reason?: string }>({ type: 'FOCUS_SIDEPANEL', mode: 'ask' });
-    if (!res?.ok) showToast(res?.reason || 'Could not open Ask Pigeon.');
+    if (!res?.ok) showToast(res?.reason || 'Could not open Chat.');
     return;
   }
   if (command === 'cloud' || command.startsWith('cloud_')) {

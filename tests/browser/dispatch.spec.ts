@@ -47,7 +47,7 @@ test('Workspace: launcher morph, focus, category geometry, brief and responsive 
   const dialog = await page.getByRole('dialog').boundingBox();
   expect(Math.abs(dialog!.x - origin!.x)).toBeLessThan(2);
   expect(Math.abs(dialog!.y - origin!.y)).toBeLessThan(2);
-  await expect(page.getByRole('combobox', { name: 'Ask Pigeon or run a command' })).toBeFocused();
+  await expect(page.getByRole('combobox', { name: 'Message Pigeon or run a command' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
   await page.waitForTimeout(450);
@@ -104,8 +104,8 @@ test('Dispatch side panel: positional mail, intelligence sources, Cloud and narr
   await page.waitForTimeout(450);
   await page.screenshot({ path: 'test-results/dispatch-panel-brief.png' });
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Ask', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Ask about mail on this computer' }).fill('Maya launch review');
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Message Pigeon about mail on this computer' }).fill('Maya launch review');
   await page.locator('form').getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByText('Sources', { exact: true })).toBeVisible();
   await page.waitForTimeout(400);
@@ -115,9 +115,9 @@ test('Dispatch side panel: positional mail, intelligence sources, Cloud and narr
   await expect(cloud.getByText('Needs you', { exact: true })).toBeVisible();
   await cloud.waitForTimeout(450);
   await cloud.screenshot({ path: 'test-results/dispatch-cloud.png' });
-  await cloud.getByRole('button', { name: 'Ask', exact: true }).click();
-  await cloud.getByRole('textbox', { name: 'Ask Pigeon', exact: true }).fill('What needs a reply?');
-  await cloud.locator('form').getByRole('button', { name: 'Ask', exact: true }).click();
+  await cloud.getByRole('button', { name: 'Chat', exact: true }).click();
+  await cloud.getByRole('textbox', { name: 'Message Pigeon', exact: true }).fill('What needs a reply?');
+  await cloud.locator('form').getByRole('button', { name: 'Send', exact: true }).click();
   await expect(cloud.getByText('Maya needs pricing.', { exact: true })).toBeVisible();
   await cloud.waitForTimeout(400);
   await cloud.screenshot({ path: 'test-results/dispatch-cloud-ask.png' });
@@ -180,8 +180,8 @@ test('Workspace hides zero statistics and retains access to a large local index'
   await page.getByRole('combobox', { name: 'Inbox category' }).selectOption('RESPOND');
   await expect(page.getByRole('button', { name: 'Read brief: Final review on the launch note' })).toBeVisible();
   await page.locator('[data-command-launcher]').click();
-  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).fill('Maya launch review');
-  await page.getByRole('combobox', { name: 'Ask Pigeon or run a command' }).press('Enter');
+  await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).fill('Maya launch review');
+  await page.getByRole('combobox', { name: 'Message Pigeon or run a command' }).press('Enter');
   await expect(page.getByText('Sources', { exact: true })).toBeVisible();
   expect(page.isClosed()).toBe(false);
 });
