@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.8.1] — 2026-10-16
+
+### Fixed
+- Hosted pixel and link requests are durably queued before acknowledgement, with stable event IDs, retry handling and exact database totals across complete histories.
+- Activity alerts resume from an account-scoped cursor after bursts or restarts. Pending send receipts are visible in Waiting and continue syncing when tracking is turned off.
+- Sender-view retries preserve the original claim time and repair interrupted classification updates. Partial timelines explicitly identify their history limit.
+
+---
+
 ## [0.8.0] — 2026-10-15
 
 ### Added
@@ -31,9 +40,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Stricter extension page Content Security Policy (`object-src 'none'`, `base-uri 'none'`), and tighter checks on who may message the background and offscreen pages.
 
 ### Fixed
-- Hosted pixel and link requests are durably queued before acknowledgement, with stable event IDs, retry handling and exact database totals across complete histories.
-- Activity alerts resume from an account-scoped cursor after bursts or restarts. Pending send receipts are visible in Waiting and continue syncing when tracking is turned off.
-- Sender-view retries preserve the original claim time and repair interrupted classification updates. Partial timelines explicitly identify their history limit.
 - The Chat box no longer gets stuck tall and empty after the side panel is resized or minimized.
 - Tracking send receipts and PDF conversation associations retry after a connection failure or extension restart, keeping each account's pending work separate.
 - A stalled Gmail message/thread lookup no longer leaves a delivered tracked email pending. Plain-text sends and failed injection no longer appear tracked when no pixel or tracked link was inserted.
