@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [0.8.1] — 2026-10-16
 
 ### Fixed
+- Remove old tracking pixels from Gmail's separate quoted-history and signature send segments, preserving quoted text, images, links and live drafts.
 - The exported-message tracking verifier decodes quoted-printable and base64 MIME, avoiding false missing-pixel reports from Gmail originals.
 - Hosted pixel and link requests are durably queued before acknowledgement, with stable event IDs, retry handling and exact database totals across complete histories.
 - Activity alerts resume from an account-scoped cursor after bursts or restarts. Pending send receipts are visible in Waiting and continue syncing when tracking is turned off.

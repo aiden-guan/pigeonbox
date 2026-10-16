@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
+import { patchInboxSdkPageWorld } from '../../scripts/lib/inboxsdk-patch.mjs';
 
 function keepSingleOnnxWasm(): Plugin {
   return {
@@ -158,6 +159,7 @@ export default defineConfig(({ mode }) => ({
               {
                 src: '../../node_modules/@inboxsdk/core/pageWorld.js',
                 dest: 'inboxsdk',
+                transform: patchInboxSdkPageWorld,
               },
               {
                 src: '../../node_modules/@inboxsdk/core/background.js',

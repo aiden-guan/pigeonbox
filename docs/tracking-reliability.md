@@ -1,4 +1,14 @@
-# Tracking recovery in 0.8.0
+# Tracking recovery in 0.8.1
+
+Gmail can send quoted history and signatures as separate HTML body segments.
+InboxSDK 2.2.29 exposes only the first segment to its request modifier, so
+stripping pixels from that string alone leaves older messages' pixels in the
+delivered reply. The extension's build applies a narrow, checked patch to the
+bundled InboxSDK send processor: it strips PigeonBox pixels from every additional
+segment when replacing the outgoing body. Text, ordinary images, links, segment
+metadata and live drafts remain intact. Both current and legacy Gmail request
+layouts have regression coverage against the installed SDK code. A changed SDK
+boundary fails the build for review instead of silently dropping this safeguard.
 
 Hosted tracking uses durable request acceptance, idempotent event processing and
 database aggregation over complete event history. Activity polling uses a
