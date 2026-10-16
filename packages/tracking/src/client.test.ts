@@ -65,6 +65,7 @@ describe('TrackingClient credentials', () => {
     expect(url).toBe('https://t.example/api/emails/trk_1/events');
     expect((init!.headers as Record<string, string>).Authorization).toBe('Bearer personal');
     expect(init!.signal).toBeInstanceOf(AbortSignal);
+    expect(init).toMatchObject({ credentials: 'omit', redirect: 'error' });
   });
 });
 

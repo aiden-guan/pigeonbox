@@ -122,6 +122,8 @@ export class TrackingClient {
     const send = (token: string) =>
       fetcher(`${trim(this.baseUrl)}${path}`, {
         method: init.method ?? 'GET',
+        redirect: 'error',
+        credentials: 'omit',
         headers: {
           ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
           Authorization: `Bearer ${token}`,

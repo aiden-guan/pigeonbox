@@ -224,7 +224,7 @@ export class AgentLoop {
     }
 
     if (settings.autoArchive) {
-      await this.maybeArchive(input, classification, rules);
+      await this.maybeArchive(input, classification, rules, source === 'ai');
     }
   }
 
@@ -751,6 +751,7 @@ export class AgentLoop {
     input: { threadId: string; latestSenderEmail: string },
     classification: ClassificationResult,
     rules: import('@pigeonbox/mailbox').StructuredRule[],
+    modelDerived: boolean,
   ): Promise<void> {
     const settings = this.deps.settings();
     const decision = archiveDecision({
@@ -762,6 +763,7 @@ export class AgentLoop {
       alwaysArchive: settings.alwaysArchiveSenders,
       neverArchive: settings.neverArchiveSenders,
       rules,
+      modelDerived,
     });
 
     if (!decision.shouldArchive) return;

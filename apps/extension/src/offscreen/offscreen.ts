@@ -1,7 +1,11 @@
 import { downloadQwenModel, isQwenModelReady, promptWithQwen, releaseQwen, warmQwen } from '../local-model/qwen-model';
 import { getOnDeviceAvailability, promptWithChromeModel } from '../local-model/chrome-model';
+import { isExtensionPageSender } from '../background/messaging';
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // This listener is independent of the worker's allowlist. Gmail renderers
+  // must not be able to download models or submit arbitrary local prompts.
+  if (!isExtensionPageSender(sender)) return false;
   if (message?.type === 'ON_DEVICE_PING') {
     sendResponse({ ok: true });
     return false;

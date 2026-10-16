@@ -207,6 +207,8 @@ export function archiveDecision(opts: {
   alwaysArchive: string[];
   neverArchive: string[];
   rules: StructuredRule[];
+  /** A model's self-reported confidence cannot authorize a mailbox mutation. */
+  modelDerived?: boolean;
 }): { shouldArchive: boolean; reason: string; autonomous: boolean } {
   const email = opts.senderEmail.toLowerCase();
   const domain = email.split('@')[1] || '';
@@ -253,7 +255,7 @@ export function archiveDecision(opts: {
     return {
       shouldArchive: true,
       reason: `Category ${opts.category} above threshold`,
-      autonomous: true,
+      autonomous: !opts.modelDerived,
     };
   }
 

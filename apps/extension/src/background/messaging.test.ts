@@ -57,4 +57,12 @@ describe('hardenExtensionStorage', () => {
     expect(local.setAccessLevel).toHaveBeenCalledWith({ accessLevel: 'TRUSTED_CONTEXTS' });
     expect(session.setAccessLevel).toHaveBeenCalledWith({ accessLevel: 'TRUSTED_CONTEXTS' });
   });
+
+  it('fails closed when Chrome cannot restrict secret storage', async () => {
+    (globalThis as unknown as { chrome: unknown }).chrome = { runtime: { id: ID }, storage: { local: {}, session: {} } };
+    await expect(hardenExtensionStorage()).rejects.toThrow('Trusted extension storage is unavailable');
+    const local = { setAccessLevel: vi.fn(async () => { throw new Error('access denied'); }) };
+    (globalThis as unknown as { chrome: unknown }).chrome = { runtime: { id: ID }, storage: { local, session: {} } };
+    await expect(hardenExtensionStorage()).rejects.toThrow('access denied');
+  });
 });

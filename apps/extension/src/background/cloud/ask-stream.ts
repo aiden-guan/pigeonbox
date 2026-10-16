@@ -37,9 +37,10 @@ export function serveAskStream(port: chrome.runtime.Port, client: () => Promise<
     if (started) return;
     started = true;
     void (async () => {
-      const cloud = await client();
-      if (!cloud) return post({ type: 'failed', code: 'not_configured', reason: 'Turn on Cloud and sign in to use this.' });
+      let cloud: PigeonBoxCloudClient | null = null;
       try {
+        cloud = await client();
+        if (!cloud) return post({ type: 'failed', code: 'not_configured', reason: 'Turn on Cloud and sign in to use this.' });
         await cloud.stream(
           'askPigeonStream',
           message.body as RouteRequest<'askPigeonStream'>,
@@ -49,7 +50,7 @@ export function serveAskStream(port: chrome.runtime.Port, client: () => Promise<
       } catch (error) {
         if (cancel.signal.aborted) return;
         // An older Cloud without the streaming route answers in one piece.
-        if (error instanceof CloudApiError && (error.code === 'not_found' || error.code === 'method_not_allowed' || error.status === 404 || error.status === 405)) {
+        if (cloud && error instanceof CloudApiError && (error.code === 'not_found' || error.code === 'method_not_allowed' || error.status === 404 || error.status === 405)) {
           return post({ type: 'fallback', result: (await pageCall(cloud, 'askPigeon', message.body)) as { ok: true; data: AskPigeonResponse } | { ok: false; code: string; reason: string } });
         }
         const code = error instanceof CloudApiError ? error.code : 'network';

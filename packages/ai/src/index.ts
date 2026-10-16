@@ -122,6 +122,8 @@ export abstract class OpenAICompatibleProvider implements AIProvider {
   ): Promise<{ data: T; usage?: UsageStats }> {
     const res = await fetch(`${trimSlash(this.config.endpoint)}/chat/completions`, {
       method: 'POST',
+      redirect: 'error',
+      credentials: 'omit',
       signal: AbortSignal.timeout(20_000),
       headers: {
         'Content-Type': 'application/json',
@@ -143,7 +145,7 @@ export abstract class OpenAICompatibleProvider implements AIProvider {
       throw err;
     }
     if (!res.ok) {
-      throw new Error(`AI provider error ${res.status}: ${await res.text()}`);
+      throw new Error(`AI provider error ${res.status}`);
     }
     const json = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
@@ -271,6 +273,8 @@ export abstract class OpenAICompatibleProvider implements AIProvider {
   async embed(texts: string[]) {
     const res = await fetch(`${trimSlash(this.config.endpoint)}/embeddings`, {
       method: 'POST',
+      redirect: 'error',
+      credentials: 'omit',
       signal: AbortSignal.timeout(20_000),
       headers: {
         'Content-Type': 'application/json',
