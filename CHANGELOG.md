@@ -10,33 +10,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
-## [0.9.0] — 2026-10-15
+## [0.8.0] — 2026-10-15
 
 ### Added
 - **Keyboard shortcuts.** Triage Gmail without the mouse: j/k to move, Enter to open, e to archive, # to trash, s to star, r/a/f to reply, reply all or forward, h to snooze, l to label, v to move, z to undo, 1/2/3 for Respond/Waiting/FYI, g then i/s/t/d to jump between Inbox, Starred, Sent and Drafts. Press ? in Gmail for the full list. They work whether or not Gmail's own shortcuts are on, and can be turned off in Settings → Inbox.
 - **Snippets.** Save text you send often in Settings → Snippets. In a compose, type `;name` and press Tab, or press ⌘/Ctrl ; to pick one. `{first_name}`, `{name}`, `{email}`, `{my_name}` and `{date}` fill in for you.
 - **Remind me if no reply** and **Send later** in the menu beside Send. Send later also opens with ⌘/Ctrl ⇧ L.
 - **Hosted tracking on Free.** Sign in to a PigeonBox account and opens and clicks are recorded by PigeonBox's tracker, with nothing to deploy. Turn on Local-only in Settings → Tracking to use a tracker you host, or none. Installs that already use a self-hosted tracker keep it.
+- **Chat can organize your Gmail, with your permission.** Ask Chat to label, file, archive, mark, star or clean up mail, or to create, rename or delete labels. Pidgy finds the exact emails, then shows every change it wants to make with **Allow** and **Deny**, the way a coding assistant asks before running a command. Nothing changes until you allow it, and only what you saw is done. "Delete" moves mail to Trash, which Gmail empties after 30 days; deleting a label keeps its emails. Requires PigeonBox Cloud with the Organize mail permission.
+- Chat can tell which of many threads got a reply, so requests like "the cold emails that got a reply" work in one step.
 
 ### Changed
 - **Local and Cloud are now Free and Pro.**
 - On Free, new emails end with "Sent with PigeonBox". Delete it from any email before sending; Pro removes it.
 - **Anonymous usage events are on by default**, disclosed in onboarding and in Settings → Privacy & data. They carry the extension version, a few fixed labels and a random install ID, never mail, subjects, addresses or your account. Turning them off stops sending and deletes the install ID.
+- **Ask is now Chat.** The tab, the message box ("Message Pigeon") and the command palette use the new name. Unsubscribing from Chat now asks first, too.
 
 ### Security
 - Changing the AI endpoint, AI provider or tracker address no longer carries the saved key or token over to the new destination.
 - Stricter extension page Content Security Policy (`object-src 'none'`, `base-uri 'none'`), and tighter checks on who may message the background and offscreen pages.
-
----
-
-## [0.8.0] — 2026-10-14
-
-### Added
-- **Chat can organize your Gmail, with your permission.** Ask Chat to label, file, archive, mark, star or clean up mail, or to create, rename or delete labels. Pidgy finds the exact emails, then shows every change it wants to make with **Allow** and **Deny**, the way a coding assistant asks before running a command. Nothing changes until you allow it, and only what you saw is done. "Delete" moves mail to Trash, which Gmail empties after 30 days; deleting a label keeps its emails. Requires PigeonBox Cloud with the Organize mail permission.
-- Chat can tell which of many threads got a reply, so requests like "the cold emails that got a reply" work in one step.
-
-### Changed
-- **Ask is now Chat.** The tab, the message box ("Message Pigeon") and the command palette use the new name. Unsubscribing from Chat now asks first, too.
 
 ### Fixed
 - The Chat box no longer gets stuck tall and empty after the side panel is resized or minimized.
