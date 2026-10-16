@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.9.0] — 2026-10-15
+
 ### Added
 - **Keyboard shortcuts.** Triage Gmail without the mouse: j/k to move, Enter to open, e to archive, # to trash, s to star, r/a/f to reply, reply all or forward, h to snooze, l to label, v to move, z to undo, 1/2/3 for Respond/Waiting/FYI, g then i/s/t/d to jump between Inbox, Starred, Sent and Drafts. Press ? in Gmail for the full list. They work whether or not Gmail's own shortcuts are on, and can be turned off in Settings → Inbox.
 - **Snippets.** Save text you send often in Settings → Snippets. In a compose, type `;name` and press Tab, or press ⌘/Ctrl ; to pick one. `{first_name}`, `{name}`, `{email}`, `{my_name}` and `{date}` fill in for you.
@@ -17,6 +21,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 - **Local and Cloud are now Free and Pro.**
 - On Free, new emails end with "Sent with PigeonBox". Delete it from any email before sending; Pro removes it.
+- **Anonymous usage events are on by default**, disclosed in onboarding and in Settings → Privacy & data. They carry the extension version, a few fixed labels and a random install ID, never mail, subjects, addresses or your account. Turning them off stops sending and deletes the install ID.
+
+### Security
+- Changing the AI endpoint, AI provider or tracker address no longer carries the saved key or token over to the new destination.
+- Stricter extension page Content Security Policy (`object-src 'none'`, `base-uri 'none'`), and tighter checks on who may message the background and offscreen pages.
 
 ---
 
