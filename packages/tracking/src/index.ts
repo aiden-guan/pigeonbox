@@ -159,6 +159,12 @@ export class TrackingClient {
     return this.request('events', `/api/emails/${encodeURIComponent(id)}/events`);
   }
 
+  async getEventPage(after: string | null): Promise<{ events: TrackingEvent[]; cursor: string; hasMore: boolean }> {
+    const data = await this.request<{ events: TrackingEvent[]; cursor: string; hasMore: boolean }>('catchup', `/api/events/catchup${after === null ? '' : `?after=${encodeURIComponent(after)}`}`);
+    if (!Array.isArray(data.events) || typeof data.cursor !== 'string' || !/^\d{1,20}$/.test(data.cursor) || typeof data.hasMore !== 'boolean') throw new Error('Invalid tracking cursor response');
+    return data;
+  }
+
   async getRecentEvents(): Promise<TrackingEvent[]> {
     return this.request('recent', '/api/events/recent');
   }

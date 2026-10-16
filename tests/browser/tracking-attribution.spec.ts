@@ -26,9 +26,9 @@ test('own sent reload never publishes the proxy count, timeline or alert before 
   // The server has already counted the proxy. The extension exposes only settled facts.
   await expect.poll(() => app.api.tracker!.email.open_count).toBe(1);
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'TRACKING_POLL' }));
-  const pending = await page.evaluate(async (id) => ({ emails: await chrome.runtime.sendMessage({ type: 'GET_TRACKED_EMAILS' }), activity: await chrome.runtime.sendMessage({ type: 'GET_TRACKING_TIMELINE', trackingId: id }), history: (await chrome.storage.local.get('trackingNotificationHistory')).trackingNotificationHistory, alerts: await chrome.notifications.getAll() }), trackingId);
+  const pending = await page.evaluate(async (id) => ({ emails: await chrome.runtime.sendMessage({ type: 'GET_TRACKED_EMAILS' }), activity: await chrome.runtime.sendMessage({ type: 'GET_TRACKING_TIMELINE', trackingId: id }), cursors: (await chrome.storage.local.get('trackingEventCursors')).trackingEventCursors, alerts: await chrome.notifications.getAll() }), trackingId);
   expect(pending.emails.emails[0].openCount).toBe(0); expect(pending.activity.timeline).toEqual([]);
-  expect(JSON.stringify(pending.history)).not.toContain('own-reload-proxy'); expect(Object.keys(pending.alerts)).toEqual([]);
+  expect(Object.values(pending.cursors)).toEqual(['0']); expect(Object.keys(pending.alerts)).toEqual([]);
   app.api.tracker.release();
   await expect.poll(async () => (await page.evaluate(async () => (await chrome.storage.session.get('trackingAttribution')).trackingAttribution)).pending.length).toBe(0);
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'TRACKING_POLL' }));
@@ -38,6 +38,9 @@ test('own sent reload never publishes the proxy count, timeline or alert before 
   app.api.tracker.events.push({ id: 'recipient-after-self', tracking_id: trackingId, type: 'OPEN', timestamp, user_agent: 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/130 Safari/537.36', classification: 'RECIPIENT_LIKELY' });
   app.api.tracker.email.open_count = 1; app.api.tracker.email.first_opened_at = timestamp; app.api.tracker.email.last_opened_at = timestamp;
   await page.evaluate(() => chrome.runtime.sendMessage({ type: 'TRACKING_POLL' }));
-  const settled = await page.evaluate(async (id) => ({ emails: await chrome.runtime.sendMessage({ type: 'GET_TRACKED_EMAILS' }), activity: await chrome.runtime.sendMessage({ type: 'GET_TRACKING_TIMELINE', trackingId: id }), history: (await chrome.storage.local.get('trackingNotificationHistory')).trackingNotificationHistory }), trackingId);
-  expect(settled.emails.emails[0].openCount).toBe(1); expect(settled.activity.timeline).toHaveLength(1); expect(JSON.stringify(settled.history)).toContain('recipient-after-self');
+  const settled = await page.evaluate(async (id) => ({ emails: await chrome.runtime.sendMessage({ type: 'GET_TRACKED_EMAILS' }), activity: await chrome.runtime.sendMessage({ type: 'GET_TRACKING_TIMELINE', trackingId: id }), cursors: (await chrome.storage.local.get('trackingEventCursors')).trackingEventCursors, alerts: await chrome.notifications.getAll() }), trackingId);
+  expect(settled.emails.emails[0].openCount).toBe(1); expect(settled.activity.timeline).toHaveLength(1);
+  expect(Object.values(settled.cursors)).toContain('2'); expect(Object.keys(settled.alerts)).toHaveLength(1);
+  await page.evaluate(() => chrome.runtime.sendMessage({ type: 'TRACKING_POLL' }));
+  expect(await page.evaluate(async () => Object.keys(await chrome.notifications.getAll()))).toEqual(Object.keys(settled.alerts));
 });

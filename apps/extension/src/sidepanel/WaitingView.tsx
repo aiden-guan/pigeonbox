@@ -20,7 +20,7 @@ export type WaitingThread = {
 
 type Filter = 'all' | 'opened' | 'unopened';
 
-type TimelineState = { loading: boolean; entries?: TrackingTimelineEntry[]; error?: string };
+type TimelineState = { loading: boolean; complete?: boolean; entries?: TrackingTimelineEntry[]; error?: string };
 type SentItem = { threadId: string | null; subject: string; who: string; timestamp: string | null };
 
 /**
@@ -42,6 +42,7 @@ export function WaitingView(props: {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [timelines, setTimelines] = useState<Record<string, TimelineState>>({});
   const [recent, setRecent] = useState<SentItem[] | null>(null);
+  const [pendingReceipts, setPendingReceipts] = useState(0);
   const [sentError, setSentError] = useState('');
   const [coverage, setCoverage] = useState('');
   const [revision, refresh] = useState(0);
@@ -61,9 +62,9 @@ export function WaitingView(props: {
   }, [purpose, ownerEmail, revision]);
 
   const load = useCallback(() => {
-    chrome.runtime.sendMessage({ type: 'GET_TRACKED_EMAILS' }, (res?: { emails?: TrackedEmailSummary[] }) => {
+    chrome.runtime.sendMessage({ type: 'GET_TRACKED_EMAILS' }, (res?: { emails?: TrackedEmailSummary[]; pendingReceipts?: number }) => {
       if (chrome.runtime.lastError || !res?.emails) { setTrackingError('Could not load tracked mail. Try again.'); return; }
-      setTrackingError(''); setEmails(res.emails);
+      setTrackingError(''); setEmails(res.emails); setPendingReceipts(res.pendingReceipts ?? 0);
     });
   }, []);
 
@@ -72,7 +73,7 @@ export function WaitingView(props: {
     // Ask the worker for fresh counts now instead of waiting for the next minute's poll.
     chrome.runtime.sendMessage({ type: 'TRACKING_POLL' }, () => void chrome.runtime.lastError);
     const onChanged = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
-      if (area === 'local' && changes.trackedEmails) load();
+      if (area === 'local' && (changes.trackedEmails || changes.trackingReceipts || changes.documentTrackingReceipts)) load();
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
@@ -105,12 +106,12 @@ export function WaitingView(props: {
     if (fetched.current[email.trackingId] === key) return;
     fetched.current[email.trackingId] = key;
     setTimelines((current) => ({ ...current, [email.trackingId]: { ...current[email.trackingId], loading: true, error: undefined } }));
-    chrome.runtime.sendMessage({ type: 'GET_TRACKING_TIMELINE', trackingId: email.trackingId }, (res?: { timeline?: TrackingTimelineEntry[]; error?: string }) => {
+    chrome.runtime.sendMessage({ type: 'GET_TRACKING_TIMELINE', trackingId: email.trackingId }, (res?: { timeline?: TrackingTimelineEntry[]; complete?: boolean; error?: string }) => {
       if (!res?.timeline) delete fetched.current[email.trackingId];
       setTimelines((current) => ({
         ...current,
         [email.trackingId]: res?.timeline
-          ? { loading: false, entries: res.timeline }
+          ? { loading: false, entries: res.timeline, complete: res.complete }
           : { loading: false, entries: current[email.trackingId]?.entries, error: res?.error || 'Could not load opens.' },
       }));
     });
@@ -125,7 +126,7 @@ export function WaitingView(props: {
     return <p className="gi-muted gi-orb-line px-4" role="status"><Orb size={20} />Checking tracked mail…</p>;
   }
 
-  if (purpose !== 'sent' && !trackingError && !sent.length && !others.length) {
+  if (purpose !== 'sent' && !trackingError && !pendingReceipts && !sent.length && !others.length) {
     return (
       <div className="gi-empty">
         <Pigeon size={138} />
@@ -137,6 +138,7 @@ export function WaitingView(props: {
 
   return (
     <div>
+      {pendingReceipts > 0 ? <div className="px-4"><p className="gi-warn" role="status">Tracking sync is delayed. {pendingReceipts} {pendingReceipts === 1 ? 'update is' : 'updates are'} waiting to sync.</p><button type="button" className="gi-text-btn" onClick={() => chrome.runtime.sendMessage({ type: 'TRACKING_POLL' }, () => { void chrome.runtime.lastError; load(); })}>Retry tracking sync</button></div> : null}
       {trackingError ? <div className="px-4"><p className="gi-warn" role="alert">{trackingError}</p><button type="button" className="gi-text-btn" onClick={load}>Try again</button></div> : null}
       {purpose === 'sent' ? <div className="pb-sent-tools"><button type="button" className="gi-text-btn" onClick={() => { load(); refresh((value) => value + 1); chrome.runtime.sendMessage({ type: 'TRACKING_POLL' }, () => void chrome.runtime.lastError); }}>Refresh</button><button type="button" className="gi-text-btn" onClick={() => void openSentSearch('', ownerEmail)}>All sent in Gmail ↗</button></div> : null}
       {sent.length ? (
@@ -244,13 +246,14 @@ function TrackedRow(props: {
                   {[
                     entry.device,
                     entry.type === 'CLICK' && entry.destination ? hostOf(entry.destination) : null,
-                    entry.type === 'OPEN' && index === firstOpenIndex(timeline.entries!) && email.sentAt ? formatAfterSend(email.sentAt, entry.timestamp) : null,
+                    timeline.complete !== false && entry.type === 'OPEN' && index === firstOpenIndex(timeline.entries!) && email.sentAt ? formatAfterSend(email.sentAt, entry.timestamp) : null,
                   ].filter(Boolean).join(' · ')}
                 </span>
               </li>
             ))}
           </ol>
           {timeline?.loading && !timeline.entries ? <p className="gi-muted gi-orb-line text-[12px]" role="status"><Orb size={14} />Loading opens…</p> : null}
+          {timeline?.complete === false ? <p className="gi-muted text-[12px]">Recent activity only. Earlier detections are outside this list; the totals include the full history.</p> : null}
           {timeline?.error ? <p className="gi-danger text-[12px]">{timeline.error}</p> : null}
           {timeline?.entries && !timeline.entries.length ? (
             <p className="gi-muted text-[12px]">{engaged ? 'The tracker has the count but not the individual times for this email.' : 'No opens yet. Gmail’s own previews and your views are not counted.'}</p>

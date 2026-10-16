@@ -788,7 +788,7 @@ export function deriveTrackingStats(events: TrackingEventLike[]): DerivedTrackin
         evt.classification === 'RECIPIENT_LIKELY' ||
         (!evt.classification && !isExplicitNonRecipient);
 
-      if (isRecipientClick) {
+      if (isRecipientClick && !isExplicitNonRecipient) {
         clickCount += 1;
         if (!firstClickedAt) firstClickedAt = evt.timestamp;
         lastClickedAt = evt.timestamp;

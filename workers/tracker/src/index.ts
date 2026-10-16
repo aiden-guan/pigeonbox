@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { safeRedirectUrl, classifyClick, deriveTrackingStats, isSelfViewCorrelated, normalizeGmailId, decideTrackedOpen, normalizeUserAgentFamily, senderFingerprintMatches, openEventMatchesSenderClaim, pickActiveClaim, pickRecentConsumedClaim, planPageReloadProxy, pageReloadProxyReclassifications, planJustSentProxy, selectSenderProxyClaim, type DerivedTrackingStats } from './helpers.js';
+import { safeRedirectUrl, classifyClick, isSelfViewCorrelated, normalizeGmailId, decideTrackedOpen, normalizeUserAgentFamily, senderFingerprintMatches, openEventMatchesSenderClaim, pickActiveClaim, pickRecentConsumedClaim, planPageReloadProxy, pageReloadProxyReclassifications, planJustSentProxy, selectSenderProxyClaim, type DerivedTrackingStats } from './helpers.js';
 import { getStore, StoreError, type ClaimRow, type EmailRow, type TrackerStore } from './store.js';
 export { createMemoryState, createMemoryStore, StoreError, STATS_EVENT_LIMIT } from './store.js';
-export type { ClaimRow, EmailRow, EventRow, LinkRow, MemoryState, StatsEventRow, TrackerStore } from './store.js';
+export type { ClaimRow, EmailRow, EventRow, EventPage, LinkRow, MemoryState, StatsEventRow, TrackerStore } from './store.js';
 
 export { safeRedirectUrl, classifyOpen, classifyClick, suspectSelfOpen, deriveTrackingStats, isSelfViewCorrelated, normalizeGmailId, detectOpenRequestSource, decideTrackedOpen, normalizeUserAgentFamily, senderFingerprintMatches, pickActiveClaim, pickRecentConsumedClaim } from './helpers.js';
 
@@ -10,6 +10,7 @@ export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   PERSONAL_API_TOKEN?: string;
+  TRACKING_EVENTS?: TrackingEventQueue;
 }
 
 const TRANSPARENT_GIF = Uint8Array.from(
@@ -181,6 +182,18 @@ async function readJson(request: Request): Promise<BodyResult> {
  * tenant-scoped store per authenticated user, so protocol v3 behavior (self-view
  * claims, proxy suppression, click classification) is identical in both.
  */
+export type QueuedTrackingEvent = {
+  version: 1; id: string; trackingId: string; kind: 'OPEN' | 'CLICK';
+  observedAt: string; userAgent: string | null; ipHash: string | null; clickId?: string;
+};
+export type TrackingEventQueue = { send(event: QueuedTrackingEvent): Promise<void> };
+export type TrackingQueueBatch = { messages: Array<{ body: unknown; attempts: number; ack(): void; retry(options?: { delaySeconds: number }): void }> };
+const QueuedEventSchema = z.object({
+  version: z.literal(1), id: z.string().regex(ID_PATTERN), trackingId: z.string().regex(ID_PATTERN),
+  kind: z.enum(['OPEN','CLICK']), observedAt: z.string().datetime(), userAgent: z.string().max(2048).nullable(),
+  ipHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(), clickId: z.string().regex(ID_PATTERN).optional(),
+}).strict();
+
 export type TrackerDeps = {
   /** Store for the public pixel and click routes. Lookups are by unguessable ID. */
   publicStore: TrackerStore;
@@ -188,6 +201,8 @@ export type TrackerDeps = {
   authorize(request: Request): Promise<{ store: TrackerStore } | Response>;
   /** Salt for hashing client IPs. Changing it breaks matching of in-flight self-view claims. */
   ipSalt: string;
+  /** Await durable acceptance BEFORE acknowledging the recipient request. */
+  enqueueEvent?: (event: QueuedTrackingEvent) => Promise<void>;
   /**
    * Run pixel and click bookkeeping after the response is returned (a Worker's
    * `ctx.waitUntil`), so mail clients and recipients never wait on the store.
@@ -205,11 +220,11 @@ export async function handleTrackerRequest(request: Request, deps: TrackerDeps):
   try {
     // Public pixel
     if (request.method === 'GET' && path.startsWith('/open/')) {
-      return await handleOpen(path.slice('/open/'.length), request, salt, store, deps.defer);
+      return await handleOpen(path.slice('/open/'.length), request, salt, store, deps.defer, deps.enqueueEvent);
     }
     // Public click
     if (request.method === 'GET' && path.startsWith('/c/')) {
-      return await handleClick(path.slice('/c/'.length), request, salt, store, deps.defer);
+      return await handleClick(path.slice('/c/'.length), request, salt, store, deps.defer, deps.enqueueEvent);
     }
 
     // Private management
@@ -248,6 +263,12 @@ export async function handleTrackerRequest(request: Request, deps: TrackerDeps):
         const id = path.slice('/api/emails/'.length);
         return await handleGetEmail(id, store);
       }
+      if (request.method === 'GET' && path === '/api/events/catchup') {
+        const after = url.searchParams.get('after');
+        if (after !== null && !/^\d{1,20}$/.test(after)) return json({ error: 'bad_cursor' }, 400);
+        const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || 100));
+        return json(await store.eventPage(after, Math.floor(limit)));
+      }
       if (request.method === 'GET' && path === '/api/events/recent') {
         return await handleRecentEvents(store);
       }
@@ -258,6 +279,9 @@ export async function handleTrackerRequest(request: Request, deps: TrackerDeps):
         ok: true,
         protocolVersion: 3,
         features: [
+          ...(deps.enqueueEvent ? ['durable_ingestion'] : []),
+          'event_cursor',
+          'exact_stats',
           'self_view_claims',
           'event_reclassification',
           'classified_clicks',
@@ -287,7 +311,11 @@ export default {
       publicStore: store,
       authorize: async (req) => requireAuth(req, env) ?? { store },
       ipSalt: env.PERSONAL_API_TOKEN || 'salt',
+      enqueueEvent: env.TRACKING_EVENTS ? (event) => env.TRACKING_EVENTS!.send(event) : undefined,
     });
+  },
+  async queue(batch: TrackingQueueBatch, env: Env): Promise<void> {
+    await consumeTrackingBatch(batch, getStore(env));
   },
 };
 
@@ -442,16 +470,7 @@ async function handleRecentEvents(store: TrackerStore): Promise<Response> {
  * derived, never incremented.
  */
 async function recomputeEmailStats(trackingId: string, store: TrackerStore): Promise<DerivedTrackingStats> {
-  const stats = deriveTrackingStats(await store.listEventsForStats(trackingId));
-  await store.updateEmail(trackingId, {
-    open_count: stats.openCount,
-    first_opened_at: stats.firstOpenedAt,
-    last_opened_at: stats.lastOpenedAt,
-    click_count: stats.clickCount,
-    first_clicked_at: stats.firstClickedAt,
-    last_clicked_at: stats.lastClickedAt,
-  });
-  return stats;
+  return store.recomputeStats(trackingId);
 }
 
 const CLAIM_TTL_MS = 25_000;
@@ -473,9 +492,11 @@ async function handleSelfView(
   const body = parsed.data;
   // A malformed idempotency key is ignored rather than trusted as a row ID.
   const selfViewEventId = body.selfViewEventId && SELF_VIEW_EVENT_ID_PATTERN.test(body.selfViewEventId) ? body.selfViewEventId : undefined;
+  const priorSelfView = selfViewEventId ? await store.getEvent(selfViewEventId) : null;
+  if (priorSelfView && (priorSelfView.tracking_id !== id || priorSelfView.type !== 'SELF_VIEW')) return json({ error: 'event_identity_conflict' }, 409);
   // A sender clock running ahead would push the claim past the fetch it covers.
   const nowMs = Date.now();
-  const claimedMs = body.timestamp ? Date.parse(body.timestamp) : Number.NaN;
+  const claimedMs = priorSelfView ? Date.parse(priorSelfView.timestamp) : body.timestamp ? Date.parse(body.timestamp) : Number.NaN;
   const ts = new Date(Number.isFinite(claimedMs) ? Math.min(claimedMs, nowMs) : nowMs).toISOString();
   const selfMs = Date.parse(ts);
 
@@ -483,33 +504,10 @@ async function handleSelfView(
   const normMessage = normalizeGmailId(body.gmailMessageId ?? body.gmail_message_id);
   const source = body.source || 'MESSAGE_EXPANDED';
   const reconcile = body.reconcileGmailIds === true || body.reconcile_gmail_ids === true;
-  const ua = request.headers.get('User-Agent');
+  const ua = priorSelfView ? priorSelfView.user_agent : request.headers.get('User-Agent');
   const ip = clientIp(request);
-  const senderIpHash = ip ? await hashIp(ip, salt) : null;
+  const senderIpHash = priorSelfView ? priorSelfView.ip_hash : ip ? await hashIp(ip, salt) : null;
   const senderUaFamily = normalizeUserAgentFamily(ua);
-
-  // Idempotency: repeated delivery with the same selfViewEventId
-  if (selfViewEventId) {
-    const events = await store.listEvents(id);
-    const alreadyEvt = events.find((e) => e.id === selfViewEventId);
-    if (alreadyEvt) {
-      const claim =
-        (await store.getActiveClaim(id, normMessage, selfMs)) ||
-        (await store.getClaim(`clm_${selfViewEventId}`));
-      return json({
-        ok: true,
-        claimId: claim?.id || `clm_${selfViewEventId}`,
-        claimExpiresAt: claim?.expires_at || new Date(selfMs + CLAIM_TTL_MS).toISOString(),
-        open_count: existing.open_count,
-        click_count: existing.click_count,
-        first_opened_at: existing.first_opened_at,
-        last_opened_at: existing.last_opened_at,
-        first_clicked_at: existing.first_clicked_at,
-        last_clicked_at: existing.last_clicked_at,
-        reclassifiedEventIds: events.filter((event) => (event.type === 'OPEN' || event.type === 'CLICK') && event.classification === 'SELF_LIKELY').map((event) => event.id),
-      });
-    }
-  }
 
   const emailPatch: Partial<EmailRow> = {};
   if (normThread && (reconcile || !existing.gmail_thread_id) && existing.gmail_thread_id !== normThread) {
@@ -523,11 +521,20 @@ async function handleSelfView(
   }
 
   // Active claim create or refresh
-  const activeClaim = await store.getActiveClaim(id, normMessage, selfMs);
+  const activeClaim = priorSelfView ? null : await store.getActiveClaim(id, normMessage, selfMs);
   let claimId: string;
   let claimExpiresAt: string;
 
-  if (activeClaim) {
+  if (priorSelfView) {
+    // The original claim was persisted before SELF_VIEW. Replays repair
+    // classification/stats without extending its TTL or replacing a later claim.
+    const claims = await store.listClaims(id);
+    const original = claims.find(claim => claim.id === `clm_${selfViewEventId}`) ?? claims
+      .filter(claim => Date.parse(claim.first_observed_at) <= selfMs && Date.parse(claim.expires_at) >= selfMs)
+      .sort((a,b) => Math.abs(Date.parse(a.last_observed_at)-selfMs)-Math.abs(Date.parse(b.last_observed_at)-selfMs))[0];
+    claimId = original?.id ?? `clm_${selfViewEventId}`;
+    claimExpiresAt = original?.expires_at ?? new Date(selfMs + CLAIM_TTL_MS).toISOString();
+  } else if (activeClaim) {
     claimId = activeClaim.id;
     if (source === 'CACHE_REINSPECTION') {
       claimExpiresAt = activeClaim.expires_at;
@@ -704,6 +711,7 @@ async function handleSelfView(
   }
 
   const stats = await recomputeEmailStats(id, store);
+  const canonicalSelfIds = priorSelfView ? (await store.listEvents(id)).filter(event => (event.type === 'OPEN' || event.type === 'CLICK') && event.classification === 'SELF_LIKELY').map(event => event.id) : [];
   return json({
     ok: true,
     claimId,
@@ -714,7 +722,7 @@ async function handleSelfView(
     last_opened_at: stats.lastOpenedAt,
     first_clicked_at: stats.firstClickedAt,
     last_clicked_at: stats.lastClickedAt,
-    reclassifiedEventIds,
+    reclassifiedEventIds: priorSelfView ? [...new Set([...reclassifiedEventIds,...canonicalSelfIds])] : reclassifiedEventIds,
   });
 }
 
@@ -727,39 +735,85 @@ async function record(task: () => Promise<void>, label: string, defer?: (task: P
   else await run;
 }
 
-async function handleOpen(
-  trackingId: string,
-  request: Request,
-  salt: string,
-  store: TrackerStore,
-  defer?: (task: Promise<unknown>) => void,
-): Promise<Response> {
-  // Always return the GIF. Malformed and unknown IDs look exactly like known ones.
-  if (!ID_PATTERN.test(trackingId)) return gifResponse();
-  const ua = request.headers.get('User-Agent');
+async function envelope(kind: 'OPEN' | 'CLICK', trackingId: string, request: Request, salt: string, clickId?: string): Promise<QueuedTrackingEvent> {
   const ip = clientIp(request);
-  const now = Date.now();
-  await record(() => recordOpen(trackingId, ua, ip, now, salt, store), 'open', defer);
+  return { version: 1, id: newId('evt'), kind, trackingId, observedAt: new Date(Date.now()).toISOString(),
+    userAgent: request.headers.get('User-Agent')?.slice(0, 2048) ?? null,
+    ipHash: ip ? await hashIp(ip, salt) : null, ...(clickId ? { clickId } : {}) };
+}
+
+async function acceptEvent(event: QueuedTrackingEvent, store: TrackerStore, defer?: (task: Promise<unknown>) => void, enqueue?: TrackerDeps['enqueueEvent']): Promise<void> {
+  if (enqueue) {
+    try { await enqueue(event); return; }
+    catch (err) { console.error('[tracker] durable enqueue failed; attempting database fallback', errorName(err)); }
+    // If the independent queue is unavailable, try a synchronous durable write.
+    // If both providers fail, preserve access and emit an operational error.
+    await record(() => processTrackingEvent(event, store), 'ingestion_fallback');
+    return;
+  }
+  await record(() => processTrackingEvent(event, store), event.kind, defer);
+}
+
+async function handleOpen(trackingId: string, request: Request, salt: string, store: TrackerStore,
+  defer?: (task: Promise<unknown>) => void, enqueue?: TrackerDeps['enqueueEvent']): Promise<Response> {
+  if (!ID_PATTERN.test(trackingId)) return gifResponse();
+  await acceptEvent(await envelope('OPEN', trackingId, request, salt), store, defer, enqueue);
   return gifResponse();
 }
 
-async function recordOpen(
-  trackingId: string,
-  ua: string | null,
-  ip: string,
-  now: number,
-  salt: string,
-  store: TrackerStore,
-): Promise<void> {
+/** A stable event identity survives queue retries, partial writes and lost ACKs. */
+export async function processTrackingEvent(body: unknown, store: TrackerStore): Promise<void> {
+  const event = QueuedEventSchema.parse(body);
+  const prior = await store.getEvent(event.id);
+  if (prior) {
+    if (prior.tracking_id !== event.trackingId || prior.type !== event.kind) throw new StoreError('event_identity_conflict');
+    await store.recomputeStats(event.trackingId);
+    return;
+  }
+  if (event.kind === 'OPEN') return recordOpen(event, store);
+  const link = event.clickId ? await store.getLink(event.clickId) : null;
+  if (!link || link.tracking_id !== event.trackingId) return; // Deleted/revoked records are not recreated.
+  const [email, events] = await Promise.all([store.getEmail(link.tracking_id), store.listEvents(link.tracking_id)]);
+  if (!email) return;
+  const now = Date.parse(event.observedAt);
+  const recentSelfView = events.find(e => e.type === 'SELF_VIEW' && isSelfViewCorrelated(now, Date.parse(e.timestamp)));
+  const verdict = classifyClick({ sentAt: email.sent_at, now, ua: event.userAgent, selfViewTs: recentSelfView ? Date.parse(recentSelfView.timestamp) : null });
+  await store.insertEvent({ id: event.id, tracking_id: event.trackingId, type: 'CLICK', timestamp: event.observedAt,
+    user_agent: event.userAgent, ip_hash: event.ipHash, click_id: event.clickId, destination: link.destination,
+    suspected_self_open: verdict.suspected, confidence: verdict.confidence, classification: verdict.classification });
+  await store.recomputeStats(event.trackingId);
+}
+
+/** Only successful writes+summary repair are acknowledged; failed messages reach the configured DLQ. */
+export async function consumeTrackingBatch(batch: TrackingQueueBatch, store: TrackerStore,
+  report: (level: 'info' | 'error', fields: { code: string; count: number; lagMs: number; attempts: number }) => void = (level, fields) => console[level]('[tracker] ingestion', fields)): Promise<void> {
+  for (const message of batch.messages) {
+    const parsed = QueuedEventSchema.safeParse(message.body);
+    const lagMs = parsed.success ? Math.max(0, Date.now() - Date.parse(parsed.data.observedAt)) : 0;
+    try {
+      await processTrackingEvent(message.body, store);
+      message.ack(); report('info', { code: 'tracking_ingested', count: 1, lagMs, attempts: message.attempts });
+    } catch {
+      report('error', { code: message.attempts >= 8 ? 'tracking_dead_letter_pending' : 'tracking_ingest_retry', count: 1, lagMs, attempts: message.attempts });
+      message.retry({ delaySeconds: Math.min(3600, 30 * 2 ** Math.min(message.attempts, 7)) });
+    }
+  }
+}
+
+async function recordOpen(event: QueuedTrackingEvent, store: TrackerStore): Promise<void> {
+  const { trackingId, userAgent: ua, ipHash: ip_hash, id: eventId, observedAt: ts } = event;
+  const now = Date.parse(ts);
   const email = await store.getEmail(trackingId);
   if (!email) return;
-  const ip_hash = ip ? await hashIp(ip, salt) : null;
-  const ts = new Date(now).toISOString();
-  const eventId = newId('evt');
 
   // One read of this email's claims answers every claim question below.
-  const claimRows = await store.listClaims(trackingId);
-  const activeClaim = pickActiveClaim(claimRows, email.gmail_message_id, now);
+  const claimRows = (await store.listClaims(trackingId)).filter(claim => {
+    const began = Date.parse(claim.first_observed_at);
+    // Delayed queue delivery must not apply a sender claim first observed
+    // hours after the recipient request. Preserve only the existing 3s race window.
+    return !Number.isFinite(began) || began <= now + 3_000;
+  });
+  const activeClaim = claimRows.find(claim => claim.consumed_by_event_id === eventId) ?? pickActiveClaim(claimRows, email.gmail_message_id, now);
   const proxySelection = selectSenderProxyClaim(
     claimRows.map((claim) => ({
       id: claim.id,
@@ -800,7 +854,7 @@ async function recordOpen(
       ? { senderIpHash: activeClaim.sender_ip_hash, senderUaFamily: activeClaim.sender_ua_family }
       : null,
     recentConsumedMatches: recentMatches,
-    proxySuppression: proxySelection?.mode ?? 'none',
+    proxySuppression: claimRows.some(claim => claim.proxy_consumed_by_event_id === eventId) ? 'burst' : proxySelection?.mode ?? 'none',
   });
   if (verdict.consumeClaim && activeClaim) {
     await store.consumeClaim(activeClaim.id, eventId, ts, ua, ip_hash);
@@ -824,55 +878,15 @@ async function recordOpen(
   await recomputeEmailStats(trackingId, store);
 }
 
-async function handleClick(
-  clickId: string,
-  request: Request,
-  salt: string,
-  store: TrackerStore,
-  defer?: (task: Promise<unknown>) => void,
-): Promise<Response> {
+async function handleClick(clickId: string, request: Request, salt: string, store: TrackerStore,
+  defer?: (task: Promise<unknown>) => void, enqueue?: TrackerDeps['enqueueEvent']): Promise<Response> {
   if (!ID_PATTERN.test(clickId)) return linkUnavailable(400);
-
-  // Only a stored link redirects, and only to an http(s) destination: never an open redirect.
   let link: Awaited<ReturnType<TrackerStore['getLink']>>;
-  try {
-    link = await store.getLink(clickId);
-  } catch (err) {
-    console.error('[tracker] click lookup failed', errorName(err));
-    return linkUnavailable(503);
-  }
+  try { link = await store.getLink(clickId); }
+  catch (err) { console.error('[tracker] click lookup failed', errorName(err)); return linkUnavailable(503); }
   if (!link) return linkUnavailable(404);
   const destination = safeRedirectUrl(link.destination);
   if (!destination) return linkUnavailable(400);
-
-  const ua = request.headers.get('User-Agent');
-  const ip = clientIp(request);
-  const now = Date.now();
-  await record(async () => {
-    const ip_hash = ip ? await hashIp(ip, salt) : null;
-    const [email, events] = await Promise.all([store.getEmail(link.tracking_id), store.listEvents(link.tracking_id)]);
-    const recentSelfView = events.find((e) => e.type === 'SELF_VIEW' && isSelfViewCorrelated(now, Date.parse(e.timestamp)));
-    const verdict = classifyClick({
-      sentAt: email?.sent_at ?? null,
-      now,
-      ua,
-      selfViewTs: recentSelfView ? Date.parse(recentSelfView.timestamp) : null,
-    });
-    await store.insertEvent({
-      id: newId('evt'),
-      tracking_id: link.tracking_id,
-      type: 'CLICK',
-      timestamp: new Date(now).toISOString(),
-      user_agent: ua,
-      ip_hash,
-      click_id: clickId,
-      destination,
-      suspected_self_open: verdict.suspected,
-      confidence: verdict.confidence,
-      classification: verdict.classification,
-    });
-    await recomputeEmailStats(link.tracking_id, store);
-  }, 'click', defer);
-
+  await acceptEvent(await envelope('CLICK', link.tracking_id, request, salt, clickId), store, defer, enqueue);
   return redirect(destination);
 }

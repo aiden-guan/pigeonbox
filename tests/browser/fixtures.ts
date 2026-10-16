@@ -261,6 +261,13 @@ export const test = base.extend<{ app: App }>({
         if (tracker.senderLink && route === `/api/links/${tracker.senderLink.clickId}`) {
           response.end(JSON.stringify({ tracking_id: tracker.email.tracking_id, destination: tracker.senderLink.destination })); return;
         }
+        if (route === '/api/events/catchup') {
+          const params = new URL(request.url!, api.baseUrl).searchParams;
+          const after = params.get('after');
+          const start = after === null ? tracker.events.length : Number(after);
+          const events = tracker.events.slice(start, start + 100);
+          response.end(JSON.stringify({ events, cursor: String(start + events.length), hasMore: start + events.length < tracker.events.length })); return;
+        }
         if (route.endsWith('/self-view')) {
           if (tracker.holdClaims) await new Promise<void>((resolve) => heldClaims.push(resolve));
           const reclassifiedEventIds = tracker.events.filter((event) => event.classification === 'PROXY_LIKELY').map((event) => event.id);

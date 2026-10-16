@@ -1,3 +1,4 @@
+import { TrackingCatchup } from './tracking/catchup';
 import { readWorkspace, updateWorkspace, showWorkspace, installWorkspaceToolbar } from './workspace';
 import type { WorkspaceContext } from '../workspace/context';
 import { MailboxIdentities, visibleSummaryForOwner, withSelfAliases } from './mailbox-identity';
@@ -68,7 +69,7 @@ import {
 import { refreshGmailTabsAfterRestart } from '../reload-extension';
 import { patchTrackedEmail, readTrackedEmails, upsertTrackedEmail, updateTrackedEmails } from './tracking/tracked-mail';
 import { mergeTrackerReceipt, trackerReceipts } from './tracking/tracker-receipts';
-import { flushDocumentReceipts } from './cloud/compose-documents';
+import { documentReceipts, flushDocumentReceipts } from './cloud/compose-documents';
 import { answerAskPigeon, type AskDraft } from './search/ask-pigeon';
 import { createOwnerMatcher, isPlaceholderAddress } from './owner';
 import {
@@ -117,6 +118,7 @@ configureAnalytics(cloudEventsProvider({ baseUrl: () => cloudApiUrl(settings) })
 let agent: AgentLoop | null = null;
 let indexRunner: IndexJobRunner | null = null;
 const notificationHistory = new TrackingNotificationHistory(chrome.storage.local);
+const trackingCatchup = new TrackingCatchup(chrome.storage.local);
 /** Newest tracked emails fetched from the tracker per poll; older ones stay in the local cache. */
 const TRACKED_LIST_LIMIT = 200;
 let trackingPollInFlight: Promise<void> | null = null;
@@ -930,12 +932,23 @@ async function pollTrackingNow(): Promise<void> {
   const documentClient = settings.runMode === 'cloud' ? getCloudClient(settings) : null;
   const documentScope = await documentReceiptScope();
   if (documentClient && documentScope) await flushDocumentReceipts(documentClient, documentScope).catch(() => false);
-  if (!settings.trackingEnabled) return;
   const target = await trackerTarget();
   if (!target) return;
   const issuer = trackerIssuer(settings) || 'unconfigured';
-  const client = new TrackingClient(target.baseUrl, target.credential);
   const receiptScope = await notificationScope(target.baseUrl);
+  const scopeIsCurrent = async () => await notificationScope(target.baseUrl) === receiptScope;
+  const client = new TrackingClient(target.baseUrl, {
+    get: async () => {
+      if (!await scopeIsCurrent()) return null;
+      const token = await credentialToken(target.credential);
+      return await scopeIsCurrent() ? token : null;
+    },
+    refresh: async () => {
+      if (!await scopeIsCurrent() || typeof target.credential === 'string') return null;
+      const token = await target.credential.refresh?.();
+      return await scopeIsCurrent() ? token ?? null : null;
+    },
+  });
   await trackerReceipts.flush(receiptScope, async (id, patch) => { await client.linkEmail(id, patch); }).catch(() => false);
   // Retain the exact failed event identity across worker restarts; ordinary polls retry it.
   for (const claim of attribution.snapshot().pending.filter((row) => row.issuer === issuer && row.retry)) {
@@ -945,6 +958,9 @@ async function pollTrackingNow(): Promise<void> {
       if (result.ok) await reconcileSelfView(claim, result, client);
     } catch { /* Keep last settled state until this claim can be delivered. */ }
   }
+  // Turning off tracking stops new polling, while receipts for already-sent
+  // mail and pending sender corrections still settle durably.
+  if (!settings.trackingEnabled) return;
   const local = await readTrackedEmails();
   const byId = new Map(local.map((email) => [email.trackingId, email]));
   const revisions = new Map(local.map((email) => [email.trackingId, attribution.revision(issuer, email.trackingId)]));
@@ -953,6 +969,7 @@ async function pollTrackingNow(): Promise<void> {
   let sawRemote = false;
   try {
     const remote = await client.listEmails(TRACKED_LIST_LIMIT);
+    if (!await scopeIsCurrent()) return;
     for (const row of remote) {
       byId.set(row.tracking_id, summaryFromRemote(row, byId.get(row.tracking_id) || null, issuer));
     }
@@ -981,8 +998,10 @@ async function pollTrackingNow(): Promise<void> {
   }
   let events: Awaited<ReturnType<TrackingClient['getRecentEvents']>> = [];
   let newEvents: typeof events = [];
+  let catchup: Awaited<ReturnType<TrackingCatchup['read']>> | null = null;
   try {
-    events = await client.getRecentEvents();
+    catchup = await trackingCatchup.read(receiptScope, client);
+    events = catchup.events;
     await navigationAttribution;
     await claimAttribution;
     events = attribution.events(issuer, events);
@@ -1011,6 +1030,7 @@ async function pollTrackingNow(): Promise<void> {
   } catch (e) {
     console.warn('[gi] tracking poll failed', e instanceof Error ? e.message : 'error');
   }
+  if (!await scopeIsCurrent()) return;
   // The list endpoint only returns the 200 newest sent emails. An older email
   // can still have a new open, so look up its details before composing the alert.
   const missingIds = [...new Set(events.filter(isNotifiableTrackingEvent).map((event) => event.tracking_id))]
@@ -1026,7 +1046,8 @@ async function pollTrackingNow(): Promise<void> {
   await navigationAttribution;
   await claimAttribution;
   if (sawRemote || local.length || missingIds.length) {
-    await updateTrackedEmails((current) => {
+    await updateTrackedEmails(async (current) => {
+      if (!await scopeIsCurrent()) return current;
       const latest = new Map(current.map((email) => [email.trackingId, email]));
       for (const [id, remote] of byId) {
         const current = latest.get(id);
@@ -1042,26 +1063,36 @@ async function pollTrackingNow(): Promise<void> {
   }
   const settledEvents = attribution.events(issuer, events).filter((event) => attribution.publishable(issuer, event.tracking_id, revisions.get(event.tracking_id) || 0));
   const scope = await notificationScope(target.baseUrl);
-  newEvents = await notificationHistory.claim(scope, settledEvents);
+  if (scope !== receiptScope) return;
+  // Cursor pages replay until display and cursor persistence both succeed.
+  // A stable notification ID replaces a replay after a worker crash.
+  newEvents = catchup?.cursorBacked ? settledEvents : await notificationHistory.claim(scope, settledEvents);
   if (newEvents.some((event) => event.type === 'OPEN')) void recordProductEvent('first_open_received', { surface: 'gmail' });
   await navigationAttribution;
   await claimAttribution;
   const held = newEvents.filter((event) => !attribution.publishable(issuer, event.tracking_id, revisions.get(event.tracking_id) || 0));
   if (held.length) await notificationHistory.release(scope, held.map((event) => event.id));
-  if (!settings.desktopNotifications) return;
+  const acknowledge = async () => {
+    // Provisional sender claims must settle before their events leave catch-up.
+    if (await notificationScope(target.baseUrl) !== receiptScope) return;
+    if ((catchup?.events ?? events).every(event => attribution.publishable(issuer,event.tracking_id,revisions.get(event.tracking_id) || 0))) await catchup?.acknowledge();
+  };
+  if (!settings.desktopNotifications) { await acknowledge(); return; }
   try {
     const fresh = [...byId.values()];
     for (const alert of groupTrackingAlerts(newEvents)) {
+      if (!await scopeIsCurrent()) return;
       if (!attribution.publishable(issuer, alert.event.tracking_id, revisions.get(alert.event.tracking_id) || 0)) continue;
       const email = fresh.find((item) => item.trackingId === alert.event.tracking_id);
       const { title, message } = describeTrackingNotification(alert.event, email, alert.count);
-      void Promise.resolve(chrome.notifications.create(trackingNotificationId(alert.event), {
+      await Promise.resolve(chrome.notifications.create(trackingNotificationId(alert.event), {
         type: 'basic',
         iconUrl: chrome.runtime.getURL('icons/icon128.png'),
         title,
         message,
-      })).catch(() => undefined);
+      }));
     }
+    await acknowledge();
   } catch (e) {
     console.warn('[gi] tracking poll failed', e instanceof Error ? e.message : 'error');
   }
@@ -1683,7 +1714,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       if (message?.type === 'GET_TRACKED_EMAILS') {
-        sendResponse({ emails: await readTrackedEmails() });
+        const target = await trackerTarget();
+        const scope = target ? await notificationScope(target.baseUrl) : null;
+        const documentScope = await documentReceiptScope();
+        const pendingReceipts = (scope ? await trackerReceipts.pending(scope) : 0) + (documentScope ? await documentReceipts.pending(documentScope) : 0);
+        sendResponse({ emails: await readTrackedEmails(), pendingReceipts });
         return;
       }
       if (message?.type === 'RESOLVE_SENDER_DOCUMENT_LINK') {
@@ -1706,7 +1741,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       if (message?.type === 'GET_TRACKING_TIMELINE') {
-        // Every counted open and click for one email, for the side panel's Waiting view.
+        // A bounded recent timeline; the email summary carries exact lifetime totals.
         const trackingId = String(message.trackingId || '');
         const target = /^[\w-]{1,80}$/.test(trackingId) && settings.trackingEnabled ? await trackerTargetFor(trackingId) : null;
         if (!target) {
@@ -1717,7 +1752,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const events = await new TrackingClient(target.baseUrl, target.credential).getEvents(trackingId);
           await navigationAttribution;
           await claimAttribution;
-          sendResponse({ timeline: deriveTrackingTimeline(attribution.events(trackerIssuer(settings) || 'unconfigured', events)) });
+          sendResponse({ timeline: deriveTrackingTimeline(attribution.events(trackerIssuer(settings) || 'unconfigured', events)), complete: events.length < 200 });
         } catch (error) {
           sendResponse({ error: error instanceof Error ? error.message : 'Activity could not be loaded.' });
         }

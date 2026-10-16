@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { normalizeGmailId } from './helpers';
+import { normalizeGmailId, deriveTrackingStats, type DerivedTrackingStats } from './helpers';
 
 /**
  * Tracking metadata store.
@@ -40,9 +40,12 @@ export type LinkRow = {
   destination: string;
 };
 
+export type EventPage = { events: EventRow[]; cursor: string; hasMore: boolean };
+
 export type EventRow = {
   id: string;
   tracking_id: string;
+  ingest_sequence?: string;
   type: 'OPEN' | 'CLICK' | 'SELF_VIEW';
   timestamp: string;
   user_agent: string | null;
@@ -57,7 +60,7 @@ export type EventRow = {
 /** The columns counter derivation reads. */
 export type StatsEventRow = Pick<EventRow, 'type' | 'timestamp' | 'user_agent' | 'suspected_self_open' | 'classification'>;
 
-/** Upper bound on events read to recompute one email's counters. */
+/** Legacy event-sample bound. Complete counters use recomputeStats instead. */
 export const STATS_EVENT_LIMIT = 5000;
 
 export type ClaimRow = {
@@ -88,13 +91,13 @@ export interface TrackerStore {
   listEmails(limit: number): Promise<EmailRow[]>;
   /** The 200 newest events for one email, newest first. */
   listEvents(trackingId: string): Promise<EventRow[]>;
-  /**
-   * Every event that feeds the email's counters, oldest first, up to
-   * `STATS_EVENT_LIMIT`. Counters are derived from these, never from the
-   * truncated `listEvents` page, so a busy email keeps accurate totals.
-   */
+  /** Legacy bounded sample; never use it for lifetime totals. */
   listEventsForStats(trackingId: string): Promise<StatsEventRow[]>;
   recentEvents(): Promise<EventRow[]>;
+  eventPage(after: string | null, limit: number): Promise<EventPage>;
+  getEvent(id: string): Promise<EventRow | null>;
+  /** Atomic database-side derivation over the complete history. */
+  recomputeStats(trackingId: string): Promise<DerivedTrackingStats>;
   insertEvent(row: EventRow): Promise<void>;
   updateEvent(id: string, patch: Partial<EventRow>): Promise<void>;
   updateEmail(id: string, patch: Partial<EmailRow>): Promise<void>;
@@ -212,8 +215,26 @@ export function createMemoryStore(state: MemoryState): TrackerStore {
         .slice(0, 50)
         .map((event) => ({ ...event }));
     },
+    async eventPage(after, limit) {
+      const rows = [...state.events].sort((a, b) => Number(a.ingest_sequence) - Number(b.ingest_sequence));
+      if (after === null) return { events: [], cursor: rows.at(-1)?.ingest_sequence ?? '0', hasMore: false };
+      const newer = rows.filter(row => BigInt(row.ingest_sequence ?? '0') > BigInt(after));
+      const events = newer.slice(0, limit).map(row => ({ ...row }));
+      return { events, cursor: events.at(-1)?.ingest_sequence ?? after, hasMore: newer.length > limit };
+    },
+    async getEvent(id) { return state.events.find(row => row.id === id) ?? null; },
+    async recomputeStats(id) {
+      // No await between reading and publishing: one atomic memory-store operation.
+      const stats = deriveTrackingStats(state.events.filter(row => row.tracking_id === id));
+      const email = state.emails.get(id);
+      if (email) Object.assign(email, { open_count: stats.openCount, first_opened_at: stats.firstOpenedAt, last_opened_at: stats.lastOpenedAt, click_count: stats.clickCount, first_clicked_at: stats.firstClickedAt, last_clicked_at: stats.lastClickedAt });
+      return stats;
+    },
     async insertEvent(row) {
-      state.events.push({ ...row });
+      const prior = state.events.find(event => event.id === row.id);
+      if (prior) { if (prior.tracking_id !== row.tracking_id) throw new StoreError('event_identity_conflict'); return; }
+      const sequence = state.events.reduce((max, event) => Math.max(max, Number(event.ingest_sequence ?? 0)), 0) + 1;
+      state.events.push({ ...row, ingest_sequence: String(sequence) });
     },
     async updateEvent(id, patch) {
       const idx = state.events.findIndex((e) => e.id === id);
@@ -373,9 +394,26 @@ function supabaseStore(url: string, serviceRoleKey: string): TrackerStore {
       if (error) throw new StoreError(error.message);
       return (data as EventRow[] | null) ?? [];
     },
-    async insertEvent(row) {
-      const { error } = await supabase.from('tracking_events').insert(row);
+    async eventPage(after, limit) {
+      const { data, error } = await supabase.rpc('tracking_event_page', { p_after: after, p_limit: limit });
       if (error) throw new StoreError(error.message);
+      return data as EventPage;
+    },
+    async getEvent(id) {
+      const { data, error } = await supabase.from('tracking_events').select('*').eq('id', id).maybeSingle();
+      if (error) throw new StoreError(error.message);
+      return data as EventRow | null;
+    },
+    async recomputeStats(trackingId) {
+      const { data, error } = await supabase.rpc('recompute_tracking_stats', { p_tracking_id: trackingId });
+      if (error) throw new StoreError(error.message);
+      return data as DerivedTrackingStats;
+    },
+    async insertEvent(row) {
+      const { error } = await supabase.from('tracking_events').upsert(row, { onConflict: 'id', ignoreDuplicates: true });
+      if (error) throw new StoreError(error.message);
+      const { data: saved, error: readError } = await supabase.from('tracking_events').select('tracking_id').eq('id', row.id).maybeSingle();
+      if (readError || saved?.tracking_id !== row.tracking_id) throw new StoreError('event_identity_conflict');
     },
     async updateEvent(id, patch) {
       const { error } = await supabase.from('tracking_events').update(patch).eq('id', id);

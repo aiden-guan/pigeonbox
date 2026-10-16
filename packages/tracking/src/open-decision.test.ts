@@ -485,3 +485,13 @@ describe('PAGE_RELOAD proxy re-arm', () => {
     });
   });
 });
+
+// Persisted classifications can predate a self/scanner correction. All stores
+// must prioritize that evidence even when an older row says recipient-likely.
+it('excludes self and scanner evidence from stale recipient-likely click classifications in every backend', () => {
+  const events = [
+    { type: 'CLICK', timestamp: '2026-10-16T00:00:00.000Z', classification: 'RECIPIENT_LIKELY', suspectedSelfOpen: true, suspected_self_open: true, userAgent: 'Mozilla/5.0 Chrome/130', user_agent: 'Mozilla/5.0 Chrome/130' },
+    { type: 'CLICK', timestamp: '2026-10-16T00:00:01.000Z', classification: 'RECIPIENT_LIKELY', suspectedSelfOpen: false, suspected_self_open: false, userAgent: 'Barracuda scanner', user_agent: 'Barracuda scanner' },
+  ];
+  for (const stats of [convexStats,workerStats,deriveTrackingStats]) expect(stats(events).clickCount).toBe(0);
+});

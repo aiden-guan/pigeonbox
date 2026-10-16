@@ -116,7 +116,7 @@ describe('local memory tracker', () => {
     expect(await res.json()).toEqual({
       ok: true,
       protocolVersion: 3,
-      features: ['self_view_claims', 'event_reclassification', 'classified_clicks', 'sender_fingerprint_claims'],
+      features: ['event_cursor', 'exact_stats', 'self_view_claims', 'event_reclassification', 'classified_clicks', 'sender_fingerprint_claims'],
       store: 'memory',
     });
   });

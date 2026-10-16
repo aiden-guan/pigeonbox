@@ -31,6 +31,11 @@ export class TrackingReceipts<T> {
     });
   }
 
+  async pending(scope: string): Promise<number> {
+    await this.writes;
+    return (await this.read()).filter(row => row.scope === scope).length;
+  }
+
   /** Serialize delivery as well as storage: an old update cannot arrive after a newer send receipt. */
   flush(scope: string, send: (key: string, payload: T) => Promise<void>, key?: string): Promise<boolean> {
     const task = this.deliveries.then(async () => {

@@ -166,6 +166,11 @@ export function attachSdkComposeTracking(view: SdkComposeView, deps: ComposeTrac
     if (!current) return;
     current.lastError = 'Scheduled send is not marked tracked until Gmail fires sent.';
     log(current, 'scheduled-send-unsupported', {}, deps);
+    const button = element?.querySelector<HTMLButtonElement>('[data-gi-ui="track-toggle"]');
+    if (button) {
+      button.title = 'Scheduled-send tracking remains unconfirmed unless PigeonBox observes Gmail sending it.';
+      button.setAttribute('aria-label', button.title);
+    }
   });
 
   view.on?.('presending', (event) => {
@@ -851,6 +856,7 @@ function toggleMenu(
     session.trackingChosen = true;
     paintButton();
   }));
+  menu.append(Object.assign(document.createElement('p'), { className: 'gi-document-menu-hint', textContent: 'Scheduled sends may remain unconfirmed if PigeonBox does not observe Gmail sending them. Open detections do not prove a person read the email.' }));
   const trackPdf = documentActionForCompose(compose);
   if (trackPdf) {
     const pdf = document.createElement('button'); pdf.type = 'button'; pdf.className = 'gi-menu-row'; pdf.textContent = 'Track PDF…';

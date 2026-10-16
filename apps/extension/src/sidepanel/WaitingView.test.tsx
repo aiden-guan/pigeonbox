@@ -53,3 +53,15 @@ it('bounds tracked rows and reveals older mail on demand', async () => {
   await act(async () => [...host.querySelectorAll('button')].find((node) => node.textContent?.startsWith('Show more tracked mail'))!.click());
   expect(host.querySelectorAll('button[aria-expanded]')).toHaveLength(25);
 });
+it('shows pending receipt delivery instead of an empty success state and offers a retry', async () => {
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation((...args: unknown[]) => {
+    const [message, callback] = args as [{ type: string }, (value: unknown) => void];
+    callback?.(message.type === 'GET_TRACKED_EMAILS' ? { emails: [], pendingReceipts: 2 } : {});
+    return Promise.resolve();
+  });
+  await act(async () => root.render(<WaitingView threads={[]} onCount={() => undefined} onOpenThread={open} />));
+  expect(host.textContent).toContain('2 updates are waiting to sync.');
+  expect(host.textContent).not.toContain('Nothing in flight.');
+  await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Retry tracking sync')!.click());
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'TRACKING_POLL' }, expect.any(Function));
+});
