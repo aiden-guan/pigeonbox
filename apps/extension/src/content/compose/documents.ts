@@ -36,11 +36,14 @@ export function attachDocumentAction(view: View, available: () => boolean) {
     sentUrls = [...destinations].filter(raw => { try { return /^\/d\/[A-Za-z0-9_-]{32}$/.test(new URL(raw).pathname); } catch { return false; } }).slice(0, 20);
   });
   view.on?.('sent', event => {
-    if (!event?.getThreadID || !sentUrls.length) return;
+    if (!sentUrls.length) return;
+    const urls = [...sentUrls];
     // Gmail assigns a new conversation's ID only after send. Each link stays
     // attached to that receipt, including when email link tracking is disabled.
-    void event.getThreadID().then(threadId => {
-      return request({ type: 'CLOUD_COMPOSE_DOCUMENT_SENT', threadId: normalizeGmailId(threadId), urls: sentUrls });
+    void Promise.resolve().then(async () => {
+      const threadId = await (event?.getThreadIDAsync?.() ?? event?.getThreadID?.() ?? view.getThreadID?.());
+      if (!threadId) return;
+      return request({ type: 'CLOUD_COMPOSE_DOCUMENT_SENT', threadId: normalizeGmailId(threadId), urls });
     }).catch(() => undefined);
   });
   const open = () => {

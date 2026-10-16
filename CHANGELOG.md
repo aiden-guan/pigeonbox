@@ -32,6 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 - The Chat box no longer gets stuck tall and empty after the side panel is resized or minimized.
+- Tracking send receipts and PDF conversation associations retry after a connection failure or extension restart, keeping each account's pending work separate.
+- A stalled Gmail message/thread lookup no longer leaves a delivered tracked email pending. Plain-text sends and failed injection no longer appear tracked when no pixel or tracked link was inserted.
+- Gmail tracking badges no longer borrow activity from a different conversation with the same subject and recipients. Late draft updates cannot replace the final sent details.
+- Link registration rejects reused click IDs with a different destination, and sender/scanner evidence takes precedence over stale click classifications.
+- Turning open tracking off removes a previously inserted pixel when outgoing HTML is processed again.
 
 ---
 

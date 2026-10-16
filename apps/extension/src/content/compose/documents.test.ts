@@ -108,6 +108,23 @@ it('recovers tracked PDFs from reopened drafts and ignores a removed link', asyn
   await Promise.resolve(); expect(sendMessage).not.toHaveBeenCalled();
 });
 
+it('uses the async Gmail receipt and retains the exact PDF snapshot while the composer disappears', async () => {
+  const events = new Map<string, (event?: any) => void>();
+  const body = document.createElement('div'); document.body.append(body);
+  const url = 'https://cloud.test/d/' + 'a'.repeat(32);
+  body.innerHTML = `<a href="${url}">PDF</a>`;
+  const sendMessage = vi.fn((_message, callback) => callback?.({ ok: true }));
+  vi.stubGlobal('chrome', { runtime: { getURL: (path: string) => path, sendMessage } });
+  attachDocumentAction({ getBodyElement: () => body, on: (name, fn) => { events.set(name, fn); } }, () => true);
+  events.get('presending')!({});
+  let receive!: (id: string) => void;
+  events.get('sent')!({ getThreadIDAsync: () => new Promise(resolve => { receive = resolve; }) });
+  await Promise.resolve();
+  body.replaceChildren(); events.get('presending')!({}); events.get('destroy')!();
+  receive('abc123');
+  await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith({ type: 'CLOUD_COMPOSE_DOCUMENT_SENT', threadId: 'abc123', urls: [url] }, expect.any(Function)));
+});
+
 it('leaves Gmail untouched on an invalid file or a failed upload', async () => {
   const body = document.createElement('div'); document.body.append(body);
   const sendMessage = vi.fn((_message, callback) => callback?.({ ok: false, reason: 'Upload unavailable' }));

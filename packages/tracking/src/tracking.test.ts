@@ -12,6 +12,7 @@ import {
   describeOpenClient,
   describeTrackingNotification,
   describeTrackingStatus,
+  deriveTrackingStats,
   inspectTrackedMime,
   isNotifiableTrackingEvent,
   isLoopbackTracker,
@@ -98,6 +99,15 @@ describe('pixel + badges', () => {
 });
 
 describe('self-open filtering', () => {
+  it('excludes suspected self clicks and machine user agents even if a stale classification says recipient', () => {
+    const stats = deriveTrackingStats([
+      { type: 'CLICK', timestamp: '2026-10-16T00:00:00Z', classification: 'RECIPIENT_LIKELY', suspected_self_open: true },
+      { type: 'CLICK', timestamp: '2026-10-16T00:00:01Z', classification: 'RECIPIENT_LIKELY', user_agent: 'Barracuda scanner' },
+      { type: 'CLICK', timestamp: '2026-10-16T00:00:02Z', classification: 'RECIPIENT_LIKELY', user_agent: 'Mozilla/5.0 Chrome/130.0.0.0 Safari/537.36' },
+    ]);
+    expect(stats.clickCount).toBe(1);
+    expect(stats.firstClickedAt).toBe('2026-10-16T00:00:02Z');
+  });
   it('flags immediate opens', () => {
     const now = Date.now();
     expect(
@@ -158,8 +168,14 @@ describe('sent mail status', () => {
 
   it('matches one tracked email by subject when the row has no address', () => {
     expect(
-      matchTrackedEmail({ threadIds: ['other-id'], subject: 'Hello', emails: [] }, [base])?.trackingId,
+      matchTrackedEmail({ threadIds: [], subject: 'Hello', emails: [] }, [base])?.trackingId,
     ).toBe('trk_1');
+  });
+
+  it('never uses a subject fallback to contradict a known conversation ID', () => {
+    for (const emails of [[], ['a@b.com']]) {
+      expect(matchTrackedEmail({ threadIds: ['other-id'], subject: 'Hello', emails }, [base])).toBeNull();
+    }
   });
 
   it('never matches a draft to a tracked send, even with the same message, thread or subject', () => {

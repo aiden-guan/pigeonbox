@@ -192,8 +192,8 @@ describe('gmail send interception', () => {
       getMessageID: async () => 'msg-f:sent-1',
       getThreadID: async () => 'thread-f:thread-1',
     });
-    await vi.waitFor(() => expect(tracking.sent).toHaveLength(1));
-    expect(tracking.sent[0]).toMatchObject({
+    await vi.waitFor(() => expect(tracking.sent).toHaveLength(2));
+    expect(tracking.sent[1]).toMatchObject({
       trackingId: 'trk_1',
       status: 'SENT',
       gmail_message_id: 'sent-1',
@@ -370,7 +370,7 @@ describe('click tracking at send time', () => {
     expect(first.body).toContain(`https://track.example/c/${registered[0]![0]!.click_id}`);
     expect(first.body).toContain('mailto:x@y.com');
     gmail.emit('sent', { getMessageID: async () => 'm1', getThreadID: async () => 't1' });
-    await vi.waitFor(() => expect(tracking.sent).toHaveLength(1));
+    await vi.waitFor(() => expect(tracking.sent).toHaveLength(2));
     expect(tracking.sent[0]).toMatchObject({ trackingId: 'trk_1', links: registered[0] });
     expect(getComposeSession(id)?.state).toBe('SENT');
   });
@@ -384,7 +384,7 @@ describe('click tracking at send time', () => {
     expect(out.body.match(/\/open\/trk_1/g)).toHaveLength(1);
     expect(getComposeSession(id)?.lastError).toMatch(/without click tracking/);
     gmail.emit('sent', { getMessageID: async () => 'm1', getThreadID: async () => 't1' });
-    await vi.waitFor(() => expect(tracking.sent).toHaveLength(1));
+    await vi.waitFor(() => expect(tracking.sent).toHaveLength(2));
     expect(tracking.sent[0]).toMatchObject({ links: [] });
   });
 
@@ -433,19 +433,21 @@ describe('recipient changes after the tracker exists', () => {
     const tracking = deps({ onSent: (info) => delivered.push(info) });
     const gmail = new GmailComposeSendHarness('new');
     gmail.recipients = [{ emailAddress: 'original@example.com' }];
+    gmail.setDraftId('draft-final');
     const id = attachSdkComposeTracking(gmail.view(), tracking);
     await vi.waitFor(() => expect(getComposeSession(id)?.trackingId).toBe('trk_1'));
     gmail.recipients = [{ emailAddress: 'final@example.com' }];
     gmail.cc = [{ emailAddress: 'cc@example.com' }];
     gmail.subject = 'Final subject';
     gmail.emit('presending');
+    await gmail.deliverSend('<p>Final body</p>');
     const teardown = () => { gmail.recipients = []; gmail.cc = []; gmail.subject = ''; gmail.element.replaceChildren(); };
     if (timing === 'before sent') teardown();
     gmail.emit('sent', {
       getThreadID: async () => { if (timing === 'during ID lookup') teardown(); return 't1'; },
       getMessageID: async () => 'm1',
     });
-    await vi.waitFor(() => expect(tracking.sent).toHaveLength(1));
+    await vi.waitFor(() => expect(tracking.sent).toHaveLength(2));
     expect(tracking.sent[0]).toMatchObject({ subject: 'Final subject', sender: 'me@example.com', recipients: ['final@example.com', 'cc@example.com'] });
     expect(delivered).toEqual([{ subject: 'Final subject', recipients: ['final@example.com', 'cc@example.com'], bodyText: 'Hi' }]);
   });
@@ -456,6 +458,7 @@ describe('recipient changes after the tracker exists', () => {
     const tracking = deps({ updateTracked: async (update) => { updates.push(update); return true; } });
     const gmail = new GmailComposeSendHarness('new');
     gmail.recipients = [{ emailAddress: 'a@b.com' }];
+    gmail.setDraftId('draft-already-sent');
     const id = attachSdkComposeTracking(gmail.view(), tracking);
     await vi.waitFor(() => expect(getComposeSession(id)?.trackingId).toBe('trk_1'));
     await new Promise((resolve) => setTimeout(resolve, DETAILS_SYNC_DEBOUNCE_MS + 50));
@@ -480,14 +483,61 @@ describe('recipient changes after the tracker exists', () => {
     const tracking = deps({ updateTracked: async (update) => { updates.push(update); return true; } });
     const gmail = new GmailComposeSendHarness('new');
     gmail.recipients = [{ emailAddress: 'a@b.com' }];
+    gmail.setDraftId('draft-sent');
     const id = attachSdkComposeTracking(gmail.view(), tracking);
     await vi.waitFor(() => expect(getComposeSession(id)?.trackingId).toBe('trk_1'));
     gmail.recipients = [{ emailAddress: 'x@y.com' }];
     gmail.emit('recipientsChanged');
+    await gmail.deliverSend('<p>Sent body</p>');
     gmail.emit('sent', { getMessageID: async () => 'm1', getThreadID: async () => 't1' });
     await new Promise((resolve) => setTimeout(resolve, DETAILS_SYNC_DEBOUNCE_MS + 50));
     expect(updates).toHaveLength(0);
     expect(tracking.sent[0]).toMatchObject({ trackingId: 'trk_1', recipients: ['x@y.com'] });
+  });
+});
+
+describe('send receipt reliability', () => {
+  it('records delivery immediately even when Gmail never resolves either ID', async () => {
+    resetComposeSessionsForTests();
+    const gmail = new GmailComposeSendHarness(); gmail.recipients = [{ emailAddress: 'a@b.com' }]; gmail.setDraftId('draft-stalled');
+    const tracking = deps();
+    const id = attachSdkComposeTracking(gmail.view(), tracking);
+    await vi.waitFor(() => expect(getComposeSession(id)?.modifierRegistered).toBe(true));
+    await gmail.deliverSend('<p>Sent</p>');
+    vi.useFakeTimers();
+    try {
+      gmail.emit('sent', { getThreadID: () => new Promise(() => {}), getMessageID: () => new Promise(() => {}) });
+      expect(tracking.sent).toHaveLength(1);
+      expect(tracking.sent[0]).toMatchObject({ trackingId: 'trk_1', status: 'SENT' });
+      gmail.emit('destroy');
+      await vi.advanceTimersByTimeAsync(10_001);
+      expect(tracking.sent).toHaveLength(1);
+    } finally { vi.useRealTimers(); resetComposeSessionsForTests(); }
+  });
+
+  it.each(['plain', 'no modifier'])('does not label a delivered message tracked after a %s send', async kind => {
+    resetComposeSessionsForTests();
+    const gmail = new GmailComposeSendHarness(); gmail.recipients = [{ emailAddress: 'a@b.com' }];
+    if (kind === 'plain') gmail.setDraftId('draft-plain');
+    const tracking = deps(); const id = attachSdkComposeTracking(gmail.view(), tracking);
+    await vi.waitFor(() => expect(getComposeSession(id)?.trackingId).toBe('trk_1'));
+    await gmail.deliverSend('Sent without a pixel', kind === 'plain');
+    gmail.emit('sent', { getThreadID: async () => 'thread1' });
+    expect(tracking.sent).toEqual([]);
+    expect(tracking.cancelled).toEqual(['trk_1']);
+  });
+
+  it('recognizes confirmed links on a second links-only modifier pass', async () => {
+    resetComposeSessionsForTests();
+    const gmail = new GmailComposeSendHarness(); gmail.recipients = [{ emailAddress: 'a@b.com' }]; gmail.setDraftId('draft-links-only');
+    const tracking = deps({ getSettings: () => ({ ...settings, trackOpens: false }) });
+    const id = attachSdkComposeTracking(gmail.view(), tracking);
+    await vi.waitFor(() => expect(getComposeSession(id)?.modifierRegistered).toBe(true));
+    const first = await gmail.deliverSend('<a href="https://example.com">Link</a>');
+    await gmail.deliverSend(first.body);
+    gmail.emit('sent', { getThreadID: async () => 'thread1' });
+    expect(tracking.sent[0]).toMatchObject({ status: 'SENT', links: [expect.objectContaining({ url: 'https://example.com' })] });
+    expect(tracking.cancelled).toEqual([]);
   });
 });
 

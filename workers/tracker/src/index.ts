@@ -297,14 +297,14 @@ export default {
  */
 async function insertLinkOnce(store: TrackerStore, click_id: string, tracking_id: string, destination: string): Promise<boolean> {
   const already = await store.getLink(click_id);
-  if (already) return already.tracking_id === tracking_id;
+  if (already) return already.tracking_id === tracking_id && already.destination === destination;
   try {
     await store.insertLink({ click_id, tracking_id, destination });
     return true;
   } catch (err) {
     // A concurrent insert of the same link wins the race; anything else is a real failure.
     const raced = await store.getLink(click_id);
-    if (raced) return raced.tracking_id === tracking_id;
+    if (raced) return raced.tracking_id === tracking_id && raced.destination === destination;
     throw err;
   }
 }
@@ -397,9 +397,11 @@ async function handlePatchEmail(
   const patch: Partial<EmailRow> = {};
   if (parsed.data.gmail_thread_id !== undefined) patch.gmail_thread_id = normalizeGmailId(parsed.data.gmail_thread_id);
   if (parsed.data.gmail_message_id !== undefined) patch.gmail_message_id = normalizeGmailId(parsed.data.gmail_message_id);
-  if (parsed.data.subject !== undefined) patch.subject = parsed.data.subject;
-  if (parsed.data.sender !== undefined) patch.sender = parsed.data.sender;
-  if (parsed.data.recipients !== undefined) patch.recipients = parsed.data.recipients;
+  if (existing.status !== 'SENT' || parsed.data.status === 'SENT') {
+    if (parsed.data.subject !== undefined) patch.subject = parsed.data.subject;
+    if (parsed.data.sender !== undefined) patch.sender = parsed.data.sender;
+    if (parsed.data.recipients !== undefined) patch.recipients = parsed.data.recipients;
+  }
   // SENT is final: a late discard or retry from another tab must not un-send a delivered message.
   if (parsed.data.status !== undefined && !(existing.status === 'SENT' && parsed.data.status !== 'SENT')) {
     patch.status = parsed.data.status;

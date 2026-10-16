@@ -40,6 +40,7 @@ export type ComposeTrackingSession = {
   modifierRegistered: boolean;
   modifierInvocationCount: number;
   modifierSawPixel: boolean;
+  modifierSawTrackedLinks: boolean;
   sendRecoveryAttempted: boolean;
   recovering: boolean;
   destroyed: boolean;
@@ -76,6 +77,7 @@ export function createTrackingSession(input: {
     modifierRegistered: false,
     modifierInvocationCount: 0,
     modifierSawPixel: false,
+    modifierSawTrackedLinks: false,
     sendRecoveryAttempted: false,
     recovering: false,
     destroyed: false,

@@ -641,7 +641,7 @@ function countsAsRecipientClick(evt: TrackingEventLike): boolean {
   const detectedSource = ua ? detectOpenRequestSource(ua) : null;
   const isMachine = evt.classification === 'MACHINE_LIKELY' || detectedSource === 'headless' || detectedSource === 'scanner';
   const isExplicitNonRecipient = isSelf || isMachine || evt.classification === 'UNKNOWN';
-  return evt.classification === 'RECIPIENT_LIKELY' || (!evt.classification && !isExplicitNonRecipient);
+  return !isExplicitNonRecipient && (evt.classification === 'RECIPIENT_LIKELY' || !evt.classification);
 }
 
 export type TrackingTimelineEntry = {

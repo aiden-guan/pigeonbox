@@ -313,7 +313,7 @@ export function transformOutgoingHtml(
   const linkMap = opts.linkMap || new Map<string, string>();
   const ownOrigin = trackerOriginOf(opts.pixelUrl);
   let linksRewritten = 0;
-  let next = stripForeignTrackingPixels(html, opts.pixelUrl).html;
+  let next = stripForeignTrackingPixels(html, opts.trackOpens ? opts.pixelUrl : null).html;
   if (opts.trackLinks) {
     next = next.replace(/href=(["'])(.*?)\1/gi, (full, quote: string, raw: string) => {
       const decoded = decodeHtmlAttr(raw);
@@ -477,7 +477,7 @@ export function matchTrackedEmail(
   }
 
   // 2. Exact Gmail thread ID + latest tracked send
-  const ids = new Set(row.threadIds.map((id) => id.trim()).filter(Boolean));
+  const ids = new Set(row.threadIds.map(normalizeGmailId).filter((id): id is string => Boolean(id)));
   if (ids.size > 0) {
     const byThread = delivered.filter((email) => threadIdsMatch(email.gmailThreadId, ids));
     if (byThread.length > 0) return mostRecent(byThread);
@@ -487,7 +487,8 @@ export function matchTrackedEmail(
   const subject = normalizeSubject(row.subject);
   if (!subject) return null;
   const rowEmails = new Set(row.emails.map(normalizeEmail).filter(Boolean));
-  let candidates = delivered.filter((email) => subjectsMatch(row.subject, email.subject));
+  let candidates = delivered.filter((email) => subjectsMatch(row.subject, email.subject) &&
+    (!ids.size || !email.gmailThreadId || threadIdsMatch(email.gmailThreadId, ids)));
   if (rowEmails.size > 0) {
     candidates = candidates.filter((email) =>
       email.recipients.some((recipient) => rowEmails.has(normalizeEmail(recipient))),

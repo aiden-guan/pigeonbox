@@ -1,8 +1,15 @@
 import { DocumentLinkAssociateRequestSchema } from '@pigeonbox/api-contract';
 import { cloudErrorMessage, type PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
+import { TrackingReceipts } from '../tracking/receipts';
+
+type DocumentReceipt = { token: string; threadId: string };
+export const documentReceipts = new TrackingReceipts<DocumentReceipt>('documentTrackingReceipts');
+export async function flushDocumentReceipts(client: PigeonBoxCloudClient, scope: string): Promise<boolean> {
+  return documentReceipts.flush(scope, async (_key, receipt) => { await client.call('documentLinkAssociate', receipt); });
+}
 
 /** Only fixed document operations; Gmail never receives the Cloud credential or an arbitrary upload URL. */
-export async function composeDocument(message: Record<string, unknown>, client: PigeonBoxCloudClient, apiBase: string) {
+export async function composeDocument(message: Record<string, unknown>, client: PigeonBoxCloudClient, apiBase: string, scope?: string) {
   try {
     if (message.type === 'CLOUD_COMPOSE_DOCUMENT_SENT') {
       if (!Array.isArray(message.urls) || message.urls.length > 20 || !message.urls.length)
@@ -13,6 +20,11 @@ export async function composeDocument(message: Record<string, unknown>, client: 
         return DocumentLinkAssociateRequestSchema.safeParse({ token: url.pathname.match(/^\/d\/([A-Za-z0-9_-]{32})$/)?.[1], threadId: message.threadId });
       });
       if (requests.some(result => !result.success)) return { ok: false, reason: 'Invalid document receipt.' };
+      if (scope) {
+        for (const result of requests) if (result.success) await documentReceipts.save(scope, `${result.data.token}:${result.data.threadId}`, result.data);
+        const synced = await flushDocumentReceipts(client, scope);
+        return { ok: true, pending: !synced };
+      }
       for (const result of requests) if (result.success) await client.call('documentLinkAssociate', result.data);
       return { ok: true };
     }

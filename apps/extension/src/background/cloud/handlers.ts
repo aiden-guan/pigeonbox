@@ -16,6 +16,7 @@ type Deps = {
   settings: () => ExtensionSettings;
   readState: () => Promise<CloudState>;
   client: () => Promise<PigeonBoxCloudClient | null>;
+  documentReceiptScope?: () => Promise<string | null>;
   webUrl: (section?: string) => string | null;
   /** Remote client config in force (defaults when absent). */
   config?: () => Promise<ClientConfig>;
@@ -145,6 +146,13 @@ export async function handleCloudRequest(
     };
   }
   if (['CLOUD_COMPOSE_DOCUMENT', 'CLOUD_COMPOSE_DOCUMENT_SENT', 'CLOUD_DOCUMENT_ACTIVITY'].includes(String(message.type))) {
+    if (message.type === 'CLOUD_COMPOSE_DOCUMENT_SENT') {
+      const scope = await deps.documentReceiptScope?.();
+      if (!scope) return { ok: false, reason: 'Sign in to PigeonBox Pro to link this PDF.' };
+      const client = await deps.client();
+      if (!client) return { ok: false, reason: 'Sign in to PigeonBox Pro to link this PDF.' };
+      return composeDocument(message, client, cloudApiUrl(deps.settings()) ?? '', scope);
+    }
     const state = await deps.readState();
     if (deps.settings().runMode !== 'cloud' || state.status !== 'ready' || !state.capabilities.includes('cloud_documents'))
       return { ok: false, reason: 'Turn on PigeonBox Pro to track PDFs.' };

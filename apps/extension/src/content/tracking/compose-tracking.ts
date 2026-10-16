@@ -40,6 +40,8 @@ export type SdkComposeView = {
       cancel?: () => void;
       getMessageID?: () => Promise<string>;
       getThreadID?: () => Promise<string>;
+      getMessageIDAsync?: () => Promise<string>;
+      getThreadIDAsync?: () => Promise<string>;
     }) => void,
   ) => void;
   send?: () => void;
@@ -439,6 +441,8 @@ async function modifyOutgoing(
   const body = params.body || '';
   if (!session) return { body };
   session.modifierInvocationCount += 1;
+  session.modifierSawPixel = false;
+  session.modifierSawTrackedLinks = false;
   const isPlainText = Boolean(params.isPlainText);
   log(session, 'modifier-invoked', {
     trackingId: session.trackingId,
@@ -495,6 +499,11 @@ async function modifyOutgoing(
     }
   }
   session.modifierSawPixel = transformed.pixelPresent;
+  session.modifierSawTrackedLinks = [...transformed.html.matchAll(/href=(["'])(.*?)\1/gi)].some(match => {
+    const url = decodeHtmlAttribute(match[2] ?? '');
+    const clickId = clickIdFromTrackedUrl(url);
+    return Boolean(origin && pixelOrigin(url) === origin && clickId && session.confirmedClickIds.has(clickId));
+  });
   log(session, 'modifier-transformed', {
     pixelPresent: transformed.pixelPresent,
     linksRewritten: transformed.linksRewritten,
@@ -552,21 +561,33 @@ async function handleSent(
   snapshot: ReturnType<typeof composeSendSnapshot>,
 ): Promise<void> {
   const trackingId = session.trackingId;
+  session.sentAt = new Date().toISOString();
+  deps.onSent?.({ subject: snapshot.subject, recipients: snapshot.recipients, bodyText: snapshot.bodyText });
+  if (!trackingId) return;
+  if (!session.modifierSawPixel && !session.modifierSawTrackedLinks) {
+    deps.cancelTracked(trackingId);
+    log(session, 'sent-without-tracking', {}, deps);
+    return;
+  }
+  // Persist the Gmail send before waiting for SDK ID resolution. Those lookups
+  // can reject, hang, or outlive the compose view when Gmail removes it.
+  const receipt = {
+    trackingId, status: 'SENT' as const, sent_at: session.sentAt,
+    subject: snapshot.subject, sender: snapshot.sender, recipients: snapshot.recipients,
+    links: linksFromSession(session),
+  };
+  deps.markSent(receipt);
   let gmailThreadId: string | null = null;
   let gmailMessageId: string | null = null;
   try {
-    const rawThread = typeof event?.getThreadIDAsync === 'function'
-      ? await event.getThreadIDAsync()
-      : await event?.getThreadID?.();
-    gmailThreadId = normalizeGmailId(rawThread) || normalizeGmailId(await readThreadId(view));
+    const rawThread = await receiptId(() => typeof event?.getThreadIDAsync === 'function' ? event.getThreadIDAsync() : event?.getThreadID?.());
+    gmailThreadId = normalizeGmailId(rawThread) || normalizeGmailId(await receiptId(() => readThreadId(view)));
   } catch (error) {
     session.lastError = errorMessage(error);
-    gmailThreadId = normalizeGmailId(await readThreadId(view));
+    gmailThreadId = null;
   }
   try {
-    const rawMessage = typeof event?.getMessageIDAsync === 'function'
-      ? await event.getMessageIDAsync()
-      : await event?.getMessageID?.();
+    const rawMessage = await receiptId(() => typeof event?.getMessageIDAsync === 'function' ? event.getMessageIDAsync() : event?.getMessageID?.());
     gmailMessageId = normalizeGmailId(rawMessage);
   } catch (error) {
     session.lastError = errorMessage(error);
@@ -574,33 +595,29 @@ async function handleSent(
   }
   session.gmailThreadId = gmailThreadId;
   session.gmailMessageId = gmailMessageId;
-  session.sentAt = new Date().toISOString();
   session.state = 'SENT';
   log(session, 'sent', {
     gmailMessageId,
     gmailThreadId,
   }, deps);
-  deps.onSent?.({
-    subject: snapshot.subject,
-    recipients: snapshot.recipients,
-    bodyText: snapshot.bodyText,
-  });
-  if (!trackingId) return;
+  if (!gmailThreadId && !gmailMessageId) return;
   deps.markSent({
-    trackingId,
-    status: 'SENT',
-    sent_at: session.sentAt,
+    ...receipt,
     gmail_thread_id: gmailThreadId,
     gmail_message_id: gmailMessageId,
-    subject: snapshot.subject,
-    sender: snapshot.sender,
-    recipients: snapshot.recipients,
-    links: linksFromSession(session),
   });
   log(session, 'backend-linked', {
     gmailMessageId,
     gmailThreadId,
   }, deps);
+}
+
+async function receiptId(read: () => Promise<string | null | undefined> | string | null | undefined): Promise<string | null> {
+  let timer: number | undefined;
+  try {
+    return await Promise.race([Promise.resolve().then(read).then(value => value ?? null),
+      new Promise<null>(resolve => { timer = window.setTimeout(() => resolve(null), 5000); })]);
+  } finally { if (timer !== undefined) window.clearTimeout(timer); }
 }
 
 /** Links in the session, by default only those the tracker confirmed. */

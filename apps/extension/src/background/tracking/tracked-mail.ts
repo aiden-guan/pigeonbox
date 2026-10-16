@@ -54,7 +54,15 @@ export function upsertTrackedEmail(email: TrackedEmailSummary): Promise<TrackedE
   return updateTrackedEmails((current) => [...current.filter((item) => item.trackingId !== email.trackingId), email]);
 }
 export async function patchTrackedEmail(trackingId: string, patch: Partial<TrackedEmailSummary>): Promise<TrackedEmailSummary | null> {
-  const rows = await updateTrackedEmails((current) => current.map((item) => item.trackingId === trackingId ? { ...item, ...patch, trackingId } : item));
+  const rows = await updateTrackedEmails((current) => current.map((item) => {
+    if (item.trackingId !== trackingId) return item;
+    const next = { ...item, ...patch, trackingId };
+    if (item.status === 'SENT' && patch.status !== 'SENT') {
+      next.status = 'SENT'; next.sentAt = item.sentAt;
+      next.subject = item.subject; next.sender = item.sender; next.recipients = item.recipients;
+    }
+    return next;
+  }));
   return rows.find((item) => item.trackingId === trackingId) || null;
 }
 

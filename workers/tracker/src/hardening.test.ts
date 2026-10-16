@@ -81,6 +81,12 @@ describe('management input', () => {
 });
 
 describe('sent state', () => {
+  it('keeps final send metadata when a delayed draft update arrives', async () => {
+    const t = setup(); const { tracking_id } = await createSent(t);
+    await t.send(`/api/emails/${tracking_id}`, 'PATCH', { status: 'SENT', subject: 'Final', recipients: ['final@example.com'] });
+    await t.send(`/api/emails/${tracking_id}`, 'PATCH', { subject: 'Draft', recipients: ['draft@example.com'] });
+    expect(await t.store.getEmail(tracking_id)).toMatchObject({ status: 'SENT', subject: 'Final', recipients: ['final@example.com'] });
+  });
   it('keeps SENT final when a late cancel arrives', async () => {
     const t = setup();
     const { tracking_id } = await createSent(t);
@@ -101,6 +107,13 @@ describe('sent state', () => {
 });
 
 describe('links', () => {
+  it('rejects reuse of a click ID for a different destination in the same email', async () => {
+    const t = setup(); const { tracking_id } = await createSent(t);
+    const path = `/api/emails/${tracking_id}`;
+    expect((await t.send(path, 'PATCH', { links: [{ click_id: 'clk_reused', url: 'https://example.com/first' }] })).status).toBe(200);
+    expect((await t.send(path, 'PATCH', { links: [{ click_id: 'clk_reused', url: 'https://example.com/second' }] })).status).toBe(409);
+    expect((await t.store.getLink('clk_reused'))?.destination).toBe('https://example.com/first');
+  });
   it('registers a client-allocated link once, however often the send is retried', async () => {
     const t = setup();
     const { tracking_id } = await createSent(t);

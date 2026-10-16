@@ -67,6 +67,8 @@ import {
 } from '@pigeonbox/tracking';
 import { refreshGmailTabsAfterRestart } from '../reload-extension';
 import { patchTrackedEmail, readTrackedEmails, upsertTrackedEmail, updateTrackedEmails } from './tracking/tracked-mail';
+import { mergeTrackerReceipt, trackerReceipts } from './tracking/tracker-receipts';
+import { flushDocumentReceipts } from './cloud/compose-documents';
 import { answerAskPigeon, type AskDraft } from './search/ask-pigeon';
 import { createOwnerMatcher, isPlaceholderAddress } from './owner';
 import {
@@ -821,6 +823,18 @@ async function trackerTargetFor(trackingId: string): Promise<TrackerTarget | nul
   return target;
 }
 
+/** Persist send bookkeeping even when capability refresh is offline. The server still authorizes delivery. */
+async function trackerReceiptTargetFor(trackingId: string): Promise<TrackerTarget | null> {
+  const issuer = (await readTrackedEmails()).find(email => email.trackingId === trackingId)?.issuer;
+  if (issuer && issuer !== trackerIssuer(settings)) return null;
+  if (!usesHostedTracker(settings)) return settings.trackerBaseUrl && settings.personalApiToken
+    ? { baseUrl: settings.trackerBaseUrl, credential: settings.personalApiToken } : null;
+  const api = cloudApiUrl(settings);
+  const baseUrl = cloudTrackerUrl(settings);
+  if (!api || !baseUrl || !await cloudSession.currentUser(api)) return null;
+  return { baseUrl, credential: cloudSession.tokenProvider(api) };
+}
+
 async function credentialToken(credential: TrackerCredential): Promise<string> {
   if (typeof credential === 'string') return credential;
   return (await credential.get().catch(() => null)) ?? '';
@@ -835,6 +849,12 @@ async function notificationScope(baseUrl: string): Promise<string> {
     : settings.personalApiToken;
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${hosted ? 'cloud' : 'local'}:${baseUrl}:${identity}`));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function documentReceiptScope(): Promise<string | null> {
+  const api = cloudApiUrl(settings);
+  const session = await cloudSession.readSession();
+  return api && session?.apiBaseUrl === api ? `${api}:${session.user.id}` : null;
 }
 
 const attribution = new SelfViewAttribution();
@@ -907,11 +927,16 @@ async function pollTracking(): Promise<void> {
 async function pollTrackingNow(): Promise<void> {
   await navigationAttribution;
   await claimAttribution;
+  const documentClient = settings.runMode === 'cloud' ? getCloudClient(settings) : null;
+  const documentScope = await documentReceiptScope();
+  if (documentClient && documentScope) await flushDocumentReceipts(documentClient, documentScope).catch(() => false);
   if (!settings.trackingEnabled) return;
   const target = await trackerTarget();
   if (!target) return;
   const issuer = trackerIssuer(settings) || 'unconfigured';
   const client = new TrackingClient(target.baseUrl, target.credential);
+  const receiptScope = await notificationScope(target.baseUrl);
+  await trackerReceipts.flush(receiptScope, async (id, patch) => { await client.linkEmail(id, patch); }).catch(() => false);
   // Retain the exact failed event identity across worker restarts; ordinary polls retry it.
   for (const claim of attribution.snapshot().pending.filter((row) => row.issuer === issuer && row.retry)) {
     if (deliveringClaims.has(`${claim.trackingId}\n${claim.eventId}`)) continue;
@@ -1004,7 +1029,8 @@ async function pollTrackingNow(): Promise<void> {
     await updateTrackedEmails((current) => {
       const latest = new Map(current.map((email) => [email.trackingId, email]));
       for (const [id, remote] of byId) {
-        if (attribution.publishable(issuer, id, revisions.get(id) || 0)) latest.set(id, { ...latest.get(id), ...remote });
+        const current = latest.get(id);
+        if (attribution.publishable(issuer, id, revisions.get(id) || 0)) latest.set(id, current?.status === 'SENT' && remote.status === 'PENDING' ? current : { ...current, ...remote });
         // Pending unknown rows remain neutral until their canonical claim response arrives.
         else if (!latest.has(id)) latest.set(id, { ...remote, openCount: 0, clickCount: 0, firstOpenedAt: null, lastOpenedAt: null });
       }
@@ -1559,22 +1585,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         const updated = await patchTrackedEmail(trackingId, patch);
         if (updated?.notifyIfNoReply && updated.status === 'SENT') await ensureNoReplyReminder(updated);
-        const target = await trackerTargetFor(trackingId);
+        const target = await trackerReceiptTargetFor(trackingId);
         let trackerSynced = false;
         if (target) {
           try {
             const client = new TrackingClient(target.baseUrl, target.credential);
-            await client.linkEmail(trackingId, {
+            const receipt = {
               ...(patch.gmailThreadId !== undefined ? { gmail_thread_id: patch.gmailThreadId } : {}),
               ...(patch.gmailMessageId !== undefined ? { gmail_message_id: patch.gmailMessageId } : {}),
               ...(patch.status ? { status: patch.status } : {}),
               ...(patch.sentAt !== undefined ? { sent_at: patch.sentAt } : {}),
-              ...(patch.subject ? { subject: patch.subject } : {}),
-              ...(patch.sender ? { sender: patch.sender } : {}),
+              ...(patch.subject !== undefined ? { subject: patch.subject } : {}),
+              ...(patch.sender !== undefined ? { sender: patch.sender } : {}),
               ...(patch.recipients ? { recipients: patch.recipients } : {}),
               ...(Array.isArray(message.links) ? { links: message.links } : {}),
-            });
-            trackerSynced = true;
+            };
+            if (message.type === 'SYNC_TRACKED_LINKS') {
+              await client.linkEmail(trackingId, receipt);
+              trackerSynced = true;
+            } else {
+              const scope = await notificationScope(target.baseUrl);
+              await trackerReceipts.save(scope, trackingId, receipt, mergeTrackerReceipt);
+              trackerSynced = await trackerReceipts.flush(scope, async (id, pending) => { await client.linkEmail(id, pending); }, trackingId);
+            }
           } catch (e) {
             console.warn('[gi] tracking update failed', e instanceof Error ? e.message : 'error');
           }
@@ -1624,14 +1657,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (gmailMessageId) patch.gmailMessageId = gmailMessageId;
         const updated = Object.keys(patch).length ? await patchTrackedEmail(trackingId, patch) : null;
         if (updated?.notifyIfNoReply) await ensureNoReplyReminder(updated);
-        const target = gmailThreadId || gmailMessageId ? await trackerTargetFor(trackingId) : null;
+        const target = gmailThreadId || gmailMessageId ? await trackerReceiptTargetFor(trackingId) : null;
         if (target) {
           try {
             const client = new TrackingClient(target.baseUrl, target.credential);
-            await client.linkEmail(trackingId, {
+            const scope = await notificationScope(target.baseUrl);
+            await trackerReceipts.save(scope, trackingId, {
               ...(gmailThreadId ? { gmail_thread_id: gmailThreadId } : {}),
               ...(gmailMessageId ? { gmail_message_id: gmailMessageId } : {}),
-            });
+            }, mergeTrackerReceipt);
+            await trackerReceipts.flush(scope, async (id, pending) => { await client.linkEmail(id, pending); }, trackingId);
           } catch (e) {
             console.warn('[gi] tracking link failed', e);
           }
@@ -2339,6 +2374,7 @@ async function handleCloudMessage(message: { type?: unknown; [key: string]: unkn
     settings: () => settings,
     readState: () => readCloudState(settings),
     client: async () => settings.runMode === 'cloud' ? getCloudClient(settings) : null,
+    documentReceiptScope,
     webUrl: cloudWebUrl,
     config: () => clientConfig(settings),
     contextChanged: () => void broadcastToGmailTabs({ type: 'PIGEONBOX_CONTEXT_CHANGED' }),
