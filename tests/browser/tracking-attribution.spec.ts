@@ -6,7 +6,7 @@ test('own sent reload never publishes the proxy count, timeline or alert before 
   app.api.tracker = { email: { tracking_id: trackingId, sender: 'owner@fixture.test', recipients: ['maya@fixture.test'], subject: 'Pricing', gmail_thread_id: 'abc123', gmail_message_id: 'abcd', status: 'SENT', sent_at: old, created_at: old, open_count: 0, click_count: 0, first_opened_at: null, last_opened_at: null }, events: [], holdClaims: true, release: () => undefined };
   await page.evaluate(async ({ baseUrl, trackingId, old }) => {
     const current = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
-    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, desktopNotifications: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
+    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, desktopNotifications: true, localOnly: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
     await chrome.storage.local.set({ trackedEmails: [{ trackingId, issuer: `local:${baseUrl}`, status: 'SENT', sender: 'owner@fixture.test', recipients: ['maya@fixture.test'], subject: 'Pricing', gmailThreadId: 'abc123', gmailMessageId: 'abcd', sentAt: old, createdAt: old, openCount: 0, clickCount: 0, firstOpenedAt: null, lastOpenedAt: null }] });
     (window as unknown as { visibleCounts: number[] }).visibleCounts = [];
     chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.trackedEmails) (window as unknown as { visibleCounts: number[] }).visibleCounts.push(changes.trackedEmails.newValue[0]?.openCount || 0); });

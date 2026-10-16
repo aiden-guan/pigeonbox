@@ -60,7 +60,7 @@ describe('Settings navigation and Cloud gating', () => {
 
   it('Local lists only rendered sections, in page order, with no Cloud account controls', async () => {
     await render();
-    expect(navTargets()).toEqual(['pigeonbox', 'ai', 'inbox', 'tracking', 'personalization', 'privacy', 'updates', 'advanced']);
+    expect(navTargets()).toEqual(['pigeonbox', 'ai', 'inbox', 'tracking', 'snippets', 'personalization', 'privacy', 'updates', 'advanced']);
     const rendered = [...container.querySelectorAll('section[id]')].map((section) => section.id);
     for (const id of navTargets().filter((id) => id !== 'advanced')) expect(rendered).toContain(id);
     // Sections appear in the same order as the navigation.
@@ -105,7 +105,7 @@ describe('Settings navigation and Cloud gating', () => {
   it('a configured, signed-in Cloud build shows Cloud sections and one account action routed through the worker', async () => {
     product = CLOUD_READY;
     await render();
-    expect(navTargets()).toEqual(['pigeonbox', 'inbox', 'tracking', 'cloud', 'personalization', 'privacy', 'updates', 'advanced']);
+    expect(navTargets()).toEqual(['pigeonbox', 'inbox', 'tracking', 'snippets', 'cloud', 'personalization', 'privacy', 'updates', 'advanced']);
     expect(container.querySelector('#cloud')).not.toBeNull();
     expect(container.querySelector('#memory')).toBeNull();
     expect(buttonNamed('Manage billing')).toBeDefined();
@@ -120,7 +120,7 @@ describe('Settings navigation and Cloud gating', () => {
     const privacy = container.querySelector('#privacy')!;
     expect(privacy.textContent).toContain('On this computer');
     expect(privacy.textContent).toContain('AI provider');
-    expect(privacy.textContent).toContain('PigeonBox Cloud');
+    expect(privacy.textContent).toContain('PigeonBox Pro');
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     await act(async () => buttonNamed('Clear local mail index')!.click());
     expect(confirm).toHaveBeenCalled();

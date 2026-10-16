@@ -49,7 +49,7 @@ export async function handleCloudRequest(
     ].includes(String(message.type)) &&
     !senderMaySend(sender, message.type)
   )
-    return { ok: false, code: 'forbidden', reason: 'This caller cannot access PigeonBox Cloud.' };
+    return { ok: false, code: 'forbidden', reason: 'This caller cannot access PigeonBox Pro.' };
   if (message.type === 'CLOUD_THREAD_INTEL') {
     if (!cloudThreadStateAvailable(await deps.readState(), deps.settings().runMode))
       return { ok: true, available: false, threads: {}, capabilities: [] };
@@ -89,10 +89,10 @@ export async function handleCloudRequest(
       typeof message.mailbox === 'string' && emailPattern.test(message.mailbox) ? message.mailbox : undefined;
     try {
       const intel = (await threadIntel(client, [message.threadId], mailbox))[message.threadId];
-      if (!intel) return { ok: false, reason: 'Cloud has not synced this thread yet.' };
+      if (!intel) return { ok: false, reason: 'Pro has not synced this thread yet.' };
       const connections = await client.call('connections');
       const account = connections.accounts.find((item) => item.id === intel.accountId);
-      if (!account) return { ok: false, reason: 'Connect this mailbox to Cloud.' };
+      if (!account) return { ok: false, reason: 'Connect this mailbox to Pro.' };
       if (message.kind === 'relationship' && state.capabilities.includes('cloud_relationships')) {
         const owners = new Set(connections.accounts.map((item) => item.email.toLowerCase()));
         const other = intel.participants.find((person) => !owners.has(person.email.toLowerCase()));
@@ -106,7 +106,7 @@ export async function handleCloudRequest(
         if (!account.features.includes('calendar_read'))
           return {
             ok: false,
-            reason: 'Calendar is not connected. Add calendar access in Cloud Connections.',
+            reason: 'Calendar is not connected. Add calendar access in Pro Connections.',
             needsConnection: true,
           };
         const prefs = await client.call('preferences');
@@ -122,7 +122,7 @@ export async function handleCloudRequest(
           }),
         };
       }
-      return { ok: false, reason: 'This context is not granted for your Cloud account.' };
+      return { ok: false, reason: 'This context is not granted for your Pro account.' };
     } catch (error) {
       return { ok: false, reason: cloudErrorMessage(error).message };
     }
@@ -147,9 +147,9 @@ export async function handleCloudRequest(
   if (['CLOUD_COMPOSE_DOCUMENT', 'CLOUD_COMPOSE_DOCUMENT_SENT', 'CLOUD_DOCUMENT_ACTIVITY'].includes(String(message.type))) {
     const state = await deps.readState();
     if (deps.settings().runMode !== 'cloud' || state.status !== 'ready' || !state.capabilities.includes('cloud_documents'))
-      return { ok: false, reason: 'Turn on PigeonBox Cloud to track PDFs.' };
+      return { ok: false, reason: 'Turn on PigeonBox Pro to track PDFs.' };
     const client = await deps.client();
-    if (!client) return { ok: false, reason: 'Sign in to PigeonBox Cloud to track PDFs.' };
+    if (!client) return { ok: false, reason: 'Sign in to PigeonBox Pro to track PDFs.' };
     if (message.type !== 'CLOUD_DOCUMENT_ACTIVITY') return composeDocument(message, client, cloudApiUrl(deps.settings()) ?? '');
     if (!state.capabilities.includes('cloud_tracking') || typeof message.threadId !== 'string' || !gmailId.test(message.threadId))
       return { ok: false, reason: 'PDF activity is unavailable for this conversation.' };
@@ -168,7 +168,7 @@ export async function handleCloudRequest(
     return { ok: true };
   }
   const client = await deps.client();
-  if (!client) return { ok: false, code: 'not_configured', reason: 'Turn on Cloud and sign in to use this.' };
+  if (!client) return { ok: false, code: 'not_configured', reason: 'Upgrade to Pro and sign in to use this.' };
   if (message.type === 'CLOUD_CALL') {
     if (message.route === 'preferencesUpdate') forgetComposeCheckPreference();
     const result = await pageCall(client, message.route, message.body);
@@ -177,7 +177,7 @@ export async function handleCloudRequest(
     return result;
   }
   if (!(await deps.readState()).capabilities.includes('cloud_documents'))
-    return { ok: false, reason: 'Tracked documents are not available for this Cloud connection.' };
+    return { ok: false, reason: 'Tracked documents are not available for this Pro connection.' };
   if (message.type === 'CLOUD_DOCUMENT_UPLOAD') {
     if (
       typeof message.id !== 'string' ||
@@ -206,7 +206,7 @@ export async function handleCloudRequest(
       url.hash ||
       !/^\/d\/[A-Za-z0-9_-]{16,200}$/.test(url.pathname)
     )
-      return { ok: false, reason: 'Choose a link created by this Cloud connection.' };
+      return { ok: false, reason: 'Choose a link created by this Pro connection.' };
     const stored = await chrome.storage.session.get('documentComposeTarget');
     const target = stored.documentComposeTarget as { tabId?: number; composeId?: string } | undefined;
     if (typeof target?.tabId !== 'number' || !target.composeId)

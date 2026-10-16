@@ -42,7 +42,7 @@ export function AiSetupApp() {
           <Pigeon size={48} />
         </div>
         {product.state.runMode === 'cloud' ? (
-          <p className="gi-warn mt-6 text-sm">PigeonBox is in Cloud mode, so Cloud runs AI for you. This setup applies when you switch back to Local.</p>
+          <p className="gi-warn mt-6 text-sm">PigeonBox is in Pro, so PigeonBox runs AI for you. This setup applies when you switch back to Free.</p>
         ) : null}
         <div className="mt-6">
           <AiConnect settings={settings} onPatch={patch} onSignedIn={patch} experimental={product.state.experimental} />

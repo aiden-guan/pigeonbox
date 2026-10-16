@@ -30,7 +30,7 @@ test('an email-tracked document refreshes its cached sender preview without reco
   await setup.evaluate(async baseUrl => {
     await chrome.runtime.sendMessage({ type: 'SET_RUN_MODE', mode: 'local' });
     const current = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
-    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
+    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, localOnly: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
   }, app.api.baseUrl);
   const token = 'z'.repeat(32), own = `${app.api.baseUrl}/d/${token}`;
   app.api.documentPreviews = { [token]: `${own}#preview=old_proof` };

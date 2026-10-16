@@ -38,7 +38,7 @@ export function serveAskStream(port: chrome.runtime.Port, client: () => Promise<
     started = true;
     void (async () => {
       const cloud = await client();
-      if (!cloud) return post({ type: 'failed', code: 'not_configured', reason: 'Turn on Cloud and sign in to use this.' });
+      if (!cloud) return post({ type: 'failed', code: 'not_configured', reason: 'Upgrade to Pro and sign in to use this.' });
       try {
         let terminal = false;
         await cloud.stream(

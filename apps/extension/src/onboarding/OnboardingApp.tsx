@@ -169,8 +169,8 @@ export function OnboardingApp() {
             <Reveal as="h1" id="ob-welcome-title" className="ob-title ob-title-xl" text="Let’s quiet your inbox." delay={2} />
             <p className="ob-sub ob-rise" style={{ '--i': 5 } as CSSProperties}>PigeonBox sorts, summarizes and drafts right inside Gmail. First, where should it run?</p>
             <div className="ob-paths">
-              <PathCard index={6} icon={<LaptopIcon />} title="On this computer" detail="Private and free. Works while Gmail is open." tag="Free" onClick={(event) => choose('local', event)} />
-              <PathCard index={7} icon={<CloudIcon />} title="PigeonBox Cloud"
+              <PathCard index={6} icon={<LaptopIcon />} title="Free" detail="AI runs on this computer and works while Gmail is open." tag="Private" onClick={(event) => choose('local', event)} />
+              <PathCard index={7} icon={<CloudIcon />} title="Pro"
                 detail={product.state.cloudAvailable ? 'Keeps working while Gmail is closed. Briefings and prepared drafts.' : 'Always-on help while you’re away. Join the waitlist.'}
                 tag={product.state.cloudAvailable ? 'Always on' : 'Waitlist'} onClick={(event) => choose('cloud', event)} />
             </div>
@@ -195,7 +195,7 @@ export function OnboardingApp() {
 
           <Swap id={step} direction={direction}>
             {step === 'features' ? (
-              <StepFrame kicker={path === 'cloud' ? 'PigeonBox Cloud' : 'On this computer'} title="What should Pidgy take off your plate?"
+              <StepFrame kicker={path === 'cloud' ? 'PigeonBox Pro' : 'On this computer'} title="What should Pidgy take off your plate?"
                 sub="Pick what you want. Each one takes seconds to set up, and you can change it later.">
                 <div className="ob-features" onMouseLeave={() => setHover(null)}>
                   {FEATURES.map((feature, index) => (
@@ -250,8 +250,10 @@ export function OnboardingApp() {
 
             {step === 'tracking' ? (
               <StepFrame kicker="Open tracking" title="Know when it lands." sub={product.has('cloud_tracking') || path === 'cloud'
-                ? 'Cloud hosts your tracker. Reader attribution is approximate, and your own opens are hidden.'
-                : 'Local tracking needs a public tracker you own; opens can’t reach a tracker that runs only on this computer. Set it up from your dashboard.'}>
+                ? 'PigeonBox hosts your tracker. Reader attribution is approximate, and your own opens are hidden.'
+                : product.state.cloudAvailable
+                  ? 'PigeonBox hosts your tracker, so opens from any device count. Sign in from tracking settings to turn it on; only subjects, addresses and open times are stored.'
+                  : 'Tracking needs a public tracker you own; opens can’t reach a tracker that runs only on this computer. Set it up from your dashboard.'}>
                 <TrackingDemo />
                 <Actions index={5} primary="Continue" onPrimary={() => go(stepIndex + 1)}
                   secondary="Open tracking settings" onSecondary={() => { void chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD', section: 'tracking' }); }} />

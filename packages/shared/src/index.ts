@@ -334,7 +334,7 @@ export type AiProcessingMode = 'disabled' | 'remote' | 'local';
 export type RunMode = 'local' | 'cloud';
 
 /** Bumped when stored settings need a migration step. */
-export const SETTINGS_VERSION = 3;
+export const SETTINGS_VERSION = 4;
 
 export type ExtensionSettings = {
   settingsVersion: number;
@@ -348,6 +348,13 @@ export type ExtensionSettings = {
   cloudConsentAt: string | null;
   /** Developer override for the Cloud API URL. Blank uses the URL built into this release. */
   cloudApiUrl: string;
+  /**
+   * Free only: when true, PigeonBox uses no PigeonBox servers. Tracking then
+   * goes to a self-hosted tracker (`trackerBaseUrl`) or is off. When false, the
+   * PigeonBox-hosted tracker records opens and clicks for the signed-in account
+   * (metadata only: subject, addresses, IDs, link URLs). Pro always uses hosted.
+   */
+  localOnly: boolean;
   trackingEnabled: boolean;
   trackOpens: boolean;
   trackLinks: boolean;
@@ -377,6 +384,8 @@ export type ExtensionSettings = {
   reminderBusinessDays: number;
   commandPaletteEnabled: boolean;
   commandPaletteOverrideGmail: boolean;
+  /** Single-key triage shortcuts in Gmail (j/k, e, r, ? …). */
+  keyboardShortcuts: boolean;
   inboxSdkAppId: string;
   voiceProfile: VoiceProfile;
   learnFromSent: boolean;
@@ -448,6 +457,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   runMode: 'local',
   cloudConsentAt: null,
   cloudApiUrl: '',
+  localOnly: false,
   trackingEnabled: true,
   trackOpens: true,
   trackLinks: true,
@@ -475,6 +485,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   reminderBusinessDays: 3,
   commandPaletteEnabled: true,
   commandPaletteOverrideGmail: false,
+  keyboardShortcuts: true,
   inboxSdkAppId: INBOX_SDK_APP_ID,
   voiceProfile: DEFAULT_VOICE_PROFILE,
   learnFromSent: false,
@@ -514,6 +525,10 @@ export function migrateSettings(saved: unknown): ExtensionSettings {
     merged.cloudApiUrl = '';
   }
   if (version < 3) merged.automaticUpdateChecks = false;
+  // Installs that already had a self-hosted tracker keep using it: they become local-only.
+  if (version < 4) merged.localOnly = Boolean(merged.trackerBaseUrl?.trim() && merged.personalApiToken?.trim());
+  if (typeof merged.localOnly !== 'boolean') merged.localOnly = false;
+  if (typeof merged.keyboardShortcuts !== 'boolean') merged.keyboardShortcuts = true;
   if (merged.runMode !== 'local' && merged.runMode !== 'cloud') merged.runMode = 'local';
   // Cloud mode without recorded consent is not a valid state.
   if (merged.runMode === 'cloud' && !merged.cloudConsentAt) merged.runMode = 'local';

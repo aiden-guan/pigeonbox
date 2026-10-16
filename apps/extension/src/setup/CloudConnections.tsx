@@ -82,7 +82,7 @@ export function CloudConnections() {
       ) : (
         <>
           <p className="mt-1 text-xs gi-muted">
-            Connect a Google account and PigeonBox Cloud keeps your inbox triaged and drafts prepared even while Gmail is closed. It asks before anything is sent. Credentials stay with PigeonBox Cloud, never in this extension.
+            Connect a Google account and PigeonBox Pro keeps your inbox triaged and drafts prepared even while Gmail is closed. It asks before anything is sent. Credentials stay with PigeonBox Pro, never in this extension.
           </p>
           {configured ? (
             <>
@@ -108,14 +108,14 @@ export function CloudConnections() {
               </div>
             </>
           ) : (
-            <p className="mt-2 text-xs gi-muted">Google connections are not available on this PigeonBox Cloud server yet.</p>
+            <p className="mt-2 text-xs gi-muted">Google connections are not available on this PigeonBox Pro server yet.</p>
           )}
         </>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" className="gi-text-btn" onClick={() => void load()}>Refresh status</button>
         <button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.sendMessage({ type: 'CLOUD_OPEN', section: 'connections' })}>
-          Manage in PigeonBox Cloud ↗
+          Manage in PigeonBox Pro ↗
         </button>
       </div>
     </div>

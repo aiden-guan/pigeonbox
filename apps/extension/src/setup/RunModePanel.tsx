@@ -11,21 +11,21 @@ const CLOUD_STATUS_LABEL: Record<string, string> = {
   ready: 'Connected',
   not_entitled: 'Subscription not active',
   expired: 'Session ended. Sign in again',
-  unreachable: 'PigeonBox Cloud is unreachable',
+  unreachable: 'PigeonBox Pro is unreachable',
   update_required: 'PigeonBox needs an update',
 };
 
 const CLOUD_NOTICE: Record<string, string> = {
-  maintenance: 'PigeonBox Cloud is under maintenance. Local mode keeps working.',
-  degraded: 'PigeonBox Cloud is running slower than usual.',
+  maintenance: 'PigeonBox Pro is under maintenance. Free keeps working.',
+  degraded: 'PigeonBox Pro is running slower than usual.',
 };
 
 /** "You're using PigeonBox 0.5.8. PigeonBox Cloud requires 0.6.0 or newer." */
 export function updateMessage(update: { required: boolean; installed: string; minimum: string | null; recommended: string | null }): string {
   const target = update.required ? update.minimum : update.recommended;
   const using = `You're using PigeonBox ${update.installed}.`;
-  if (!target) return update.required ? `${using} PigeonBox Cloud needs a newer version.` : `${using} A newer version is available.`;
-  return update.required ? `${using} PigeonBox Cloud requires ${target} or newer.` : `${using} Version ${target} is recommended.`;
+  if (!target) return update.required ? `${using} PigeonBox Pro needs a newer version.` : `${using} A newer version is available.`;
+  return update.required ? `${using} PigeonBox Pro requires ${target} or newer.` : `${using} Version ${target} is recommended.`;
 }
 
 /**
@@ -57,8 +57,8 @@ export function RunModePanel({
     <div ref={modeLayout} className="space-y-3 pb-run-mode" id="run-mode">
       <div className="flex flex-col gap-2">
         <ModeChoice
-          title="On this computer"
-          detail="Private and free. No account. Mail stays on this device, or goes only to an AI provider you set up."
+          title="Free"
+          detail="AI runs on this computer; mail stays here or goes only to an AI provider you set up. Sign in only for hosted read receipts."
           active={!cloudMode}
           onClick={() => {
             setPickingCloud(false);
@@ -66,11 +66,11 @@ export function RunModePanel({
           }}
         />
         <ModeChoice
-          title="PigeonBox Cloud"
+          title="Pro"
           detail={
             state.cloudAvailable
               ? 'Keeps working while Gmail is closed. Connect Google for prepared drafts, follow-ups, briefings and calendar context.'
-              : 'Cloud is on its way. Join the waitlist for always-on summaries, prepared replies and follow-ups.'
+              : 'Pro is on its way. Join the waitlist for always-on summaries, prepared replies and follow-ups.'
           }
           badge={state.cloudAvailable ? undefined : 'Join waitlist ↗'}
           active={cloudMode}
@@ -89,19 +89,19 @@ export function RunModePanel({
 
       {pickingCloud && !cloudMode && state.cloudAvailable ? (
         <div className="gi-card">
-          <div className="text-sm font-medium">Use PigeonBox Cloud</div>
+          <div className="text-sm font-medium">Use PigeonBox Pro</div>
           <p className="mt-1 text-xs gi-muted">
             When PigeonBox summarizes, sorts, drafts or answers a question, the email content involved is sent over an
-            encrypted connection to PigeonBox Cloud and its AI provider. Cloud stores encrypted summaries, prepared drafts and related intelligence. Retaining message excerpts requires
+            encrypted connection to PigeonBox Pro and its AI provider. Cloud stores encrypted summaries, prepared drafts and related intelligence. Retaining message excerpts requires
             a separate opt-in. Your local index and settings stay on this computer.
           </p>
           <label className="gi-consent mt-3">
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>I understand that email content is sent to PigeonBox Cloud for processing.</span>
+            <span>I understand that email content is sent to PigeonBox Pro for processing.</span>
           </label>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className="gi-btn" disabled={!consent || busy} onClick={() => void product.useCloud(consent)}>
-              Use PigeonBox Cloud
+              Use PigeonBox Pro
             </button>
             <button type="button" className="gi-btn gi-btn-ghost" onClick={() => setPickingCloud(false)}>
               Cancel
@@ -114,7 +114,7 @@ export function RunModePanel({
         <div className="gi-card" aria-live="polite">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-sm font-medium">PigeonBox Cloud</div>
+              <div className="text-sm font-medium">PigeonBox Pro</div>
               <p className="mt-1 text-xs gi-muted">
                 {CLOUD_STATUS_LABEL[cloudStatus] ?? cloudStatus}
                 {state.cloud.email ? ` · ${state.cloud.email}` : ''}
@@ -159,7 +159,7 @@ export function RunModePanel({
               </button>
             ) : null}
             <button type="button" className="gi-btn gi-btn-ghost" disabled={busy} onClick={() => void product.useLocal()}>
-              Run on this computer instead
+              Switch to Free
             </button>
           </div>
           {cloudStatus === 'ready' && state.cloud.capabilities.includes('cloud_mail_sync') && !compact ? <CloudConnections /> : null}
@@ -171,7 +171,7 @@ export function RunModePanel({
           ) : null}
           {cloudStatus !== 'ready' ? (
             <p className="mt-2 text-xs gi-muted">
-              Until PigeonBox Cloud is connected, categories use on-device rules and nothing is sent to another AI provider.
+              Until PigeonBox Pro is connected, categories use on-device rules and nothing is sent to another AI provider.
             </p>
           ) : null}
         </div>

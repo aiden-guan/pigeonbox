@@ -69,8 +69,8 @@ function lastUpdated(accounts: MailAccount[]): string | null {
 export function mailStatus(input: { accounts: MailAccount[] | null | undefined; loading?: boolean; refreshFailed?: boolean; checkedAt?: string | null }, now = Date.now()): MailStatus {
   if (input.accounts === undefined) {
     return input.loading
-      ? { tone: 'unknown', title: 'Checking Cloud…', detail: '', action: null }
-      : { tone: 'attention', title: 'Cloud unavailable', detail: 'Cloud could not be reached.', action: null };
+      ? { tone: 'unknown', title: 'Checking Pro…', detail: '', action: null }
+      : { tone: 'attention', title: 'Pro unavailable', detail: 'Pro could not be reached.', action: null };
   }
   if (input.refreshFailed) {
     return { tone: 'attention', title: 'Could not refresh', detail: input.checkedAt ? `Last checked ${ago(input.checkedAt, now)}` : 'Showing the last loaded data', action: null };

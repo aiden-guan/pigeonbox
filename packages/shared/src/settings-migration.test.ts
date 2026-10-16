@@ -81,4 +81,15 @@ describe('migrateSettings', () => {
     expect(JSON.stringify(view)).not.toContain('secret');
     expect(view.hasAiApiKey).toBe(true);
   });
+
+  it('keeps installs with a self-hosted tracker on it by making them local-only', () => {
+    expect(migrateSettings({ ...legacy, settingsVersion: 3 }).localOnly).toBe(true);
+    expect(migrateSettings({ ...legacy, settingsVersion: 3, trackerBaseUrl: '', personalApiToken: '' }).localOnly).toBe(false);
+    expect(migrateSettings({}).localOnly).toBe(false);
+  });
+
+  it('keeps a local-only choice made after version 4', () => {
+    expect(migrateSettings({ ...DEFAULT_SETTINGS, localOnly: true }).localOnly).toBe(true);
+    expect(migrateSettings({ ...DEFAULT_SETTINGS, trackerBaseUrl: 'https://t.example', personalApiToken: 'x', localOnly: false }).localOnly).toBe(false);
+  });
 });

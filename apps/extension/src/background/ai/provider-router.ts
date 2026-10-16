@@ -74,7 +74,7 @@ export function resolveLocalProvider(settings: ExtensionSettings, deps: AIProvid
 }
 
 function cloudProvider(client: PigeonBoxCloudClient | null): AIProvider {
-  if (!client) return failingProvider(new CloudApiError({ code: 'not_configured', message: 'PigeonBox Cloud is not available in this build.' }));
+  if (!client) return failingProvider(new CloudApiError({ code: 'not_configured', message: 'PigeonBox Pro is not available in this build.' }));
   return withFriendlyErrors(createCloudAIProvider(client));
 }
 
@@ -130,7 +130,7 @@ export function effectiveSettings(settings: ExtensionSettings): ExtensionSetting
     ...settings,
     aiMode: 'remote',
     aiProvider: 'openai-compatible',
-    aiModel: 'PigeonBox Cloud',
+    aiModel: 'PigeonBox Pro',
     aiEndpoint: '',
     aiApiKey: '',
   };

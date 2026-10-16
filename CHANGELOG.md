@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- **Keyboard shortcuts.** Triage Gmail without the mouse: j/k to move, Enter to open, e to archive, # to trash, s to star, r/a/f to reply, reply all or forward, h to snooze, l to label, v to move, z to undo, 1/2/3 for Respond/Waiting/FYI, g then i/s/t/d to jump between Inbox, Starred, Sent and Drafts. Press ? in Gmail for the full list. They work whether or not Gmail's own shortcuts are on, and can be turned off in Settings → Inbox.
+- **Snippets.** Save text you send often in Settings → Snippets. In a compose, type `;name` and press Tab, or press ⌘/Ctrl ; to pick one. `{first_name}`, `{name}`, `{email}`, `{my_name}` and `{date}` fill in for you.
+- **Remind me if no reply** and **Send later** in the menu beside Send. Send later also opens with ⌘/Ctrl ⇧ L.
+- **Hosted tracking on Free.** Sign in to a PigeonBox account and opens and clicks are recorded by PigeonBox's tracker, with nothing to deploy. Turn on Local-only in Settings → Tracking to use a tracker you host, or none. Installs that already use a self-hosted tracker keep it.
+
+### Changed
+- **Local and Cloud are now Free and Pro.**
+- On Free, new emails end with "Sent with PigeonBox". Delete it from any email before sending; Pro removes it.
+
 ---
 
 ## [0.8.0] — 2026-10-14

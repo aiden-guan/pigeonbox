@@ -22,6 +22,15 @@ export const PRODUCT_EVENTS = [
   'ask_pigeon_used',
   'tracked_document_created',
   'settings_opened',
+  'footer_added',
+  'footer_removed',
+  'footer_sent',
+  'snippet_used',
+  'send_later_opened',
+  'remind_on_send',
+  'keyboard_shortcut_used',
+  'hosted_tracking_signin',
+  'upgrade_clicked',
 ] as const;
 export type ProductEvent = (typeof PRODUCT_EVENTS)[number];
 type SafeMetadata = {

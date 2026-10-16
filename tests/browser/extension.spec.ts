@@ -179,7 +179,7 @@ test('PDF upload uses authenticated worker transport and creates recipient-speci
       mimeType: 'application/pdf',
       buffer: Buffer.from('%PDF-1.4\nsynthetic fixture\n%%EOF'),
     });
-  await expect(page.getByText('Uploaded privately to Cloud.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Uploaded privately to Pro.', { exact: false })).toBeVisible();
   await page.getByLabel('Recipient (optional)').fill('recipient@fixture.test');
   await page.getByRole('button', { name: 'Create tracked link' }).click();
   await expect(page.getByRole('button', { name: 'Insert into Gmail' })).toBeVisible();

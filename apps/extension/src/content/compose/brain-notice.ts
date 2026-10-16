@@ -383,7 +383,7 @@ export function renderNotice(
   function textOrReferenceAt(box: { left: number; top: number; right: number; bottom: number }): boolean {
     const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
-        return node.parentElement?.closest('.gmail_quote, .gmail_quote_container, blockquote, .gmail_signature, [data-smartmail="gmail_signature"], [data-gi-ui]')
+        return node.parentElement?.closest('.gmail_quote, .gmail_quote_container, blockquote, .gmail_signature, [data-smartmail="gmail_signature"], [data-gi-ui], [data-pigeonbox-footer]')
           ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
       },
     });

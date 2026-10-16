@@ -23,7 +23,7 @@ test('a sender drafting a reply in their own tracked thread for over a minute ne
   const setup = await app.page('workspace');
   await setup.evaluate(async ({ baseUrl, trackingId, old }) => {
     const current = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
-    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
+    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, localOnly: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
     await chrome.storage.local.set({ trackedEmails: [{ trackingId, issuer: `local:${baseUrl}`, status: 'SENT', sender: 'owner@fixture.test', recipients: ['maya@fixture.test', 'li@fixture.test'], subject: 'Pricing', gmailThreadId: 'abc123', gmailMessageId: 'abcd', sentAt: old, createdAt: old, openCount: 0, clickCount: 0, firstOpenedAt: null, lastOpenedAt: null }] });
   }, { baseUrl: app.api.baseUrl, trackingId, old });
 
@@ -95,7 +95,7 @@ test('the packaged Gmail script protects old sender pixels and opens owned links
   app.api.tracker = { senderLink: { clickId: 'clk_sender', destination }, email: { tracking_id: trackingId, sender: 'owner@fixture.test', recipients: ['maya@fixture.test'], subject: 'Pricing', gmail_thread_id: 'abc123', gmail_message_id: 'abcd', status: 'SENT', sent_at: old, created_at: old, open_count: 0, click_count: 0 }, events: [], holdClaims: false, release: () => undefined };
   await setup.evaluate(async ({ baseUrl, trackingId, old }) => {
     const current = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
-    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
+    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, localOnly: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
     await chrome.storage.local.set({ trackedEmails: [{ trackingId, issuer: `local:${baseUrl}`, status: 'SENT', sender: 'owner@fixture.test', recipients: ['maya@fixture.test'], subject: 'Pricing', gmailThreadId: 'abc123', gmailMessageId: 'abcd', sentAt: old, createdAt: old, openCount: 0, clickCount: 0, firstOpenedAt: null, lastOpenedAt: null }] });
   }, { baseUrl: app.api.baseUrl, trackingId, old });
   const proxy = 'https://ci3.googleusercontent.com/proxy/sender-fixture';
@@ -133,7 +133,7 @@ test('reply all in a multi-recipient thread: a quote Gmail builds off-page never
   const setup = await app.page('workspace');
   await setup.evaluate(async ({ baseUrl, trackingId, old }) => {
     const current = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
-    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
+    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, localOnly: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
     await chrome.storage.local.set({ trackedEmails: [{ trackingId, issuer: `local:${baseUrl}`, status: 'SENT', sender: 'owner@fixture.test', recipients: ['maya@fixture.test', 'li@fixture.test', 'sam@fixture.test'], subject: 'Offsite', gmailThreadId: 'abc123', gmailMessageId: 'abcd', sentAt: old, createdAt: old, openCount: 0, clickCount: 0, firstOpenedAt: null, lastOpenedAt: null }] });
   }, { baseUrl: app.api.baseUrl, trackingId, old });
 

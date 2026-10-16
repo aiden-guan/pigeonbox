@@ -95,8 +95,9 @@ import { cloudSection, dashboardSection, panelSection } from '../ui/cloud-featur
 import { handleWebMessage, type SettingsSync, type WebBridgeDeps } from './web-bridge';
 import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, isGmailContentScript, senderMaySend } from './messaging';
+import { readSnippets, writeSnippets } from './snippets';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
-import { CLOUD_DASHBOARD_URL, DEV_BUILD, EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl, cloudTrackerUrls, trackerIssuer } from '../config';
+import { CLOUD_DASHBOARD_URL, DEV_BUILD, EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl, cloudTrackerUrls, trackerIssuer, usesHostedTracker } from '../config';
 import { gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './tracking/notifications';
 
 const db = getMailboxDb();
@@ -132,13 +133,14 @@ async function loadSettings(): Promise<ExtensionSettings> {
 }
 
 /**
- * Settings a Gmail content script may see: no secrets, and in Cloud mode the
- * hosted tracker in place of the self-hosted one. `hasPersonalApiToken` only says
+ * Settings a Gmail content script may see: no secrets, and the hosted tracker
+ * in place of the self-hosted one whenever hosted tracking is in use (Pro, and
+ * Free unless local-only). `hasPersonalApiToken` only says
  * whether the service worker can authenticate to that tracker.
  */
 async function contentSettings(): Promise<PublicExtensionSettings> {
   const view = toPublicSettings(effectiveSettings(settings));
-  if (settings.runMode !== 'cloud') return view;
+  if (!usesHostedTracker(settings)) return view;
   const tracker = cloudTrackerUrl(settings);
   const user = cloudApiUrl(settings) ? await cloudSession.currentUser(cloudApiUrl(settings)!) : null;
   // Compose asks for tracking only when the account may use hosted tracking, so
@@ -149,7 +151,8 @@ async function contentSettings(): Promise<PublicExtensionSettings> {
   return {
     ...view,
     trackerBaseUrl: tracker ?? '',
-    trackerUrls: cloudTrackerUrls(settings),
+    // A self-hosted tracker used before stays recognized, so its old pixels in your own threads never count as opens.
+    trackerUrls: [...cloudTrackerUrls(settings), ...(settings.trackerBaseUrl.trim() ? [settings.trackerBaseUrl.trim().replace(/\/$/, '')] : [])],
     hasPersonalApiToken: Boolean(tracker && user && entitled),
     composeTuning: { idleMs: compose.idleMs, cooldownMs: compose.cooldownMs, cacheMs: compose.cacheMs, revision },
   };
@@ -163,6 +166,8 @@ async function publishContentSettings(): Promise<void> {
 
 async function applyBundledTracker(): Promise<void> {
   if (settings.trackerBaseUrl?.trim() && settings.personalApiToken?.trim()) return;
+  // A bundled tracker is only for builds without the hosted one, or for local-only installs.
+  if (usesHostedTracker(settings)) return;
   try {
     if (typeof chrome === 'undefined' || typeof chrome.runtime?.getURL !== 'function') return;
     const response = await fetch(chrome.runtime.getURL('tracker-config.json'));
@@ -185,6 +190,7 @@ async function saveSettings(partial: Partial<ExtensionSettings>): Promise<Extens
   delete rest.cloudConsentAt;
   delete rest.settingsVersion;
   const previousAutomaticUpdateChecks = settings.automaticUpdateChecks;
+  const previousHosted = usesHostedTracker(settings);
   if (rest.cloudApiUrl !== undefined && rest.cloudApiUrl !== settings.cloudApiUrl) forgetThreadIntel();
   settings = migrateSettings({ ...settings, ...rest });
   await chrome.storage.local.set({ settings });
@@ -194,6 +200,8 @@ async function saveSettings(partial: Partial<ExtensionSettings>): Promise<Extens
   await publishContentSettings();
   rebuildAgent();
   if ('voiceProfile' in rest) void syncVoiceToCloud();
+  // Hosted and self-hosted trackers keep separate histories; load the new one now.
+  if (usesHostedTracker(settings) !== previousHosted) void pollTracking().catch(() => undefined);
   return settings;
 }
 
@@ -453,7 +461,7 @@ async function runDiagnostics() {
   }
   let tracking: 'not_configured' | 'healthy' | 'unreachable' | 'unauthorized' | 'invalid_url' | 'outdated' | 'disabled' = 'not_configured';
   let trackingProbe: Awaited<ReturnType<typeof probeTracker>> | null = null;
-  const probeTarget = settings.runMode === 'cloud'
+  const probeTarget = usesHostedTracker(settings)
     ? await trackerTarget()
     : { baseUrl: settings.trackerBaseUrl, credential: settings.personalApiToken };
   if (!settings.trackingEnabled) tracking = 'disabled';
@@ -513,8 +521,8 @@ async function runDiagnostics() {
   if (settings.runMode === 'cloud') {
     const cloud = await readCloudState(settings);
     aiStatus = cloud.status === 'ready' ? 'ready' : cloud.status === 'signed_out' || cloud.status === 'expired' ? 'not_signed_in' : 'error';
-    configStatus = `PigeonBox Cloud: ${cloud.status.replace(/_/g, ' ')}`;
-    aiDetail = cloud.status === 'ready' ? null : 'Cloud mode never falls back to another AI provider.';
+    configStatus = `PigeonBox Pro: ${cloud.status.replace(/_/g, ' ')}`;
+    aiDetail = cloud.status === 'ready' ? null : 'Pro never falls back to another AI provider.';
   } else if (settings.aiMode === 'disabled') {
     aiStatus = 'disabled';
     configStatus = 'AI disabled';
@@ -652,7 +660,7 @@ async function runDiagnostics() {
     aiDestination: aiDataDestination(settings),
     ai: {
       provider: settings.runMode === 'cloud' ? 'pigeonbox-cloud' : settings.aiProvider,
-      model: settings.runMode === 'cloud' ? 'PigeonBox Cloud' : settings.aiModel,
+      model: settings.runMode === 'cloud' ? 'PigeonBox Pro' : settings.aiModel,
       mode: settings.runMode === 'cloud' ? 'cloud' : settings.aiMode,
       status: aiStatus,
       configurationStatus: configStatus,
@@ -787,7 +795,7 @@ async function probeTrackerWithPermission(baseUrl: string, token: string) {
 type TrackerTarget = { baseUrl: string; credential: TrackerCredential };
 
 async function trackerTarget(): Promise<TrackerTarget | null> {
-  if (settings.runMode === 'cloud') return cloudTrackerTarget(settings);
+  if (usesHostedTracker(settings)) return cloudTrackerTarget(settings);
   if (!settings.trackerBaseUrl || !settings.personalApiToken) return null;
   return { baseUrl: settings.trackerBaseUrl, credential: settings.personalApiToken };
 }
@@ -813,10 +821,11 @@ async function credentialToken(credential: TrackerCredential): Promise<string> {
 async function notificationScope(baseUrl: string): Promise<string> {
   // A different account on the same tracker must get its own baseline. Hash the
   // local credential so it is never stored in notification history as plaintext.
-  const identity = settings.runMode === 'cloud'
+  const hosted = usesHostedTracker(settings);
+  const identity = hosted
     ? (await cloudSession.readSession())?.user.id || 'cloud'
     : settings.personalApiToken;
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${settings.runMode}:${baseUrl}:${identity}`));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${hosted ? 'cloud' : 'local'}:${baseUrl}:${identity}`));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
@@ -1567,7 +1576,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ status: 'disabled', label: 'Disabled' });
           return;
         }
-        if (settings.runMode === 'cloud') {
+        if (usesHostedTracker(settings)) {
           const target = await trackerTarget();
           sendResponse(target ? await probeTrackerWithPermission(target.baseUrl, await credentialToken(target.credential)) : { status: 'missing', label: trackerHealthLabel('missing') });
           return;
@@ -1674,13 +1683,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true, emails: await readTrackedEmails() });
         return;
       }
+      if (message?.type === 'GET_SNIPPETS') {
+        sendResponse({ snippets: await readSnippets() });
+        return;
+      }
+      if (message?.type === 'SAVE_SNIPPETS') {
+        if (!isExtensionPageSender(sender)) { sendResponse({ ok: false, reason: 'Snippets are edited in PigeonBox Settings.' }); return; }
+        sendResponse({ ok: true, snippets: await writeSnippets(message.snippets) });
+        return;
+      }
       if (message?.type === 'REMIND_THREAD') {
         const threadId = String(message.threadId || '');
         if (!threadId) {
           sendResponse({ error: 'missing_thread' });
           return;
         }
-        const due = addBusinessDays(new Date(), settings.reminderBusinessDays).getTime();
+        // A compose can ask for its own length ("remind me if no reply"); 1–30 business days.
+        const days = Number.isInteger(message.businessDays) && message.businessDays >= 1 && message.businessDays <= 30 ? message.businessDays : settings.reminderBusinessDays;
+        const due = addBusinessDays(new Date(), days).getTime();
         await db.reminders.put({
           id: `rem_${threadId}`,
           threadId,
@@ -1688,7 +1708,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           lastOutgoingAt: Date.now(),
           dueAt: due,
           status: 'pending',
-          reason: 'Manual remind',
+          reason: message.source === 'compose' ? 'No reply yet' : 'Manual remind',
         });
         sendResponse({ ok: true, dueAt: due });
         return;
@@ -2370,8 +2390,8 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       if (mode === 'local') {
         settings = migrateSettings({ ...settings, runMode: 'local' });
       } else if (mode === 'cloud') {
-        if (!cloudApiUrl(settings)) return { ok: false, reason: 'PigeonBox Cloud is not available in this build.' };
-        if (message.consent !== true) return { ok: false, reason: 'Cloud mode needs your agreement to send email content to PigeonBox Cloud.' };
+        if (!cloudApiUrl(settings)) return { ok: false, reason: 'PigeonBox Pro is not available in this build.' };
+        if (message.consent !== true) return { ok: false, reason: 'Pro needs your agreement to send email content to PigeonBox Pro.' };
         settings = migrateSettings({ ...settings, runMode: 'cloud', cloudConsentAt: new Date().toISOString() });
       } else {
         return { ok: false, reason: 'Unknown mode.' };
@@ -2389,7 +2409,7 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
     case 'CLOUD_SIGN_IN': {
       forgetThreadIntel();
       const base = cloudApiUrl(settings);
-      if (!base) return { ok: false, reason: 'PigeonBox Cloud is not available in this build.' };
+      if (!base) return { ok: false, reason: 'PigeonBox Pro is not available in this build.' };
       try {
         const user = await cloudSession.signIn(base);
         await afterCloudSignIn();
@@ -2417,7 +2437,7 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       return { ok: true, text: await diagnosticsReport() };
     case 'CLOUD_BILLING': {
       const client = getCloudClient(settings);
-      if (!client) return { ok: false, reason: 'PigeonBox Cloud is not available in this build.' };
+      if (!client) return { ok: false, reason: 'PigeonBox Pro is not available in this build.' };
       try {
         const { url } = message.kind === 'portal' ? await client.billingPortal() : await client.billingCheckout();
         await chrome.tabs.create({ url });
@@ -2456,7 +2476,7 @@ const webBridge: WebBridgeDeps = {
   },
   dashboardCode: async (input) => {
     const api = cloudApiUrl(settings);
-    if (!api) throw new Error('Cloud is not available in this build.');
+    if (!api) throw new Error('Pro is not available in this build.');
     return cloudSession.dashboardCode(api, input);
   },
   agentRules: async () => (await db.agent_rules.toArray()).map((rule) => rule.naturalLanguage),

@@ -96,7 +96,7 @@ export function useProductState() {
           .request({ permissions: ['identity'], origins: state.cloudOrigins })
           .catch(() => false);
         if (!granted) {
-          setError('PigeonBox needs permission to open the sign-in window and reach PigeonBox Cloud.');
+          setError('PigeonBox needs permission to open the sign-in window and reach PigeonBox Pro.');
           return undefined;
         }
       }

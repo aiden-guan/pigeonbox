@@ -811,7 +811,21 @@ export function shouldRewriteLink(href: string): boolean {
   if (/(^|\.)mail\.google\.com$/i.test(url.hostname)) return false;
   // Pixel and click URLs of any PigeonBox-compatible tracker (Worker, Convex, Cloud).
   if (isTrackerPath(url.pathname)) return false;
+  // The Free "Sent with PigeonBox" footer is PigeonBox's link, not the sender's: never counted as a recipient click.
+  if (isSentWithFooterUrl(url)) return false;
   return true;
+}
+
+/** Where the Free footer's "PigeonBox" link goes. UTM tags let the website count visits from footers. */
+export const SENT_WITH_URL = 'https://usepigeonbox.com/?utm_source=pigeonbox&utm_medium=email_footer&utm_campaign=sent_with';
+
+export function isSentWithFooterUrl(url: URL | string): boolean {
+  try {
+    const parsed = typeof url === 'string' ? new URL(url) : url;
+    return /(^|\.)usepigeonbox\.com$/i.test(parsed.hostname) && parsed.searchParams.get('utm_campaign') === 'sent_with';
+  } catch {
+    return false;
+  }
 }
 
 /** `/open/trk_…` and `/c/clk_…`, the only paths trackers issue for recipients. */

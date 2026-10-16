@@ -17,7 +17,7 @@ test('Gmail draft rows never inherit badges from a sent email with the same thre
   await setup.evaluate(async ({ baseUrl, trackingId, sentAt, openedAt }) => {
     const current = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
     await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: {
-      ...current.settings, trackingEnabled: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only',
+      ...current.settings, trackingEnabled: true, localOnly: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only',
     } });
     await chrome.storage.local.set({ trackedEmails: [{
       trackingId, issuer: `local:${baseUrl}`, status: 'SENT', subject: 'Proposal', sender: 'owner@fixture.test',

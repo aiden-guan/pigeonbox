@@ -23,6 +23,7 @@ export const DASHBOARD_ORIGINS: readonly string[] = ['https://usepigeonbox.com',
 
 /** Settings the dashboard may change. Run mode, consent, the Cloud API and the version have their own paths or none. */
 const EDITABLE: ReadonlySet<keyof ExtensionSettings> = new Set<keyof ExtensionSettings>([
+  'localOnly',
   'trackingEnabled',
   'trackOpens',
   'trackLinks',
@@ -49,6 +50,7 @@ const EDITABLE: ReadonlySet<keyof ExtensionSettings> = new Set<keyof ExtensionSe
   'reminderBusinessDays',
   'commandPaletteEnabled',
   'commandPaletteOverrideGmail',
+  'keyboardShortcuts',
   'voiceProfile',
   'learnFromSent',
 ]);
@@ -245,7 +247,7 @@ export async function handleWebMessage(message: unknown, sender: Sender, deps: W
     }
     case 'LINK_BEGIN': {
       const apiBaseUrl = deps.apiBaseUrl();
-      if (!apiBaseUrl) return { ok: false, code: 'not_configured', reason: 'This version of PigeonBox does not include Cloud. Update PigeonBox to use Cloud.' };
+      if (!apiBaseUrl) return { ok: false, code: 'not_configured', reason: 'This version of PigeonBox does not include Pro. Update PigeonBox to use Pro.' };
       const origin = senderOrigin(sender);
       let redirectUri: URL;
       try {
@@ -270,7 +272,7 @@ export async function handleWebMessage(message: unknown, sender: Sender, deps: W
         return { ok: false, reason: 'Connecting PigeonBox could not be verified. Start again.' };
       }
       await deps.session.remove(LINK_KEY);
-      if (deps.apiBaseUrl() !== pending.apiBaseUrl) return { ok: false, reason: 'PigeonBox changed Cloud servers while connecting. Start again.' };
+      if (deps.apiBaseUrl() !== pending.apiBaseUrl) return { ok: false, reason: 'PigeonBox changed Pro servers while connecting. Start again.' };
       try {
         const user = await deps.exchangeLinkedCode(pending.apiBaseUrl, { code: msg.code.slice(0, 2000), codeVerifier: pending.verifier, redirectUri: pending.redirectUri });
         await deps.afterSignIn();

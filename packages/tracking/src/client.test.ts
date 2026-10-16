@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   shouldRewriteLink,
+  SENT_WITH_URL,
   stableClickId,
   summaryFromRemote,
   trackerOriginOf,
@@ -73,6 +74,11 @@ describe('outgoing link policy', () => {
     expect(shouldRewriteLink('https://www.youtube.com/c/SomeChannel')).toBe(true);
     expect(shouldRewriteLink('https://example.com/open/source')).toBe(true);
     expect(shouldRewriteLink('https://example.com/docs?ref=a#b')).toBe(true);
+  });
+
+  it('never wraps the Free footer link, but wraps other PigeonBox links the sender adds', () => {
+    expect(shouldRewriteLink(SENT_WITH_URL)).toBe(false);
+    expect(shouldRewriteLink('https://usepigeonbox.com/pricing')).toBe(true);
   });
 
   it('never wraps tracker URLs, Gmail, credentials-in-URL or malformed links', () => {

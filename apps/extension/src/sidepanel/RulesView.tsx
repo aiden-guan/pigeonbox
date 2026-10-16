@@ -147,7 +147,7 @@ export function RulesView({
       <p className="gi-muted">
         {isView
           ? 'Find mail by intent. Preview what a rule would change before turning it on.'
-          : 'Prepare and organize work using the existing Cloud policy. New automations start in Shadow Mode.'}
+          : 'Prepare and organize work using the existing Pro policy. New automations start in Shadow Mode.'}
       </p>
       {notice ? (
         <p className="gi-note" role="status">
@@ -275,7 +275,7 @@ export function RulesView({
                       ))}
                     </ul>
                     {run.status === 'failed' ? (
-                      <p className="gi-warn">This run did not complete. Review it in Cloud before retrying.</p>
+                      <p className="gi-warn">This run did not complete. Review it in Pro before retrying.</p>
                     ) : null}
                   </div>
                 ))

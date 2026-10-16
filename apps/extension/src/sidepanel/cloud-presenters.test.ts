@@ -44,7 +44,7 @@ describe('mail status', () => {
   });
   it('does not present the last loaded data as current after a failed refresh', () => {
     expect(mailStatus({ accounts: [account()], refreshFailed: true, checkedAt: twoMinutesAgo }, NOW)).toMatchObject({ tone: 'attention', title: 'Could not refresh', detail: 'Last checked 2m ago' });
-    expect(mailStatus({ accounts: undefined, loading: true }, NOW).title).toBe('Checking Cloud…');
+    expect(mailStatus({ accounts: undefined, loading: true }, NOW).title).toBe('Checking Pro…');
     expect(mailStatus({ accounts: [] }, NOW)).toMatchObject({ title: 'Connect Google', action: { section: 'connections' } });
   });
 });

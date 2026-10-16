@@ -122,11 +122,11 @@ test('Dispatch side panel: positional mail, intelligence sources, Cloud and narr
   await cloud.waitForTimeout(400);
   await cloud.screenshot({ path: 'test-results/dispatch-cloud-ask.png' });
   const preferences = await app.page('settings', true);
-  await preferences.getByRole('button', { name: /Run on this computer instead/ }).click();
+  await preferences.getByRole('button', { name: /Switch to Free/ }).click();
   await expect(preferences.locator('#run-mode .gi-choice').first()).toHaveAttribute('aria-pressed', 'true');
   // Switching to Cloud (agreement, sign-in, subscription) continues on the dashboard; nothing changes here first.
   const dashboard = app.context.waitForEvent('page');
-  await preferences.getByRole('button', { name: /^PigeonBox Cloud/ }).click();
+  await preferences.getByRole('button', { name: /^Pro/ }).click();
   await expect(await dashboard).toHaveURL(/\/dashboard\?ext=[a-p]{32}&setup=cloud#cloud$/);
   await expect(preferences.locator('#run-mode .gi-choice').first()).toHaveAttribute('aria-pressed', 'true');
   expect(errors).toEqual([]);
@@ -152,7 +152,7 @@ test('Dispatch preferences, onboarding and isolated Gmail companion', async ({ a
   await expect(onboarding.locator('html')).toHaveAttribute('data-pb-theme', 'light');
   await onboarding.getByRole('button', { name: /That’s me/ }).click();
   await onboarding.screenshot({ path: 'test-results/dispatch-onboarding-welcome.png' });
-  await onboarding.getByRole('button', { name: /On this computer/ }).click();
+  await onboarding.getByRole('button', { name: /Free/ }).click();
   await expect(onboarding.getByRole('heading', { name: 'What should Pidgy take off your plate?' })).toBeVisible();
   await onboarding.waitForTimeout(400);
   await onboarding.screenshot({ path: 'test-results/dispatch-onboarding-mode.png' });

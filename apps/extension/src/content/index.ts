@@ -60,6 +60,12 @@ import { type LocalThreadIntel } from './thread/ThreadPanel';
 import { showBusyToast, showToast } from './shell/toasts';
 import { SelfViewDeduplicator } from './tracking/self-view-dedupe';
 import { installDictation } from './dictation';
+import { attachComposeExtras, openSendLater, openSnippetsFor, setSnippetCache, type ComposeExtrasDeps } from './compose/compose-extras';
+import type { Snippet } from './compose/snippets';
+import { createKeyboardLayer } from './keyboard';
+import { closeShortcutHelp, performShortcut } from './keyboard-actions';
+import { SELECTORS } from '@pigeonbox/gmail';
+import { trackProductEvent } from '../ui/analytics';
 
 export const adapter = new CompositeGmailAdapter();
 let settings: PublicExtensionSettings = toPublicSettings(DEFAULT_SETTINGS);
@@ -357,6 +363,26 @@ async function boot(): Promise<void> {
   reportRuntime();
 }
 
+function composeExtrasDeps(): ComposeExtrasDeps {
+  return {
+    isFree: () => settings.runMode !== 'cloud',
+    myName: () => settings.voiceProfile?.name ?? '',
+    snippets: async () => {
+      const res = await send<{ snippets?: Snippet[] }>({ type: 'GET_SNIPPETS' });
+      const snippets = Array.isArray(res?.snippets) ? res.snippets : [];
+      setSnippetCache(snippets);
+      return snippets;
+    },
+    remind: async (threadId, businessDays) => {
+      const res = await send<{ ok?: boolean; dueAt?: number; reason?: string }>({ type: 'REMIND_THREAD', threadId, businessDays, source: 'compose' });
+      return { ok: Boolean(res?.ok), dueAt: res?.dueAt, reason: res?.reason };
+    },
+    reminderBusinessDays: () => settings.reminderBusinessDays || 3,
+    toast: (message) => showToast(message),
+    count: (event) => trackProductEvent(event, { surface: 'gmail', mode: settings.runMode === 'cloud' ? 'cloud' : 'local' }),
+  };
+}
+
 function trackingDeps() {
   return {
     getSettings: () => settings,
@@ -554,6 +580,7 @@ export function mountSdkUi(
     },
     onComposeView: (composeView) => {
       attachSdkComposeTracking(composeView as any, trackingDeps());
+      attachComposeExtras(composeView as any, composeExtrasDeps());
       const draftView = composeView as { on?: (event: string, cb: () => void) => void; getElement?: () => HTMLElement | null };
       // Gmail uploads a reply's quoted history (and with it the owned pixels of
       // that thread) on every save and on send, even when the quote is trimmed
@@ -1127,9 +1154,42 @@ async function hydrateThread(threadId: string, restore: boolean) {
   return { thread };
 }
 
+const keyboard = createKeyboardLayer();
+const COMPOSE_ROOT = SELECTORS.composeRoot.join(', ');
+
+/** Superhuman-style single-key triage. Capture phase, so Gmail's own shortcuts never double-act. */
+function setupKeyboardShortcuts(): void {
+  document.addEventListener('keydown', (event) => {
+    if (!settings.keyboardShortcuts || event.isComposing) return;
+    if (event.key === 'Escape' && closeShortcutHelp()) { event.preventDefault(); event.stopPropagation(); return; }
+    const target = event.target as HTMLElement | null;
+    // PigeonBox's own popovers (palette, snippets, menus) handle their keys.
+    if (target?.closest('[data-gi-ui]')) return;
+    const typing = Boolean(target?.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""], [role="textbox"], [role="combobox"]'));
+    const inCompose = Boolean(target?.closest(COMPOSE_ROOT));
+    const wasPending = keyboard.pending();
+    const id = keyboard.resolve(event, { typing, inCompose });
+    if (!id) {
+      // A "g" waiting for its second key belongs to PigeonBox.
+      if (!typing && !wasPending && keyboard.pending()) { event.preventDefault(); event.stopPropagation(); }
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    trackProductEvent('keyboard_shortcut_used', { surface: 'gmail' });
+    void performShortcut(id, event, {
+      runCommand: (command) => runCommand(command),
+      toast: (message) => showToast(message),
+      openSnippets: (element) => openSnippetsFor(element),
+      openSendLater: (element) => openSendLater(element),
+    });
+  }, true);
+}
+
 function setupCommandPalette(): void {
   if (paletteBound) return;
   paletteBound = true;
+  setupKeyboardShortcuts();
   document.addEventListener('keydown', (event) => {
     if (!settings.commandPaletteEnabled) return;
     const mod = event.metaKey || event.ctrlKey;
@@ -1162,7 +1222,7 @@ async function runCommand(id: string): Promise<void> {
   if (command === 'cloud' || command.startsWith('cloud_')) {
     const section = command === 'cloud' ? 'overview' : command.slice(6);
     const res = await send<{ ok?: boolean; reason?: string }>({ type: 'FOCUS_SIDEPANEL', mode: 'cloud', section });
-    if (!res?.ok) showToast(res?.reason || 'Could not open PigeonBox Cloud.');
+    if (!res?.ok) showToast(res?.reason || 'Could not open PigeonBox Pro.');
     return;
   }
   if (command === 'settings') {

@@ -12,14 +12,14 @@ test('unavailable Cloud keeps onboarding on the waitlist and account commands on
   await page.goto(`chrome-extension://${app.id}/onboarding.html`);
   await page.getByRole('button', { name: /That’s me/ }).click();
   const onboarding = app.context.waitForEvent('page');
-  await page.getByRole('button', { name: /PigeonBox Cloud/ }).click();
+  await page.getByRole('button', { name: /Join the waitlist/ }).click();
   const waitlist = await onboarding;
   await expect(waitlist).toHaveURL('https://usepigeonbox.com/waitlist?source=extension');
   await expect(page.getByRole('heading', { name: 'Let’s quiet your inbox.' })).toBeVisible();
   await waitlist.close();
   await page.goto(`chrome-extension://${app.id}/settings.html?here`);
   const settings = app.context.waitForEvent('page');
-  await page.getByRole('button', { name: 'PigeonBox Cloud', exact: false }).first().click();
+  await page.getByRole('button', { name: /^Pro/ }).first().click();
   const settingsWaitlist = await settings;
   await expect(settingsWaitlist).toHaveURL('https://usepigeonbox.com/waitlist?source=extension');
   await settingsWaitlist.close();

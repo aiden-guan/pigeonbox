@@ -164,7 +164,7 @@ export function CloudPreferences({ capabilities }: { capabilities: readonly stri
             <>
               <Toggle
                 label="Prepare replies automatically"
-                description="PigeonBox writes replies and keeps them in your Drafts queue in Cloud."
+                description="PigeonBox writes replies and keeps them in your Drafts queue in Pro."
                 checked={prefs.autoDrafts.enabled}
                 onChange={(enabled) => patch('autoDrafts', { ...prefs.autoDrafts, enabled })}
               />
@@ -196,7 +196,7 @@ export function CloudPreferences({ capabilities }: { capabilities: readonly stri
             </>
           ) : null}
           <button className="gi-btn" type="submit" disabled={busy || !prefs.workdays.length}>
-            {busy ? 'Saving…' : 'Save Cloud preferences'}
+            {busy ? 'Saving…' : 'Save Pro preferences'}
           </button>
           {saved ? (
             <p className="gi-note" role="status">

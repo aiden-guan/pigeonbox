@@ -71,6 +71,23 @@ export const SELECTORS = {
     'div.bkH',
   ],
   searchBox: ['input[aria-label="Search mail"]', 'input[name="q"]', 'form[role="search"] input'],
+  /** Toolbar and menu controls the keyboard layer clicks. English labels first, then Gmail's tooltips. */
+  replyAllButton: ['[role="button"][aria-label="Reply all"]', '[data-tooltip="Reply all"]', 'span[role="link"][aria-label="Reply all"]'],
+  forwardButton: ['[role="button"][aria-label="Forward"]', '[data-tooltip="Forward"]', 'span[role="link"][aria-label="Forward"]'],
+  deleteButton: ['div[aria-label="Delete"]', 'div[data-tooltip="Delete"]'],
+  snoozeButton: ['div[aria-label="Snooze"]', 'div[data-tooltip="Snooze"]'],
+  labelsButton: ['div[aria-label="Labels"]', 'div[data-tooltip="Labels"]'],
+  moveToButton: ['div[aria-label="Move to"]', 'div[data-tooltip="Move to"]'],
+  unstarButton: ['div[aria-label="Starred"]', 'span[aria-label="Starred"]'],
+  olderButton: ['div[aria-label="Older"]', 'div[data-tooltip="Older"]'],
+  newerButton: ['div[aria-label="Newer"]', 'div[data-tooltip="Newer"]'],
+  backButton: ['div[aria-label^="Back to"]', 'div[data-tooltip^="Back to"]'],
+  composeButton: ['div[gh="cm"]', '[role="button"][aria-label="Compose"]'],
+  undoLink: ['#link_undo', 'span[role="link"][id="link_undo"]', '[role="alert"] [role="link"]'],
+  rowCheckbox: ['div[role="checkbox"]', 'td.oZ-x3 div[role="checkbox"]'],
+  /** Gmail's "More send options" arrow beside Send, which opens Schedule send. */
+  sendOptionsButton: ['[aria-label="More send options"]', '[data-tooltip="More send options"]'],
+  scheduleSendItem: ['[role="menuitem"][aria-label*="Schedule send" i]', '[role="menuitem"]:has([data-tooltip*="Schedule send" i])', 'div[role="menu"] [role="menuitem"]'],
   inboxNav: ['a[aria-label="Inbox"]', 'a[href*="#inbox"]'],
   sendButton: ['[data-tooltip="Send"]', '[aria-label="Send"]', '[aria-label^="Send "]'],
   notice: ['[role="alert"]', '.bAq', '.vh'],
@@ -314,6 +331,19 @@ export function findSendButton(root: ParentNode = document): HTMLElement | null 
 
 export function findArchiveButton(root: ParentNode = document): HTMLElement | null {
   return queryFirst(root, SELECTORS.archiveButton) as HTMLElement | null;
+}
+
+/** The first rendered (visible) element matching a selector key, so a hidden toolbar copy is never clicked. */
+export function findVisibleControl(key: SelectorKey, root: ParentNode = document): HTMLElement | null {
+  const selectors = SELECTORS[key];
+  if (typeof selectors === 'string') return null;
+  for (const element of queryAll(root, selectors)) {
+    if (!(element instanceof HTMLElement)) continue;
+    if (element.closest(SELECTORS.injectedUiMark)) continue;
+    if (element.getClientRects().length === 0) continue;
+    return element;
+  }
+  return null;
 }
 
 export function findSearchBox(root: ParentNode = document): HTMLInputElement | null {

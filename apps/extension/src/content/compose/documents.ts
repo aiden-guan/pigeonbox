@@ -53,7 +53,7 @@ export function attachDocumentAction(view: View, available: () => boolean) {
     picker.setAttribute('aria-label', 'Track PDF');
     picker.setAttribute('data-gi-ui', 'document-picker');
     const heading = Object.assign(document.createElement('h2'), { textContent: 'Track a PDF' });
-    const description = Object.assign(document.createElement('p'), { textContent: 'Choose a PDF to upload privately to PigeonBox Cloud and add as a link in this email. See when the PDF is opened or downloaded beside your email’s tracking status.' });
+    const description = Object.assign(document.createElement('p'), { textContent: 'Choose a PDF to upload privately to PigeonBox Pro and add as a link in this email. See when the PDF is opened or downloaded beside your email’s tracking status.' });
     const hint = Object.assign(document.createElement('p'), { className: 'gi-document-hint', textContent: 'Up to 20 MB. Anyone with the link can view and download it. PDFs attached with Gmail’s paperclip do not report opens.' });
     const input = document.createElement('input');
     input.type = 'file'; input.accept = 'application/pdf,.pdf'; input.setAttribute('aria-label', 'Choose PDF to track');

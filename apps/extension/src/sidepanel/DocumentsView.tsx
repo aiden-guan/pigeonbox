@@ -57,7 +57,7 @@ export function DocumentsView() {
       if (!result.ok || !result.data) throw new Error(result.reason || 'Upload did not complete. Try again.');
       trackProductEvent('tracked_document_created', { surface: 'sidepanel', mode: 'cloud' });
       setSelected(result.data.document);
-      setNotice('Uploaded privately to Cloud. Create a link to share it.');
+      setNotice('Uploaded privately to Pro. Create a link to share it.');
       void load();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Upload did not complete. Try again.');
@@ -116,7 +116,7 @@ export function DocumentsView() {
     <section className="gi-cloud-reader">
       <h2>Tracked documents</h2>
       <p className="gi-muted">
-        Upload a PDF privately to Cloud. Recipient links can expire and restrict downloads. Nothing sends automatically.
+        Upload a PDF privately to Pro. Recipient links can expire and restrict downloads. Nothing sends automatically.
       </p>
       <label className="gi-btn gi-btn-ghost">
         {busy ? 'Working…' : 'Upload PDF'}

@@ -93,7 +93,7 @@ export function BriefingsView({ onOpenThread }: { onOpenThread: (id: string, acc
           </button>
         ))
       ) : items ? (
-        <p className="gi-muted">No briefing yet. Prepare one above or set a schedule in Cloud.</p>
+        <p className="gi-muted">No briefing yet. Prepare one above or set a schedule in Pro.</p>
       ) : null}
       <button className="gi-text-btn" type="button" onClick={() => openCloud('briefings')}>
         Manage schedule ↗

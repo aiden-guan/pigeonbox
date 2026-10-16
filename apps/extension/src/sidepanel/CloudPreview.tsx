@@ -16,12 +16,12 @@ export function CloudPreview({ product, compact = false }: { product: ProductCon
   return (
     <section className="gi-cloud-preview">
       <div className="gi-cloud-section-head">
-        <strong>PigeonBox Cloud</strong>
+        <strong>PigeonBox Pro</strong>
         {compact ? (
           <button
             className="gi-text-btn"
             type="button"
-            aria-label="Dismiss Cloud preview"
+            aria-label="Dismiss Pro preview"
             onClick={() => {
               setDismissed(true);
               void chrome.storage.local.set({ cloudPreviewDismissed: true });
@@ -50,7 +50,7 @@ export function CloudPreview({ product, compact = false }: { product: ProductCon
           See how Cloud works
         </button>
       ) : (
-        <><p className="gi-muted">Cloud is on its way. Local keeps working on this computer.</p><button className="gi-btn gi-btn-ghost" type="button" onClick={openCloudWaitlist}>Join the Cloud waitlist ↗</button></>
+        <><p className="gi-muted">Pro is on its way. Free keeps working on this computer.</p><button className="gi-btn gi-btn-ghost" type="button" onClick={openCloudWaitlist}>Join the Cloud waitlist ↗</button></>
       )}
       {expanded || (!compact && product.state.runMode === 'cloud') ? <RunModePanel product={product} /> : null}
       {product.error ? (

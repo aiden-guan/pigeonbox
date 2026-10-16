@@ -10,7 +10,7 @@ export function cloudCall<T>(route: string, body?: unknown): Promise<CallResult<
   return new Promise((resolve) => {
     let done = false;
     const finish = (result: CallResult<T>) => { if (!done) { done = true; clearTimeout(timer); resolve(result); } };
-    const timer = setTimeout(() => finish({ ok: false, code: 'timeout', reason: 'Cloud did not respond in time. Try again.' }), route === 'askPigeon' ? ASK_REQUEST_TIMEOUT_MS + 5_000 : 65_000);
+    const timer = setTimeout(() => finish({ ok: false, code: 'timeout', reason: 'Pro did not respond in time. Try again.' }), route === 'askPigeon' ? ASK_REQUEST_TIMEOUT_MS + 5_000 : 65_000);
     try {
       chrome.runtime.sendMessage({ type: 'CLOUD_CALL', route, body }, (response?: CallResult<T>) => {
         finish(chrome.runtime.lastError ? { ok: false, code: 'network', reason: 'Reconnect PigeonBox and try again.' } : response ?? { ok: false, code: 'network', reason: 'PigeonBox did not respond. Try again.' });
@@ -37,7 +37,7 @@ export function cloudAskStream(body: RouteRequest<'askPigeonStream'>, onEvent: (
       try { port?.disconnect(); } catch { /* already closed */ }
       resolve(result);
     };
-    const timer = setTimeout(() => finish({ ok: false, code: 'timeout', reason: 'Cloud did not respond in time. Try again.' }), ASK_STREAM_TIMEOUT_MS + 5_000);
+    const timer = setTimeout(() => finish({ ok: false, code: 'timeout', reason: 'Pro did not respond in time. Try again.' }), ASK_STREAM_TIMEOUT_MS + 5_000);
     try {
       port = chrome.runtime.connect({ name: ASK_STREAM_PORT });
     } catch {

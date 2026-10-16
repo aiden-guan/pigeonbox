@@ -64,7 +64,7 @@ export const PAGE_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>([
 
 /** One allowlisted contract call from an extension page. Errors come back as plain, user-facing text. */
 export async function pageCall(client: PigeonBoxCloudClient, route: unknown, body: unknown): Promise<{ ok: true; data: unknown } | { ok: false; code: string; reason: string }> {
-  if (typeof route !== 'string' || !PAGE_ROUTES.has(route as RouteName)) return { ok: false, code: 'forbidden', reason: 'That PigeonBox Cloud action is not available here.' };
+  if (typeof route !== 'string' || !PAGE_ROUTES.has(route as RouteName)) return { ok: false, code: 'forbidden', reason: 'That PigeonBox Pro action is not available here.' };
   try {
     const data = await client.call(route as RouteName, body as RouteRequest<RouteName>);
     // Anything that changes a thread makes cached intelligence stale.

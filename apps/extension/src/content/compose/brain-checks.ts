@@ -87,7 +87,7 @@ export function resetBrainChecksForTests(): void {
   controllers.clear();
 }
 
-const SKIP = '.gmail_quote, .gmail_quote_container, blockquote, .gmail_signature, [data-smartmail="gmail_signature"], .gmail_extra, .yj6qo, .adL, [data-gi-ui]';
+const SKIP = '.gmail_quote, .gmail_quote_container, blockquote, .gmail_signature, [data-smartmail="gmail_signature"], .gmail_extra, .yj6qo, .adL, [data-gi-ui], [data-pigeonbox-footer]';
 const BLOCK = /^(?:DIV|P|LI|UL|OL|H[1-6]|TR|TABLE|SECTION|ARTICLE|PRE)$/;
 
 /**

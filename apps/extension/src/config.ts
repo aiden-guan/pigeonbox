@@ -65,11 +65,21 @@ export function cloudTrackerUrls(settings: { cloudApiUrl: string }): string[] {
 }
 
 /**
+ * Whether tracking uses the PigeonBox-hosted tracker: always in Pro, and in Free
+ * unless the person turned on local-only or this build has no PigeonBox service
+ * (source builds); then their self-hosted tracker, if any, is used.
+ */
+export function usesHostedTracker(settings: { runMode: string; localOnly?: boolean; cloudApiUrl: string }): boolean {
+  if (settings.runMode === 'cloud') return true;
+  return !settings.localOnly && Boolean(cloudApiUrl(settings));
+}
+
+/**
  * Identifies the tracker that issued a tracking ID. Cloud is keyed by its API,
  * so moving the hosted tracker to a new hostname keeps existing IDs routable.
  */
-export function trackerIssuer(settings: { runMode: string; cloudApiUrl: string; trackerBaseUrl: string }): string | null {
-  if (settings.runMode === 'cloud') {
+export function trackerIssuer(settings: { runMode: string; localOnly?: boolean; cloudApiUrl: string; trackerBaseUrl: string }): string | null {
+  if (usesHostedTracker(settings)) {
     const api = cloudApiUrl(settings);
     return api ? `cloud:${new URL(api).origin}` : null;
   }

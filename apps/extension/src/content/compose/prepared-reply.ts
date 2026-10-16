@@ -93,7 +93,7 @@ export function forgetPlaced(body: HTMLElement): void {
 export function selectOwnText(body: HTMLElement): boolean {
   const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
-      const skipped = node.parentElement?.closest('.gmail_quote, .gmail_quote_container, blockquote, .gmail_signature, [data-smartmail="gmail_signature"], .gmail_extra');
+      const skipped = node.parentElement?.closest('.gmail_quote, .gmail_quote_container, blockquote, .gmail_signature, [data-smartmail="gmail_signature"], .gmail_extra, [data-pigeonbox-footer]');
       return skipped && body.contains(skipped) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
     },
   });

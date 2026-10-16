@@ -14,6 +14,7 @@ import {
 import { findSendButton, SELECTORS } from '@pigeonbox/gmail';
 import { ensureSurface } from '../shell/surface';
 import { createOrb } from '../../ui/orb-markup';
+import { composeMenuRows } from '../compose/compose-extras';
 import { documentActionForCompose } from '../compose/documents';
 import {
   composeTrackingLabel,
@@ -840,6 +841,15 @@ function toggleMenu(
     menu.append(pdf);
     const hint = Object.assign(document.createElement('p'), { className: 'gi-document-menu-hint', textContent: 'PDF opens require a tracked link. Gmail paperclip attachments don’t report opens.' });
     menu.append(hint);
+  }
+  for (const row of composeMenuRows(compose)) {
+    if (row.checked === undefined) {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'gi-menu-row'; button.textContent = row.label;
+      button.addEventListener('click', () => { menu.remove(); row.run(); });
+      menu.append(button);
+    } else {
+      menu.append(checkRow(row.label, row.checked, () => row.run()));
+    }
   }
   const rect = anchor.getBoundingClientRect();
   menu.style.left = `${Math.max(8, rect.left - 80)}px`;
