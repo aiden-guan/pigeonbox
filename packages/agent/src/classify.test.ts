@@ -212,4 +212,11 @@ describe('archive autonomous above threshold', () => {
     expect(d.shouldArchive).toBe(true);
     expect(d.autonomous).toBe(true);
   });
+
+  it('requires review for a model-derived category even at maximum confidence', () => {
+    const input = { category: 'PROMOTIONS' as const, confidence: 1, senderEmail: 'attacker@bad.test', archiveCategories: ['PROMOTIONS' as const], threshold: 0.8, alwaysArchive: [], neverArchive: [], rules: [], modelDerived: true };
+    expect(archiveDecision(input)).toMatchObject({ shouldArchive: true, autonomous: false });
+    // An explicit sender rule is the person's authority, independent of the model.
+    expect(archiveDecision({ ...input, alwaysArchive: ['attacker@bad.test'] })).toMatchObject({ shouldArchive: true, autonomous: true });
+  });
 });

@@ -96,10 +96,14 @@ import { handleWebMessage, type SettingsSync, type WebBridgeDeps } from './web-b
 import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, isGmailContentScript, senderMaySend } from './messaging';
 import { readSnippets, writeSnippets } from './snippets';
+import { credentialSafePatch } from './settings-credentials';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
 import { CLOUD_DASHBOARD_URL, DEV_BUILD, EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl, cloudTrackerUrls, trackerIssuer, usesHostedTracker } from '../config';
 import { gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './tracking/notifications';
 
+// Install the storage boundary before any settings or credentials are read.
+const storageReady = hardenExtensionStorage();
+void storageReady.catch(() => undefined); // Callers handle initialization failure.
 const db = getMailboxDb();
 const importance = createImportanceRanker(db);
 const queue = new AIJobQueue();
@@ -123,6 +127,7 @@ const workerTabs = new WorkerTabController({
 });
 
 async function loadSettings(): Promise<ExtensionSettings> {
+  await storageReady;
   const stored = await chrome.storage.local.get('settings');
   settings = migrateSettings(stored.settings);
   if ((stored.settings as { settingsVersion?: number } | undefined)?.settingsVersion !== settings.settingsVersion) {
@@ -186,6 +191,7 @@ async function applyBundledTracker(): Promise<void> {
 }
 
 async function saveSettings(partial: Partial<ExtensionSettings>): Promise<ExtensionSettings> {
+  await storageReady;
   // Run mode changes only through SET_RUN_MODE, which records consent.
   const rest = { ...partial };
   delete rest.runMode;
@@ -194,7 +200,7 @@ async function saveSettings(partial: Partial<ExtensionSettings>): Promise<Extens
   const previousAutomaticUpdateChecks = settings.automaticUpdateChecks;
   const previousHosted = usesHostedTracker(settings);
   if (rest.cloudApiUrl !== undefined && rest.cloudApiUrl !== settings.cloudApiUrl) forgetThreadIntel();
-  settings = migrateSettings({ ...settings, ...rest });
+  settings = migrateSettings({ ...settings, ...credentialSafePatch(settings, rest) });
   await chrome.storage.local.set({ settings });
   if (settings.automaticUpdateChecks !== previousAutomaticUpdateChecks) {
     configureReleaseCheckAlarm(await releaseChecksWanted());
@@ -1144,7 +1150,10 @@ async function workspaceContext(senderTab?: chrome.tabs.Tab): Promise<{ context:
 }
 
 // Streamed Ask Pigeon from extension pages (the side panel).
-chrome.runtime.onConnect.addListener((port) => serveAskStream(port, async () => (settings.runMode === 'cloud' ? getCloudClient(settings) : null)));
+chrome.runtime.onConnect.addListener((port) => serveAskStream(port, async () => {
+  await loadSettings();
+  return settings.runMode === 'cloud' ? getCloudClient(settings) : null;
+}));
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (
@@ -2633,7 +2642,7 @@ setChatGptSignedInHandler(async () => {
 // Experimental ChatGPT web sign-in is inert in release builds.
 if (EXPERIMENTAL_FEATURES) installChatGptLoginListeners();
 
-void hardenExtensionStorage()
+void storageReady
   .then(() => loadSettings())
   .then(async () => {
     rebuildAgent();

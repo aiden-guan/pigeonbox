@@ -120,11 +120,8 @@ export async function hardenExtensionStorage(): Promise<void> {
     chrome.storage.StorageArea & { setAccessLevel?: (options: { accessLevel: string }) => Promise<void> }
   >;
   for (const area of areas) {
-    try {
-      await area.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' });
-    } catch {
-      /* Older Chrome without setAccessLevel keeps its default. */
-    }
+    if (!area?.setAccessLevel) throw new Error('Trusted extension storage is unavailable.');
+    await area.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
   }
 }
 
