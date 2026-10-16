@@ -82,7 +82,7 @@ export type WebBridgeDeps = {
   agentRules: () => Promise<string[]>;
   saveAgentRules: (lines: string[]) => Promise<void>;
   action: (name: string) => Promise<unknown>;
-  /** Content-free product counters kept on this computer (off by default). */
+  /** Content-free usage events (on by default; off stops sending and clears the install ID and counters). */
   analytics: { get: () => Promise<boolean>; set: (enabled: boolean) => Promise<void> };
   hasOrigins: (origins: string[]) => Promise<boolean>;
   /** The tab showing the dashboard, so Settings reuses it; null when the page goes away. */

@@ -5,7 +5,7 @@ import { prefersReducedMotion } from '../ui/motion';
 import { Fragment, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { DEFAULT_SETTINGS, type ExtensionSettings, type ThreadCategory, type VoiceProfile } from '@pigeonbox/shared';
 import { useProductState } from '../ui/product-state';
-import { trackProductEvent } from '../ui/analytics';
+import { analyticsEnabled, setAnalyticsEnabled, trackProductEvent } from '../ui/analytics';
 import { InboxStage, type StagePhase } from './InboxStage';
 import { ThemeIntro, type Mode } from './ThemeIntro';
 import type { Focus } from './inbox';
@@ -48,7 +48,11 @@ export function OnboardingApp() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => { trackProductEvent('onboarding_started', { surface: 'onboarding' }); }, []);
+  const [shareUsage, setShareUsage] = useState(true);
+  useEffect(() => {
+    trackProductEvent('onboarding_started', { surface: 'onboarding' });
+    void chrome.storage?.local?.get('productAnalyticsEnabled').then((stored) => setShareUsage(analyticsEnabled(stored))).catch(() => undefined);
+  }, []);
 
   const steps: StepId[] = [
     'features',
@@ -273,6 +277,10 @@ export function OnboardingApp() {
                 <div className="ob-done-pidgy ob-rise" style={{ '--i': 2 } as CSSProperties}><span className="ob-ring" /><Pigeon state={busy ? 'working' : error ? 'attention' : 'success'} size={44} /></div>
                 <Actions index={4 + enabled.length} primary={busy ? 'Saving…' : path === 'cloud' ? 'Continue Cloud setup' : 'Open Gmail'} disabled={busy} onPrimary={() => void finish()} />
                 {error ? <p className="ob-error" role="alert">{error}</p> : null}
+                <label className="ob-usage">
+                  <input type="checkbox" checked={shareUsage} onChange={(event) => { setShareUsage(event.target.checked); void setAnalyticsEnabled(event.target.checked); }} />
+                  <span>Share anonymous usage events, like “footer kept” or “first tracked email”, with a random install ID. Never mail, subjects, addresses or searches. Change it any time in Settings → Privacy &amp; data.</span>
+                </label>
               </StepFrame>
             ) : null}
           </Swap>

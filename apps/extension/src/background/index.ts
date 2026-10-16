@@ -2,7 +2,7 @@ import { readWorkspace, updateWorkspace, showWorkspace, installWorkspaceToolbar 
 import type { WorkspaceContext } from '../workspace/context';
 import { MailboxIdentities, visibleSummaryForOwner, withSelfAliases } from './mailbox-identity';
 import { tagAuthors, type MailboxIdentity } from '@pigeonbox/shared';
-import { recordProductEvent } from '../ui/analytics';
+import { analyticsEnabled, cloudEventsProvider, configureAnalytics, noteActiveDay, recordProductEvent, setAnalyticsEnabled } from '../ui/analytics';
 function isWorkerEvictionError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
   return msg.includes('No SW') || msg.includes('No RPH') || msg.includes('Extension context invalidated');
@@ -106,6 +106,8 @@ const queue = new AIJobQueue();
 const ingestor = new MailboxIngestor(db);
 const lexical = new LexicalSearchIndex();
 let settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
+// Content-free product events go to PigeonBox Cloud only (docs/product-analytics.md); Cloud forwards them to PostHog.
+configureAnalytics(cloudEventsProvider({ baseUrl: () => cloudApiUrl(settings) }));
 let agent: AgentLoop | null = null;
 let indexRunner: IndexJobRunner | null = null;
 const notificationHistory = new TrackingNotificationHistory(chrome.storage.local);
@@ -1009,6 +1011,7 @@ async function pollTrackingNow(): Promise<void> {
   const settledEvents = attribution.events(issuer, events).filter((event) => attribution.publishable(issuer, event.tracking_id, revisions.get(event.tracking_id) || 0));
   const scope = await notificationScope(target.baseUrl);
   newEvents = await notificationHistory.claim(scope, settledEvents);
+  if (newEvents.some((event) => event.type === 'OPEN')) void recordProductEvent('first_open_received', { surface: 'gmail' });
   await navigationAttribution;
   await claimAttribution;
   const held = newEvents.filter((event) => !attribution.publishable(issuer, event.tracking_id, revisions.get(event.tracking_id) || 0));
@@ -1059,6 +1062,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     void checkLatestRelease().catch(() => undefined);
   }
   if (details.reason === 'install') {
+    void recordProductEvent('extension_installed', {});
     const stored = await chrome.storage.local.get('onboardingComplete');
     if (!stored.onboardingComplete) {
       await chrome.tabs.create({ url: chrome.runtime.getURL('onboarding.html') });
@@ -1072,6 +1076,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 chrome.runtime.onStartup.addListener(async () => {
   await loadSettings();
+  void noteActiveDay();
   void pollTracking().catch(() => undefined);
   const checkReleases = await releaseChecksWanted();
   configureReleaseCheckAlarm(checkReleases);
@@ -1089,7 +1094,10 @@ chrome.runtime.onStartup.addListener(async () => {
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   await loadSettings();
-  if (alarm.name === 'tracking_poll') await pollTracking();
+  if (alarm.name === 'tracking_poll') {
+    void noteActiveDay();
+    await pollTracking();
+  }
   if (alarm.name === NOTIFICATION_ALARM) await pollCloudNotifications();
   if (alarm.name === RELEASE_CHECK_ALARM && (await releaseChecksWanted())) {
     await checkLatestRelease().catch(() => undefined);
@@ -1521,6 +1529,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             ),
           );
           sendResponse({ ok: true, ...created });
+          void recordProductEvent('first_tracked_email_created', { surface: 'gmail' });
         } catch (e) {
           // Sending continues without tracking; the compose control shows it as unavailable.
           sendResponse({ error: e instanceof Error ? e.message : 'tracking_create_failed' });
@@ -2513,11 +2522,8 @@ const webBridge: WebBridgeDeps = {
     }
   },
   analytics: {
-    get: async () => (await chrome.storage.local.get('productAnalyticsEnabled')).productAnalyticsEnabled === true,
-    set: async (enabled) => {
-      await chrome.storage.local.set({ productAnalyticsEnabled: enabled });
-      if (!enabled) await chrome.storage.local.remove('productEventCounts');
-    },
+    get: async () => analyticsEnabled(await chrome.storage.local.get('productAnalyticsEnabled')),
+    set: setAnalyticsEnabled,
   },
   hasOrigins: (origins) => chrome.permissions.contains({ origins }).catch(() => false),
   noteDashboardTab: async (tabId) => {

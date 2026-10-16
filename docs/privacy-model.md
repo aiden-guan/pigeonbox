@@ -38,7 +38,7 @@ With a connection, PigeonBox Cloud:
 - never sends email or invitations without the person approving that exact message in the approval queue;
 - treats email content as untrusted data: instructions inside an email are flagged and not followed, and drafts are checked so unsupported facts become placeholders.
 
-The extension only shows this state. In Cloud mode with a connection, the background worker fetches thread intelligence for the thread card; Gmail's content script can request that read-only view and nothing else. Approving, connecting and every other Cloud action happen in extension pages or the web app. Local mode never contacts PigeonBox Cloud, not even with thread IDs.
+The extension only shows this state. In Cloud mode with a connection, the background worker fetches thread intelligence for the thread card; Gmail's content script can request that read-only view and nothing else. Approving, connecting and every other Cloud action happen in extension pages or the web app. Local mode never contacts PigeonBox Cloud for mail or thread data, not even thread IDs. The only Local-mode request to Cloud is anonymous usage events (`/v1/events`, on by default with an off switch; see [product analytics](product-analytics.md)).
 
 Everything synced can be deleted from the web app (Privacy & data), per account by disconnecting, or entirely by deleting the Cloud account.
 

@@ -21,7 +21,7 @@ AI inbox intelligence and email open tracking for Gmail. Local by default, with 
 PigeonBox is a quieter, smarter Gmail. It sorts your inbox, summarizes threads, drafts replies in your voice, and answers questions about your mail. By default all of it runs on your computer.
 
 ON YOUR COMPUTER BY DEFAULT
-In Local mode, PigeonBox reads the Gmail page you already have open. It does not use the Gmail API, does not ask for access to your Google account, and keeps its mail index in your browser. No PigeonBox account is required. Optional feature-use counters stay on your computer; there is no telemetry.
+In Local mode, PigeonBox reads the Gmail page you already have open. It does not use the Gmail API, does not ask for access to your Google account, and keeps its mail index in your browser. No PigeonBox account is required. Anonymous usage events (feature names with a random install ID, never mail) are on by default and can be turned off in Settings → Privacy & data.
 
 WHAT IT DOES
 • Sorts threads into Respond, Waiting, FYI and Notifications. The rules work even with AI turned off.
@@ -96,7 +96,7 @@ PigeonBox helps people manage their Gmail inbox: it sorts and summarizes mail, d
 - **Authentication information**: Cloud session tokens used only after optional account sign-in.
 - **Website content**: the Gmail page PigeonBox reads.
 
-Leave the others unchecked. Optional feature-use counters remain local. PigeonBox reads no location, browsing history or payment data. The separate website waitlist collects an email address, signup source and signup time; it does not collect mail or connect a Google account.
+Leave the others unchecked. Anonymous usage events (feature names, fixed labels, version and a random install ID; no mail, addresses, URLs or account) go to PigeonBox Cloud and PostHog for product analytics; they are on by default with an off switch, are not personally identifiable, and are disclosed in the privacy policy (docs/product-analytics.md). Check **User activity** if the dashboard asks about feature-use interactions. PigeonBox reads no location, browsing history or payment data. The separate website waitlist collects an email address, signup source and signup time; it does not collect mail or connect a Google account.
 
 **Certify all three:**
 

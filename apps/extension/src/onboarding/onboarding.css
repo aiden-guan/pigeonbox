@@ -343,6 +343,8 @@
 .ob-step { position: relative; }
 .ob-ring { position: absolute; inset: 4px; border: 2px solid var(--pb-accent); border-radius: 50%; opacity: 0; animation: ob-ring 1.6s var(--ob-ease-out) .5s 2; }
 .ob-error { margin: 10px 0 0; font-size: 13px; color: var(--pb-error); }
+.ob-usage { display: flex; gap: 8px; align-items: flex-start; margin: 14px 0 0; font-size: 12px; line-height: 1.45; color: var(--pb-fg-secondary); cursor: pointer; }
+.ob-usage input { margin-top: 2px; flex: none; accent-color: var(--pb-accent, currentColor); }
 
 /* ---------- Narrow windows: board behind, panel as a sheet ---------- */
 @media (max-width: 1039px) {
