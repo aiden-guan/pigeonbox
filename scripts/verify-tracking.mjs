@@ -7,6 +7,7 @@
  * This does not call Gmail or the tracker. It only reads the file you pass.
  */
 import { readFileSync } from 'node:fs';
+import { inspectTrackingMime } from './lib/tracking-mime.mjs';
 
 const file = process.argv[2];
 if (!file) {
@@ -14,17 +15,14 @@ if (!file) {
   process.exit(2);
 }
 
-const raw = readFileSync(file, 'utf8');
-const pixels = [...raw.matchAll(/<img\b[^>]*\bsrc=["']([^"']*\/open\/(trk_[A-Za-z0-9_-]+))/gi)];
-const links = [...raw.matchAll(/href=["'][^"']*\/c\/(clk_[A-Za-z0-9_-]+)/gi)];
-const ids = [...new Set(pixels.map((match) => match[2]).filter(Boolean))];
+const { pixelCount, trackedLinks, trackingIds } = inspectTrackingMime(readFileSync(file));
 
-if (!pixels.length) {
+if (!pixelCount) {
   console.log('Tracking pixel found: NO');
   process.exitCode = 1;
 } else {
   console.log('Tracking pixel found: YES');
-  console.log(`Tracking ID: ${ids.join(', ')}`);
-  console.log(`Pixel count: ${pixels.length}`);
-  console.log(`Tracked links: ${links.length}`);
+  console.log(`Tracking ID: ${trackingIds.join(', ')}`);
+  console.log(`Pixel count: ${pixelCount}`);
+  console.log(`Tracked links: ${trackedLinks}`);
 }
