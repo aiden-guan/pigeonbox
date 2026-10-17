@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.8.2] — 2026-10-16
+
+### Changed
+- Track PDF inserts a compact PDF card with the filename and file size, preserving the selected composer and its existing text.
+- Shared PDFs open directly into a familiar document viewer with page navigation, zoom, download, and access to the browser's native PDF viewer for printing. Document activity details live behind the information control.
+- Background tabs wait until activated before opening a PDF. Failed loads can retry, and queued activity delivery does not delay the document.
+
+---
+
 ## [0.8.1] — 2026-10-16
 
 ### Fixed

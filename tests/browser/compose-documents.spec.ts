@@ -8,11 +8,14 @@ test('a PDF is uploaded and inserted directly in its composer, then PDF activity
   await expect(dialog).toContainText('paperclip do not report opens');
   await dialog.getByLabel('Choose PDF to track').setInputFiles({ name: 'Proposal.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture') });
   await expect(dialog.getByRole('status')).toContainText('Tracked PDF added');
-  await expect(page.locator('#compose a')).toHaveText('Proposal.pdf');
+  await expect(page.locator('#compose a')).toContainText('Proposal.pdf');
+  await expect(page.locator('#compose a')).toContainText('PDF · 1 KB');
+  await expect(page.locator('#compose img')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.screenshot({ path: info.outputPath('pdf-card-in-compose.png') });
   await expect(page.locator('#compose a')).toHaveAttribute('href', `${app.api.baseUrl}/d/${'a'.repeat(32)}`);
   expect(app.api.calls.filter(call => call.route === '/v1/documents/links/associate')).toHaveLength(0);
   expect(app.api.calls.find(call => call.route === '/v1/documents/links/create')?.body).toMatchObject({ allowDownload: true, watermark: false });
-  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('button', { name: 'Simulate Gmail send' }).click();
   await expect.poll(() => app.api.calls.filter(call => call.route === '/v1/documents/links/associate').length).toBe(1);
   expect(app.api.calls.find(call => call.route === '/v1/documents/links/associate')?.body.threadId).toBe('abc123');

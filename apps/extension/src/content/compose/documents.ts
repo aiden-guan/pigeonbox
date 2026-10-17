@@ -2,7 +2,7 @@ import type { SdkComposeView } from '../tracking/compose-tracking';
 import { ensureSurface } from '../shell/surface';
 import { normalizeGmailId } from '@pigeonbox/tracking';
 
-type View = SdkComposeView & { insertLinkIntoBodyAtCursor?: (text: string, url: string) => void };
+type View = SdkComposeView & { insertHTMLIntoBodyAtCursor?: (html: string) => unknown };
 const views = new Map<string, View>();
 const attached = new WeakSet<object>();
 const actions = new WeakMap<object, { available: () => boolean; open: () => void }>();
@@ -56,7 +56,7 @@ export function attachDocumentAction(view: View, available: () => boolean) {
     picker.setAttribute('aria-label', 'Track PDF');
     picker.setAttribute('data-gi-ui', 'document-picker');
     const heading = Object.assign(document.createElement('h2'), { textContent: 'Track a PDF' });
-    const description = Object.assign(document.createElement('p'), { textContent: 'Choose a PDF to upload privately to PigeonBox Pro and add as a link in this email. See when the PDF is opened or downloaded beside your email’s tracking status.' });
+    const description = Object.assign(document.createElement('p'), { textContent: 'Add a PDF card to this email. Recipients click it to open the document directly. See PDF activity beside your email’s tracking status.' });
     const hint = Object.assign(document.createElement('p'), { className: 'gi-document-hint', textContent: 'Up to 20 MB. Anyone with the link can view and download it. PDFs attached with Gmail’s paperclip do not report opens.' });
     const input = document.createElement('input');
     input.type = 'file'; input.accept = 'application/pdf,.pdf'; input.setAttribute('aria-label', 'Choose PDF to track');
@@ -82,7 +82,7 @@ export function attachDocumentAction(view: View, available: () => boolean) {
           if (!views.has(id)) return;
           const result = await request({ type: 'CLOUD_COMPOSE_DOCUMENT', filename: file.name, bytes: encode(bytes) });
           if (!result.ok || !result.link) throw new Error(result.reason || 'PDF upload failed. Try again.');
-          const inserted = insertDocumentLink({ composeId: id, url: result.link.url, title: file.name });
+          const inserted = insertDocumentLink({ composeId: id, url: result.link.url, title: file.name, sizeBytes: file.size });
           if (!inserted.ok) throw new Error(inserted.reason);
           status.textContent = 'Tracked PDF added to this email. Review it before sending.';
           input.hidden = true; close.textContent = 'Done';
@@ -109,7 +109,7 @@ function request(message: Record<string, unknown>): Promise<{ ok?: boolean; reas
   }));
 }
 
-export function insertDocumentLink(message: { composeId?: unknown; url?: unknown; title?: unknown }): {
+export function insertDocumentLink(message: { composeId?: unknown; url?: unknown; title?: unknown; sizeBytes?: unknown }): {
   ok: boolean;
   reason?: string;
 } {
@@ -122,15 +122,31 @@ export function insertDocumentLink(message: { composeId?: unknown; url?: unknown
       return { ok: false, reason: 'This document link is invalid.' };
     if (url.username || url.password || url.search || url.hash || !/^\/d\/[A-Za-z0-9_-]{16,200}$/.test(url.pathname))
       return { ok: false, reason: 'This document link is invalid.' };
-    const title = typeof message.title === 'string' ? message.title.slice(0, 300) : 'Document';
-    if (view.insertLinkIntoBodyAtCursor) view.insertLinkIntoBodyAtCursor(title, url.href);
+    const body = view.getBodyElement?.();
+    if (!body?.isConnected) return { ok: false, reason: 'Open the selected composer and try again.' };
+    const title = typeof message.title === 'string' && message.title.trim() ? message.title.slice(0, 300) : 'Document.pdf';
+    const card = document.createElement('div');
+    card.style.cssText = 'margin:16px 0;max-width:360px';
+    const anchor = document.createElement('a');
+    anchor.href = url.href; anchor.target = '_blank'; anchor.rel = 'noopener noreferrer';
+    anchor.style.cssText = 'display:block;padding:14px 16px;border:1px solid #dadce0;border-radius:8px;background:#fff;color:#202124;text-decoration:none;font:14px/1.4 Arial,sans-serif';
+    const layout = document.createElement('span'); layout.style.cssText = 'display:table;width:100%;table-layout:fixed';
+    const icon = document.createElement('span');
+    icon.textContent = 'PDF'; icon.style.cssText = 'display:table-cell;width:48px;vertical-align:middle;color:#c5221f;font-size:11px;font-weight:bold';
+    const text = document.createElement('span'); text.style.cssText = 'display:table-cell;vertical-align:middle;overflow-wrap:anywhere;word-break:break-word';
+    const filename = document.createElement('span'); filename.textContent = title; filename.style.cssText = 'display:block;font-weight:500';
+    const meta = document.createElement('span');
+    const size = typeof message.sizeBytes === 'number' && Number.isFinite(message.sizeBytes) && message.sizeBytes > 0 && message.sizeBytes <= 20_000_000 ? message.sizeBytes : null;
+    meta.textContent = size ? `PDF · ${size < 1_000_000 ? `${Math.max(1, Math.round(size / 1000))} KB` : `${(size / 1_000_000).toFixed(1)} MB`}` : 'PDF · Open document';
+    meta.style.cssText = 'display:block;margin-top:3px;color:#5f6368;font-size:12px';
+    text.append(filename, meta); layout.append(icon, text); anchor.append(layout); card.append(anchor);
+    if (view.insertHTMLIntoBodyAtCursor) view.insertHTMLIntoBodyAtCursor(`<br>${card.outerHTML}<br>`);
     else {
-      const body = view.getBodyElement?.();
-      if (!body?.isConnected) return { ok: false, reason: 'Open the selected composer and try again.' };
-      const anchor = document.createElement('a');
-      anchor.textContent = title;
-      anchor.href = url.href;
-      body.append(document.createElement('br'), anchor);
+      // Insert before quoted history when no SDK cursor insertion is available.
+      // Existing text and signatures remain in place; a card always has its own block.
+      const quote = body.querySelector('.gmail_quote, blockquote');
+      const before = quote ? [...body.children].find(child => child === quote || child.contains(quote)) ?? null : null;
+      body.insertBefore(card, before);
       body.dispatchEvent(new Event('input', { bubbles: true }));
     }
     return { ok: true };

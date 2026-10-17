@@ -60,6 +60,35 @@ it('adds no Gmail toolbar icon; Track PDF lives in the tracking menu', () => {
   expect(addButton).not.toHaveBeenCalled();
   expect(documentActionForCompose(body)).toBeTypeOf('function');
 });
+it('inserts a self-contained card through the SDK with escaped filenames and no remote images', () => {
+  const sendMessage = vi.fn();
+  vi.stubGlobal('chrome', { runtime: { getURL: (path: string) => path, sendMessage } });
+  const body = document.createElement('div'); document.body.append(body);
+  const insertHTMLIntoBodyAtCursor = vi.fn((html: string) => { body.innerHTML = html; });
+  attachDocumentAction({ getBodyElement: () => body, insertHTMLIntoBodyAtCursor }, () => true);
+  documentActionForCompose(body)!();
+  [...document.querySelectorAll<HTMLButtonElement>('dialog button')].find(button => button.textContent === 'More options')!.click();
+  const composeId = sendMessage.mock.calls[0][0].composeId;
+  const title = 'Budget <img src=x onerror=alert(1)> & "roadmap".pdf';
+  expect(insertDocumentLink({ composeId, url: 'https://cloud.test/d/' + 'b'.repeat(32), title, sizeBytes: 1_500_000 })).toEqual({ ok: true });
+  expect(insertHTMLIntoBodyAtCursor).toHaveBeenCalledOnce();
+  expect(body.querySelector('a')?.textContent).toContain(title);
+  expect(body.querySelector('a')?.textContent).toContain('PDF · 1.5 MB');
+  expect(body.querySelectorAll('a')).toHaveLength(1);
+  expect(body.querySelector('img,script,iframe')).toBeNull();
+});
+it('keeps fallback cards separate from the signature and before quoted history', () => {
+  const sendMessage = vi.fn();
+  vi.stubGlobal('chrome', { runtime: { getURL: (path: string) => path, sendMessage } });
+  const body = document.createElement('div'); body.innerHTML = '<p>Hello</p><div class="gmail_signature">Best,<br>Aiden</div><div class="gmail_quote">Older message</div>'; document.body.append(body);
+  attachDocumentAction({ getBodyElement: () => body }, () => true); documentActionForCompose(body)!();
+  [...document.querySelectorAll<HTMLButtonElement>('dialog button')].find(button => button.textContent === 'More options')!.click();
+  const composeId = sendMessage.mock.calls[0][0].composeId;
+  insertDocumentLink({ composeId, url: 'https://cloud.test/d/' + 'b'.repeat(32), title: 'Proposal.pdf' });
+  expect(body.children[1].className).toBe('gmail_signature');
+  expect(body.children[2].querySelector('a')?.textContent).toContain('Proposal.pdf');
+  expect(body.children[3].className).toBe('gmail_quote');
+});
 it('rejects unsafe schemes, credentials, query strings and unrecognized compose targets', () => {
   expect(insertDocumentLink({ composeId: 'unknown', url: 'javascript:alert(1)' }).ok).toBe(false);
 });
@@ -83,7 +112,8 @@ it('uploads and inserts in the invoking composer, blocks a send in flight, and a
   const cancel = vi.fn(); events.get('presending')!({ cancel }); expect(cancel).toHaveBeenCalledOnce();
   expect(body.querySelector('a')).toBeNull();
   finishUpload({ ok: true, link: { id: 'link-id', url: 'https://cloud.test/d/' + 'a'.repeat(32) } });
-  await vi.waitFor(() => expect(body.querySelector('a')?.textContent).toBe('Proposal.pdf'));
+  await vi.waitFor(() => expect(body.querySelector('a')?.textContent).toContain('Proposal.pdf'));
+  expect(body.querySelector('a')?.textContent).toContain('PDF · 1 KB');
   expect(document.querySelector('[role="status"]')?.textContent).toContain('Tracked PDF added');
   expect(send).not.toHaveBeenCalled();
   expect(sendMessage.mock.calls.some(([message]) => message.type === 'CLOUD_COMPOSE_DOCUMENT_SENT')).toBe(false);
