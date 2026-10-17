@@ -118,9 +118,9 @@ test('settled signatures leave Gmail idle and keep composing and resizing respon
   const shell = host.locator('.gi-shell');
   const frame = gmail.frameLocator('iframe[title="PigeonBox"]');
   await expect(frame.getByRole('navigation', { name:'Workspace' })).toBeVisible();
-  await gmail.waitForTimeout(900);
-  const idleAnimations = await frame.locator('body').evaluate(() => document.getAnimations().filter((animation) => animation.playState === 'running').length);
-  expect(idleAnimations).toBe(0);
+  const runningAnimations = () => frame.locator('body').evaluate(() => document.getAnimations().filter((animation) => animation.playState === 'running').length);
+  await expect.poll(runningAnimations).toBe(0);
+  const idleAnimations = await runningAnimations();
   const profile = await app.context.newCDPSession(gmail);
   await profile.send('Performance.enable');
   const snapshot = async () => Object.fromEntries((await profile.send('Performance.getMetrics')).metrics.map((metric) => [metric.name, metric.value]));
