@@ -102,7 +102,7 @@ import { readSnippets, writeSnippets } from './snippets';
 import { credentialSafePatch } from './settings-credentials';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
 import { CLOUD_DASHBOARD_URL, DEV_BUILD, EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl, cloudTrackerUrls, trackerIssuer, usesHostedTracker } from '../config';
-import { gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './tracking/notifications';
+import { type AlertPlan, ConversationAlerts, gmailThreadHex, gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './tracking/notifications';
 
 // Install the storage boundary before any settings or credentials are read.
 const storageReady = hardenExtensionStorage();
@@ -118,6 +118,7 @@ configureAnalytics(cloudEventsProvider({ baseUrl: () => cloudApiUrl(settings) })
 let agent: AgentLoop | null = null;
 let indexRunner: IndexJobRunner | null = null;
 const notificationHistory = new TrackingNotificationHistory(chrome.storage.local);
+const conversationAlerts = new ConversationAlerts(chrome.storage.session);
 const trackingCatchup = new TrackingCatchup(chrome.storage.local);
 /** Newest tracked emails fetched from the tracker per poll; older ones stay in the local cache. */
 const TRACKED_LIST_LIMIT = 200;
@@ -1080,17 +1081,37 @@ async function pollTrackingNow(): Promise<void> {
   if (!settings.desktopNotifications) { await acknowledge(); return; }
   try {
     const fresh = [...byId.values()];
-    for (const alert of groupTrackingAlerts(newEvents)) {
+    const threadSize = new Map<string, number>();
+    for (const item of fresh) {
+      const hex = gmailThreadHex(item.gmailThreadId);
+      if (hex) threadSize.set(hex, (threadSize.get(hex) || 0) + 1);
+    }
+    // Opening a conversation fires every tracked message in it: one alert per conversation.
+    // Held events were released above; they must not join a conversation alert either.
+    const settled = newEvents.filter((event) => attribution.publishable(issuer, event.tracking_id, revisions.get(event.tracking_id) || 0));
+    for (const alert of groupTrackingAlerts(settled, (id) => byId.get(id)?.gmailThreadId)) {
       if (!await scopeIsCurrent()) return;
       if (!attribution.publishable(issuer, alert.event.tracking_id, revisions.get(alert.event.tracking_id) || 0)) continue;
       const email = fresh.find((item) => item.trackingId === alert.event.tracking_id);
-      const { title, message } = describeTrackingNotification(alert.event, email, alert.count);
-      await Promise.resolve(chrome.notifications.create(trackingNotificationId(alert.event), {
+      const hex = gmailThreadHex(email?.gmailThreadId);
+      const conversation = alert.emails > 1 || (hex ? (threadSize.get(hex) || 0) > 1 : false);
+      const plan = await conversationAlerts.plan(scope, alert).catch((): AlertPlan => ({ action: 'show', count: alert.count, render: alert.render }));
+      if (plan.action === 'skip') continue;
+      const { title, message } = describeTrackingNotification(alert.event, email, plan.count, { conversation });
+      if (plan.action === 'merge') {
+        // The rest of an opening the last poll already alerted: refresh that alert quietly.
+        await Promise.resolve(chrome.notifications.update(plan.id, { title, message, silent: true })).catch(() => false);
+        await conversationAlerts.record(scope, alert, plan.id, plan).catch(() => undefined);
+        continue;
+      }
+      const id = trackingNotificationId(alert.event);
+      await Promise.resolve(chrome.notifications.create(id, {
         type: 'basic',
         iconUrl: chrome.runtime.getURL('icons/icon128.png'),
         title,
         message,
       }));
+      await conversationAlerts.record(scope, alert, id, plan).catch(() => undefined);
     }
     await acknowledge();
   } catch (e) {

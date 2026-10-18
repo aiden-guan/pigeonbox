@@ -65,28 +65,150 @@ export class TrackingNotificationHistory {
 const SAME_RENDER_MS = 800;
 
 /**
- * One desktop alert per email and kind (open or click) per poll, counting
- * distinct detections. Self, machine and unknown fetches never alert; see
- * `isNotifiableTrackingEvent`.
+ * Opening a Gmail conversation renders every tracked message in it, so each
+ * pixel fires within moments of the others. Detections in one conversation
+ * this close together, each one chained to the last, are one opening.
  */
-export function groupTrackingAlerts(events: TrackingEvent[]): Array<{ event: TrackingEvent; count: number }> {
-  const groups = new Map<string, { event: TrackingEvent; count: number; lastMs: number }>();
+export const CONVERSATION_RENDER_MS = 60_000;
+
+export type TrackingAlert = {
+  /** The newest detection, which names the email in the alert. */
+  event: TrackingEvent;
+  /** Distinct openings (or clicks) of the conversation. */
+  count: number;
+  /** Conversation, or the single email when its thread is unknown. */
+  key: string;
+  /** How many tracked emails in the conversation were detected. */
+  emails: number;
+  /** The oldest detection, which may continue an opening a previous poll alerted. */
+  first: TrackingEvent;
+  firstMs: number;
+  lastMs: number;
+  /** When each email was last detected in the latest opening. */
+  render: Record<string, number>;
+};
+
+/**
+ * One desktop alert per conversation and kind (open or click) per poll,
+ * counting distinct openings rather than one per tracked email. Self, machine
+ * and unknown fetches never alert; see `isNotifiableTrackingEvent`.
+ */
+export function groupTrackingAlerts(
+  events: TrackingEvent[],
+  threadOf: (trackingId: string) => string | null | undefined = () => null,
+): TrackingAlert[] {
+  type Group = TrackingAlert & { ids: Set<string> };
+  const groups = new Map<string, Group>();
   const ordered = [...events].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   for (const event of ordered) {
     if (!isNotifiableTrackingEvent(event)) continue;
-    const key = `${event.tracking_id}:${event.type}`;
+    const key = `${conversationKey(event.tracking_id, threadOf(event.tracking_id))}:${event.type}`;
     const ms = Date.parse(event.timestamp);
     const current = groups.get(key);
     if (!current) {
-      groups.set(key, { event, count: 1, lastMs: ms });
+      groups.set(key, { event, count: 1, key, emails: 1, first: event, firstMs: ms, lastMs: ms, ids: new Set([event.tracking_id]), render: { [event.tracking_id]: ms } });
       continue;
     }
     current.event = event;
-    if (event.type === 'OPEN' && Number.isFinite(ms) && ms - current.lastMs < SAME_RENDER_MS) continue;
-    current.count += 1;
+    current.ids.add(event.tracking_id);
+    current.emails = current.ids.size;
+    if (sameRender(current.render, current.lastMs, event, ms)) {
+      current.render[event.tracking_id] = ms;
+    } else {
+      current.count += 1;
+      current.render = { [event.tracking_id]: ms };
+    }
     current.lastMs = ms;
   }
-  return [...groups.values()].map(({ event, count }) => ({ event, count }));
+  return [...groups.values()].map(({ ids: _ids, ...alert }) => alert);
+}
+
+/**
+ * Whether a detection belongs to the opening already under way: another email
+ * of the conversation arriving soon after, or a proxy refetch of the same one.
+ * Clicks are deliberate, so every click counts.
+ */
+function sameRender(render: Record<string, number>, lastMs: number, event: TrackingEvent, ms: number): boolean {
+  if (event.type !== 'OPEN' || !Number.isFinite(ms) || !Number.isFinite(lastMs)) return false;
+  if (ms - lastMs >= CONVERSATION_RENDER_MS) return false;
+  const seen = render[event.tracking_id];
+  return seen === undefined || ms - seen < SAME_RENDER_MS;
+}
+
+/** Gmail's hex thread ID; InboxSDK can report the decimal `thread-f:` form. */
+export function gmailThreadHex(threadId: string | null | undefined): string | null {
+  const raw = (threadId || '').trim().replace(/^#/, '').replace(/^thread-[af]:/i, '');
+  if (/^[0-9a-f]{12,16}$/i.test(raw) && !/^\d{17,}$/.test(raw)) return raw.toLowerCase();
+  if (/^\d{17,20}$/.test(raw)) return BigInt(raw).toString(16);
+  return null;
+}
+
+function conversationKey(trackingId: string, threadId: string | null | undefined): string {
+  const hex = gmailThreadHex(threadId);
+  return hex ? `thread:${hex}` : `email:${trackingId}`;
+}
+
+const SHOWN_KEY = 'trackingAlertsShown';
+const MAX_SHOWN = 100;
+
+export type AlertPlan =
+  | { action: 'show'; count: number; render: Record<string, number> }
+  | { action: 'merge'; id: string; count: number; render: Record<string, number> }
+  | { action: 'skip' };
+
+type Shown = Record<string, { id: string; count: number; lastMs: number; render: Record<string, number> }>;
+
+/**
+ * Remembers the alert last shown for each conversation, so an opening whose
+ * pixels land on both sides of a poll updates that alert instead of raising a
+ * second one. Session storage: a browser restart starts afresh.
+ */
+export class ConversationAlerts {
+  private pending: Promise<unknown> = Promise.resolve();
+
+  constructor(private readonly storage: StorageArea) {}
+
+  /**
+   * `show` raises a new alert; `merge` quietly updates the shown one with the
+   * combined count; `skip` means this alert was already shown (a replay).
+   */
+  plan(scope: string, alert: TrackingAlert): Promise<AlertPlan> {
+    const next = this.pending.then(async (): Promise<AlertPlan> => {
+      const prior = (await this.read())[`${scope}\n${alert.key}`];
+      const fresh: AlertPlan = { action: 'show', count: alert.count, render: alert.render };
+      if (!prior || !Number.isFinite(alert.firstMs)) return fresh;
+      if (alert.lastMs <= prior.lastMs) return { action: 'skip' };
+      if (alert.firstMs - prior.lastMs >= CONVERSATION_RENDER_MS) return fresh;
+      // The first detection here may continue the opening the shown alert already counted.
+      const continues = sameRender(prior.render ?? {}, prior.lastMs, alert.first, alert.firstMs);
+      return {
+        action: 'merge',
+        id: prior.id,
+        count: prior.count + alert.count - (continues ? 1 : 0),
+        render: continues && alert.count === 1 ? { ...prior.render, ...alert.render } : alert.render,
+      };
+    });
+    this.pending = next.catch(() => undefined);
+    return next;
+  }
+
+  record(scope: string, alert: TrackingAlert, id: string, { count, render }: { count: number; render: Record<string, number> }): Promise<void> {
+    const next = this.pending.then(async () => {
+      const shown = await this.read();
+      const key = `${scope}\n${alert.key}`;
+      delete shown[key];
+      shown[key] = { id, count, lastMs: alert.lastMs, render };
+      const entries = Object.entries(shown).slice(-MAX_SHOWN);
+      await this.storage.set({ [SHOWN_KEY]: Object.fromEntries(entries) });
+    });
+    this.pending = next.catch(() => undefined);
+    return next;
+  }
+
+  private async read(): Promise<Shown> {
+    const value = (await this.storage.get(SHOWN_KEY))[SHOWN_KEY];
+    return value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Shown) } : {};
+  }
 }
 
 const NOTIFICATION_PREFIX = 'trkn:';
@@ -109,9 +231,6 @@ export function trackingIdFromNotification(id: string): string | null {
 export function gmailThreadUrl(email: { gmailThreadId: string | null; sender?: string | null }): string {
   const account = email.sender && email.sender.includes('@') ? `?authuser=${encodeURIComponent(email.sender)}` : '';
   const base = `https://mail.google.com/mail/${account}`;
-  const raw = (email.gmailThreadId || '').trim().replace(/^#/, '').replace(/^thread-[af]:/i, '');
-  let hex: string | null = null;
-  if (/^[0-9a-f]{12,16}$/i.test(raw) && !/^\d{17,}$/.test(raw)) hex = raw.toLowerCase();
-  else if (/^\d{17,20}$/.test(raw)) hex = BigInt(raw).toString(16);
+  const hex = gmailThreadHex(email.gmailThreadId);
   return hex ? `${base}#all/${hex}` : `${base}#sent`;
 }

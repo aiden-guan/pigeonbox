@@ -577,6 +577,11 @@ describe('tracking notification text', () => {
     });
   });
 
+  it('names the conversation once when several tracked emails in a thread were opened', () => {
+    expect(describeTrackingNotification({ type: 'OPEN' }, { subject: 'Re: RE: Plan' }, 1, { conversation: true }).message).toBe('Open detected in the conversation “Plan”');
+    expect(describeTrackingNotification({ type: 'OPEN' }, { subject: 'Fwd: Plan' }, 2, { conversation: true }).message).toBe('Open detected in the conversation “Plan” (2 times)');
+  });
+
   it('falls back to a generic subject when the email is unknown', () => {
     expect(describeTrackingNotification({ type: 'OPEN' }, null).message).toBe('Open detected for “your email”');
   });

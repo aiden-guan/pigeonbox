@@ -603,12 +603,16 @@ export function describeTrackingNotification(
   event: { type: string; user_agent?: string | null },
   email: { subject?: string | null } | null | undefined,
   count = 1,
+  options: { conversation?: boolean } = {},
 ): { title: string; message: string } {
-  const subject = email?.subject?.trim() || 'your email';
+  const raw = email?.subject?.trim() || '';
+  // A conversation alert covers several tracked emails, so it names the thread, not one reply.
+  const subject = (options.conversation ? raw.replace(/^((re|fw|fwd)\s*:\s*)+/i, '').trim() : raw) || 'your email';
   const times = count > 1 ? ` (${count} times)` : '';
   if (event.type === 'CLICK') {
     return { title: 'PigeonBox', message: `A link was clicked in “${subject}”${times}` };
   }
+  if (options.conversation) return { title: 'PigeonBox', message: `Open detected in the conversation “${subject}”${times}` };
   return { title: 'PigeonBox', message: `Open detected for “${subject}”${times}` };
 }
 

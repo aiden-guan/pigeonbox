@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TrackingEvent } from '@pigeonbox/tracking';
-import { gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './notifications';
+import { ConversationAlerts, gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './notifications';
 
 function memoryStorage() {
   const data = new Map<string, unknown>();
@@ -98,6 +98,66 @@ describe('tracking alerts', () => {
       event('u', '2026-09-22T15:02:00.000Z', { classification: 'UNKNOWN', user_agent: undefined }),
       event('v', '2026-09-22T15:03:00.000Z', { type: 'SELF_VIEW', classification: 'SELF_LIKELY' }),
     ])).toEqual([]);
+  });
+
+  describe('conversations', () => {
+    const hex = '18c1f5a3b2d4e6f7';
+    const threads: Record<string, string> = { trk_a: hex, trk_b: `thread-f:${BigInt(`0x${hex}`).toString()}`, trk_c: hex, trk_other: '18c1f5a3b2d4e6aa' };
+    const threadOf = (id: string) => threads[id];
+    const at = (seconds: number) => new Date(Date.UTC(2026, 9, 17, 15, 0, seconds)).toISOString();
+    const open = (id: string, trackingId: string, seconds: number) => event(id, at(seconds), { tracking_id: trackingId });
+
+    it('sends one alert when opening a conversation fires every tracked message in it', () => {
+      const alerts = groupTrackingAlerts([
+        open('a1', 'trk_a', 0),
+        open('a2', 'trk_a', 0.3),
+        open('b1', 'trk_b', 2),
+        open('c1', 'trk_c', 5),
+        open('x1', 'trk_other', 3),
+      ], threadOf);
+      expect(alerts.map((alert) => [alert.key, alert.event.id, alert.count, alert.emails])).toEqual([
+        [`thread:${hex}:OPEN`, 'c1', 1, 3],
+        ['thread:18c1f5a3b2d4e6aa:OPEN', 'x1', 1, 1],
+      ]);
+    });
+
+    it('counts a later reopening of the conversation, and every click', () => {
+      const alerts = groupTrackingAlerts([
+        open('a1', 'trk_a', 0),
+        open('b1', 'trk_b', 1),
+        open('a2', 'trk_a', 10),
+        open('b2', 'trk_b', 300),
+        event('k1', at(301), { tracking_id: 'trk_a', type: 'CLICK', classification: 'RECIPIENT_LIKELY', user_agent: 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/130 Safari/537.36' }),
+        event('k2', at(302), { tracking_id: 'trk_b', type: 'CLICK', classification: 'RECIPIENT_LIKELY', user_agent: 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/130 Safari/537.36' }),
+      ], threadOf);
+      // a2 reopens trk_a within the same minute; b2 is a fresh opening five minutes on.
+      expect(alerts.map((alert) => [alert.event.type, alert.count])).toEqual([['OPEN', 3], ['CLICK', 2]]);
+    });
+
+    it('updates the shown alert when one opening lands on both sides of a poll', async () => {
+      const shown = new ConversationAlerts(memoryStorage());
+      const [first] = groupTrackingAlerts([open('a1', 'trk_a', 0)], threadOf);
+      const plan = await shown.plan('scope', first!);
+      expect(plan).toMatchObject({ action: 'show', count: 1 });
+      if (plan.action === 'skip') throw new Error('unexpected');
+      await shown.record('scope', first!, 'trkn:trk_a:a1', plan);
+
+      const [rest] = groupTrackingAlerts([open('b1', 'trk_b', 4), open('c1', 'trk_c', 6)], threadOf);
+      const merged = await shown.plan('scope', rest!);
+      expect(merged).toMatchObject({ action: 'merge', id: 'trkn:trk_a:a1', count: 1 });
+      if (merged.action !== 'merge') throw new Error('unexpected');
+      await shown.record('scope', rest!, merged.id, merged);
+
+      // A replay after a worker restart is already on screen.
+      expect(await shown.plan('scope', rest!)).toEqual({ action: 'skip' });
+      // The same email fetched again a few seconds later is a reopening, still merged.
+      const [again] = groupTrackingAlerts([open('a2', 'trk_a', 20)], threadOf);
+      expect(await shown.plan('scope', again!)).toMatchObject({ action: 'merge', count: 2 });
+      // Other trackers and much later openings raise their own alert.
+      expect(await shown.plan('other-scope', again!)).toMatchObject({ action: 'show', count: 1 });
+      const [later] = groupTrackingAlerts([open('a3', 'trk_a', 600)], threadOf);
+      expect(await shown.plan('scope', later!)).toMatchObject({ action: 'show', count: 1 });
+    });
   });
 
   it('round-trips the tracking ID through the notification ID', () => {
