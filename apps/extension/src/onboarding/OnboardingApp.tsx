@@ -252,17 +252,36 @@ export function OnboardingApp() {
               </StepFrame>
             ) : null}
 
-            {step === 'tracking' ? (
-              <StepFrame kicker="Open tracking" title="Know when it lands." sub={product.has('cloud_tracking') || path === 'cloud'
-                ? 'PigeonBox hosts your tracker. Reader attribution is approximate, and your own opens are hidden.'
-                : product.state.cloudAvailable
-                  ? 'PigeonBox hosts your tracker, so opens from any device count. Sign in from tracking settings to turn it on; only subjects, addresses and open times are stored.'
-                  : 'Tracking needs a public tracker you own; opens can’t reach a tracker that runs only on this computer. Set it up from your dashboard.'}>
-                <TrackingDemo />
-                <Actions index={5} primary="Continue" onPrimary={() => go(stepIndex + 1)}
-                  secondary="Open tracking settings" onSecondary={() => { void chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD', section: 'tracking' }); }} />
-              </StepFrame>
-            ) : null}
+            {step === 'tracking' ? (() => {
+              // Pro signs in on the dashboard; Free signs in right here, in one Google window.
+              const signInHere = path === 'local' && product.state.cloudAvailable && !product.state.cloud.email;
+              const signedIn = path === 'local' && Boolean(product.state.cloud.email);
+              return (
+                <StepFrame kicker="Open tracking" title="Know when it lands." sub={product.has('cloud_tracking') || path === 'cloud'
+                  ? 'PigeonBox hosts your tracker. Reader attribution is approximate, and your own opens are hidden.'
+                  : signedIn
+                    ? `Tracking is on for ${product.state.cloud.email}. Only subjects, addresses and open times are stored.`
+                    : product.state.cloudAvailable
+                      ? 'PigeonBox hosts your tracker, so opens from any device count. Sign in with Google to turn it on; only subjects, addresses and open times are stored.'
+                      : 'Tracking needs a public tracker you own; opens can’t reach a tracker that runs only on this computer. Set it up from your dashboard.'}>
+                  <TrackingDemo />
+                  {signInHere ? (
+                    <Actions index={5} primary={product.busy ? 'Signing in…' : 'Sign in with Google'} disabled={product.busy}
+                      onPrimary={() => {
+                        trackProductEvent('hosted_tracking_signin', { surface: 'onboarding' });
+                        void product.signIn().then((reply) => { if (reply?.ok) go(stepIndex + 1); });
+                      }}
+                      secondary="Not now" onSecondary={() => go(stepIndex + 1)} />
+                  ) : product.state.cloudAvailable || path === 'cloud' ? (
+                    <Actions index={5} primary="Continue" onPrimary={() => go(stepIndex + 1)} />
+                  ) : (
+                    <Actions index={5} primary="Continue" onPrimary={() => go(stepIndex + 1)}
+                      secondary="Open tracking settings" onSecondary={() => { void chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD', section: 'tracking' }); }} />
+                  )}
+                  {signInHere && product.error ? <p className="ob-error" role="alert">{product.error}</p> : null}
+                </StepFrame>
+              );
+            })() : null}
 
             {step === 'done' ? (
               <StepFrame kicker="All set" title={settings.voiceProfile.name ? `You’re set, ${settings.voiceProfile.name}.` : 'You’re set.'}

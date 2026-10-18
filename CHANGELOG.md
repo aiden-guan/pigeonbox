@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.8.3] — 2026-10-17
+
+### Fixed
+- Signing in with Google no longer loops back to the sign-in page. New accounts can now be created, and the Chrome Web Store build's sign-in window returns to PigeonBox instead of the website dashboard.
+
+### Changed
+- Onboarding turns on open tracking in one step: the tracking step has a Sign in with Google button, so you no longer have to find it in Settings afterward.
+- Open alerts are grouped per Gmail conversation instead of per tracked email.
+
+---
+
 ## [0.8.2] — 2026-10-16
 
 ### Changed
