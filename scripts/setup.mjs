@@ -53,10 +53,10 @@ function isReal(value, placeholders) {
   return !placeholders.some((placeholder) => value.includes(placeholder));
 }
 
-const nodeMajor = Number(process.versions.node.split('.')[0]);
-if (!Number.isFinite(nodeMajor) || nodeMajor < 20) {
+const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
+if (!Number.isFinite(nodeMajor) || nodeMajor < 24 || (nodeMajor === 24 && nodeMinor < 15)) {
   fail(
-    `This project needs Node.js 20 or newer. You have ${process.version}.\n` +
+    `This project needs Node.js 24.15 or newer. You have ${process.version}.\n` +
       'Install the current LTS from https://nodejs.org and run this again.',
   );
 }

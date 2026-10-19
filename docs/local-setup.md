@@ -1,6 +1,6 @@
 # Local setup
 
-PigeonBox's on-device AI and inbox features need only Node.js 20+ and Chrome (or Edge/Brave) 116+. They do **not** need a PigeonBox account, PigeonBox Cloud, Supabase, Stripe, Convex, a Cloudflare account, Docker, or an AI key. Recipient tracking is separate and optional. The guided install offers to set up a public Convex tracker in your own account; tracking recipient opens cannot use a localhost server.
+PigeonBox's on-device AI and inbox features need only Node.js 24.15+ and Chrome (or Edge/Brave) 116+. They do **not** need a PigeonBox account, PigeonBox Cloud, Supabase, Stripe, Convex, a Cloudflare account, Docker, or an AI key. Recipient tracking is separate and optional. The guided install offers to set up a public Convex tracker in your own account; tracking recipient opens cannot use a localhost server.
 
 ## First run
 

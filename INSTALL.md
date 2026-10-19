@@ -12,7 +12,7 @@
 
 ## 1. Check prerequisites
 
-- `node --version` must be **20.0.0 or higher**. If Node is missing or older, ask the user before installing it (suggest `brew install node` on macOS, `winget install OpenJS.NodeJS.LTS` on Windows, or https://nodejs.org).
+- `node --version` must be **24.15.0 or higher**. If Node is missing or older, ask the user before installing it (suggest `brew install node` on macOS, `winget install OpenJS.NodeJS.LTS` on Windows, or https://nodejs.org).
 - `git --version` must work.
 - Google Chrome, Edge, Brave or another Chromium browser (version 116+) must be installed. Do not install a browser without asking.
 

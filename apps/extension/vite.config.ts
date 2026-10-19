@@ -173,23 +173,27 @@ export default defineConfig(({ mode }) => ({
           viteStaticCopy({
             targets: [
               { src: 'manifest.json', dest: '.', transform: manifestTransform(mode) },
-              { src: 'public/icons/*', dest: 'icons' },
+              { src: 'public/icons/*', dest: 'icons', rename: { stripBase: true } },
               {
                 src: '../../node_modules/@inboxsdk/core/pageWorld.js',
                 dest: 'inboxsdk',
+                rename: { stripBase: true },
                 transform: patchInboxSdkPageWorld,
               },
               {
                 src: '../../node_modules/@inboxsdk/core/background.js',
                 dest: 'inboxsdk',
+                rename: { stripBase: true },
               },
               {
                 src: '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm',
                 dest: 'ort',
+                rename: { stripBase: true },
               },
               {
                 src: '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs',
                 dest: 'ort',
+                rename: { stripBase: true },
               },
             ],
           }),

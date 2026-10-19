@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- Building PigeonBox from source needs Node.js 24.15 or newer. Node.js 20 is no longer supported by its maintainers.
+
 ### Fixed
 - A setting changed while Gmail is open no longer sometimes reverts in the open Gmail tabs, such as keyboard shortcuts staying on after you turn them off.
 
