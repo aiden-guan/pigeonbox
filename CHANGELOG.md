@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- A setting changed while Gmail is open no longer sometimes reverts in the open Gmail tabs, such as keyboard shortcuts staying on after you turn them off.
+
 ---
 
 ## [0.8.3] — 2026-10-17
