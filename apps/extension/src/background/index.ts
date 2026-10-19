@@ -88,6 +88,7 @@ import { effectiveSettings, resolveAIProvider } from './ai/provider-router';
 import { cachedCloudState, clearCloudState, cloudSession, cloudTrackerTarget, getCloudClient, readCloudState, refreshCloudState, remoteConfig, remoteConfigApi, clientConfig, lastCloudOkAt } from './cloud/client';
 import { featureDisabled } from './cloud/remote-config';
 import { requestExtensionUpdate } from './extension-update';
+import { applyPendingUpdateIfQuiet, noteUpdateAvailable, refreshGmailAfterUpdate } from './pending-update';
 import { chromeMajor, diagnostics, formatDiagnostics } from './diagnostics';
 import { composeCheckPreferenceState } from './cloud/compose-check';
 import { PROTOCOL_VERSION } from '@pigeonbox/api-contract';
@@ -1163,6 +1164,9 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason !== 'install' && checkReleases) {
     void checkLatestRelease().catch(() => undefined);
   }
+  if (details.reason === 'update' && details.previousVersion !== chrome.runtime.getManifest().version) {
+    void refreshGmailAfterUpdate().catch(() => undefined);
+  }
   if (details.reason === 'install') {
     void recordProductEvent('extension_installed', {});
     const stored = await chrome.storage.local.get('onboardingComplete');
@@ -1174,6 +1178,11 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   chrome.alarms.create('tracking_poll', { periodInMinutes: 1 });
   chrome.alarms.create('reminder_tick', { periodInMinutes: 15 });
   chrome.alarms.create(NOTIFICATION_ALARM, { periodInMinutes: 2 });
+});
+
+// Store copies: Chrome has downloaded an update and installs it once PigeonBox restarts.
+chrome.runtime.onUpdateAvailable.addListener((details) => {
+  void noteUpdateAvailable(details.version).catch(() => undefined);
 });
 
 chrome.runtime.onStartup.addListener(async () => {
@@ -1199,6 +1208,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'tracking_poll') {
     void noteActiveDay();
     await pollTracking();
+    void applyPendingUpdateIfQuiet().catch(() => undefined);
   }
   if (alarm.name === NOTIFICATION_ALARM) await pollCloudNotifications();
   if (alarm.name === RELEASE_CHECK_ALARM && (await releaseChecksWanted())) {

@@ -33,9 +33,11 @@ Refresh the repository around the Gmail workspace, reproducible extension captur
 
 ### Changed
 - Building PigeonBox from source needs Node.js 24.15 or newer. Node.js 20 is no longer supported by its maintainers.
+- Chrome Web Store updates install once Gmail is out of sight and no email is being written, instead of waiting for Chrome to restart.
 
 ### Fixed
 - A setting changed while Gmail is open no longer sometimes reverts in the open Gmail tabs, such as keyboard shortcuts staying on after you turn them off.
+- Open Gmail tabs no longer stop working after PigeonBox updates. Tabs in the background refresh themselves; the one on screen asks you to reload, and refreshes on its own once you switch away, never while a compose is open.
 
 ---
 
