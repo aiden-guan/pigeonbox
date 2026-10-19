@@ -6,8 +6,21 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      # React refuses to run when react and react-dom differ, so they move
+      # together. Listed first: a dependency joins the first group it matches.
+      react:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
       dev-tooling:
         dependency-type: development
+    ignore:
+      # Stay on TypeScript 5: typescript-eslint supports TypeScript below 6.1,
+      # so a TypeScript 7 bump cannot install. Lift this once it supports 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
