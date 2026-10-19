@@ -114,6 +114,12 @@ const queue = new AIJobQueue();
 const ingestor = new MailboxIngestor(db);
 const lexical = new LexicalSearchIndex();
 let settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
+/**
+ * Counts changes made here (saves, run mode). Every message reloads settings
+ * from storage first, and a read that began before a change would otherwise
+ * put the old values back.
+ */
+let settingsChanges = 0;
 // Content-free product events go to PigeonBox Cloud only (docs/product-analytics.md); Cloud forwards them to PostHog.
 configureAnalytics(cloudEventsProvider({ baseUrl: () => cloudApiUrl(settings) }));
 let agent: AgentLoop | null = null;
@@ -134,14 +140,18 @@ const workerTabs = new WorkerTabController({
 
 async function loadSettings(): Promise<ExtensionSettings> {
   await storageReady;
+  const changes = settingsChanges;
   const stored = await chrome.storage.local.get('settings');
+  // Changed while this read was in flight: memory is newer, and the change publishes its own view.
+  if (settingsChanges !== changes) return settings;
   settings = migrateSettings(stored.settings);
   if ((stored.settings as { settingsVersion?: number } | undefined)?.settingsVersion !== settings.settingsVersion) {
     // Persist the migrated shape once so later reads are cheap. Every saved field is kept.
     await chrome.storage.local.set({ settings });
   }
   await applyBundledTracker();
-  await chrome.storage.local.set({ publicSettings: await contentSettings() });
+  const view = await contentSettings();
+  if (settingsChanges === changes) await chrome.storage.local.set({ publicSettings: view });
   return settings;
 }
 
@@ -171,10 +181,16 @@ async function contentSettings(): Promise<PublicExtensionSettings> {
   };
 }
 
-async function publishContentSettings(): Promise<void> {
-  const view = await contentSettings();
-  await chrome.storage.local.set({ publicSettings: view });
-  await broadcastToGmailTabs({ type: 'PUBLIC_SETTINGS_CHANGED', settings: view });
+let contentSettingsPublishes: Promise<unknown> = Promise.resolve();
+/** One at a time, in call order, so a slower publish never lands after a newer view. */
+function publishContentSettings(): Promise<void> {
+  const publish = contentSettingsPublishes.catch(() => undefined).then(async () => {
+    const view = await contentSettings();
+    await chrome.storage.local.set({ publicSettings: view });
+    await broadcastToGmailTabs({ type: 'PUBLIC_SETTINGS_CHANGED', settings: view });
+  });
+  contentSettingsPublishes = publish;
+  return publish;
 }
 
 async function applyBundledTracker(): Promise<void> {
@@ -207,6 +223,7 @@ async function saveSettings(partial: Partial<ExtensionSettings>): Promise<Extens
   const previousHosted = usesHostedTracker(settings);
   if (rest.cloudApiUrl !== undefined && rest.cloudApiUrl !== settings.cloudApiUrl) forgetThreadIntel();
   settings = migrateSettings({ ...settings, ...credentialSafePatch(settings, rest) });
+  settingsChanges += 1;
   await chrome.storage.local.set({ settings });
   if (settings.automaticUpdateChecks !== previousAutomaticUpdateChecks) {
     configureReleaseCheckAlarm(await releaseChecksWanted());
@@ -2509,6 +2526,7 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       } else {
         return { ok: false, reason: 'Unknown mode.' };
       }
+      settingsChanges += 1;
       await chrome.storage.local.set({ settings });
       // A subscription may have started since the account state was cached. Only after saving:
       // other messages reload settings from storage while this waits on the network.
