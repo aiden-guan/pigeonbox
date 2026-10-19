@@ -11,7 +11,7 @@ https://github.com/user-attachments/assets/d334da3f-d4c5-453b-8cd5-c12ca366e33e
   <a href="https://github.com/aiden-guan/pigeonbox/releases"><img src="https://img.shields.io/github/v/release/aiden-guan/pigeonbox?color=blue&label=version" alt="GitHub Release"></a>
   <a href="https://github.com/aiden-guan/pigeonbox/actions/workflows/ci.yml"><img src="https://github.com/aiden-guan/pigeonbox/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
-  <a href="#-install"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="Node.js 20+"></a>
+  <a href="#-install"><img src="https://img.shields.io/badge/node-%3E%3D24.15-brightgreen.svg" alt="Node.js 24.15+"></a>
 </p>
 
 <p align="center">

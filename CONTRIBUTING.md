@@ -4,7 +4,7 @@ Thanks for helping. PigeonBox is a Chrome extension that works inside Gmail; thi
 
 ## Setup
 
-Node.js 20+ (see `.nvmrc`).
+Node.js 24.15+ (see `.nvmrc`).
 
 ```bash
 npm run setup
