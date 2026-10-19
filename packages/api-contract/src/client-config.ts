@@ -70,7 +70,7 @@ export const ClientConfigResponseSchema = z
     schema: z.number().int(),
     revision: z.string().min(1).max(64),
     ttlSeconds: z.number().optional(),
-    config: z.record(z.unknown()).optional(),
+    config: z.record(z.string(), z.unknown()).optional(),
   })
   .passthrough();
 export type ClientConfigResponse = z.infer<typeof ClientConfigResponseSchema>;

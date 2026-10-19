@@ -17,6 +17,23 @@ function keepSingleOnnxWasm(): Plugin {
   };
 }
 
+/**
+ * The extension's CSP forbids eval. Zod 4 probes for it with `new Function` as
+ * it builds its first object schema, and Chrome reports that as a CSP
+ * violation even though Zod catches the error. Sending every `zod` import
+ * through src/zod.ts turns the probe off before any schema exists.
+ */
+function zodWithoutEval(): Plugin {
+  const entry = resolve(__dirname, 'src/zod.ts');
+  return {
+    name: 'zod-without-eval',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      return source === 'zod' && importer !== entry ? entry : null;
+    },
+  };
+}
+
 /** Extension pages reject CORS module loads (`crossorigin`). */
 function extensionPages(): Plugin {
   return {
@@ -146,6 +163,7 @@ export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [
     react(),
+    zodWithoutEval(),
     extensionPages(),
     flattenExtensionHtml(),
     keepSingleOnnxWasm(),

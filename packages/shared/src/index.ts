@@ -205,7 +205,7 @@ export const RuntimeMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('GET_PUBLIC_SETTINGS') }),
   z.object({
     type: z.literal('SAVE_SETTINGS'),
-    settings: z.record(z.unknown()),
+    settings: z.record(z.string(), z.unknown()),
   }),
   z.object({ type: z.literal('RUN_DIAGNOSTICS') }),
   z.object({
@@ -216,7 +216,7 @@ export const RuntimeMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('ENQUEUE_ACTION'),
     action: z.string(),
-    args: z.record(z.unknown()).optional(),
+    args: z.record(z.string(), z.unknown()).optional(),
   }),
   // Ask Pigeon. The message name predates the feature name.
   z.object({
@@ -272,14 +272,14 @@ export const RuntimeMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('REQUEST_SUMMARY'),
     threadId: z.string(),
     subject: z.string().optional(),
-    messages: z.array(z.record(z.unknown())).optional(),
+    messages: z.array(z.record(z.string(), z.unknown())).optional(),
     force: z.boolean().optional(),
   }),
   z.object({
     type: z.literal('REQUEST_DRAFT'),
     threadId: z.string(),
     subject: z.string().optional(),
-    messages: z.array(z.record(z.unknown())).optional(),
+    messages: z.array(z.record(z.string(), z.unknown())).optional(),
     force: z.boolean().optional(),
   }),
   z.object({
