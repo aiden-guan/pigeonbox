@@ -343,8 +343,9 @@ async function boot(): Promise<void> {
       if (area === 'local' && Array.isArray(changes.trackedEmails?.newValue)) {
         updateCachedEmails(changes.trackedEmails.newValue as TrackedEmailSummary[]);
       }
-      if (area === 'session' && changes.intelPulse?.newValue?.threadId) {
-        const threadId = String(changes.intelPulse.newValue.threadId);
+      const pulse = changes.intelPulse?.newValue as { threadId?: unknown } | undefined;
+      if (area === 'session' && pulse?.threadId) {
+        const threadId = String(pulse.threadId);
         void refreshThread(threadId);
       }
     });

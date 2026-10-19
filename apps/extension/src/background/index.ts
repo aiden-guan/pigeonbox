@@ -45,6 +45,7 @@ import { cloudErrorMessage } from '@pigeonbox/cloud-client';
 import {
   TrackingClient,
   SelfViewAttribution,
+  type AttributionSnapshot,
   type PendingSelfView,
   applyRecentOpens,
   deriveTrackingTimeline,
@@ -861,7 +862,7 @@ async function documentReceiptScope(): Promise<string | null> {
 }
 
 const attribution = new SelfViewAttribution();
-const attributionReady = chrome.storage.session.get('trackingAttribution')
+const attributionReady = chrome.storage.session.get<{ trackingAttribution?: AttributionSnapshot }>('trackingAttribution')
   .then((stored) => attribution.restore(stored.trackingAttribution)).catch(() => undefined);
 let attributionWrites: Promise<unknown> = attributionReady;
 function persistAttribution(): Promise<void> {
@@ -1208,7 +1209,7 @@ chrome.tabs.onActivated?.addListener(({ tabId }) => { void chrome.storage.sessio
 chrome.tabs.onRemoved?.addListener((tabId) => {
   mailboxIdentities.forgetTab(tabId);
   void navigationAttribution.then(() => claimAttribution).then(async () => { attribution.inspected(tabId); await persistAttribution(); });
-  void chrome.storage.session.get(['workspaceContexts', 'workspaceMailboxes']).then((stored) => {
+  void chrome.storage.session.get<WorkspaceTabs>(['workspaceContexts', 'workspaceMailboxes']).then((stored) => {
     const contexts = { ...stored.workspaceContexts };
     const mailboxes = { ...stored.workspaceMailboxes };
     delete contexts[tabId];
@@ -1216,13 +1217,15 @@ chrome.tabs.onRemoved?.addListener((tabId) => {
     return chrome.storage.session.set({ workspaceContexts: contexts, workspaceMailboxes: mailboxes });
   });
 });
+/** Each Gmail tab's open thread and signed-in account, keyed by tab ID. */
+type WorkspaceTabs = { workspaceContexts?: Record<number, WorkspaceContext | null>; workspaceMailboxes?: Record<number, MailboxIdentity> };
 let contextWrites: Promise<unknown> = Promise.resolve();
 let commandWrites: Promise<unknown> = Promise.resolve();
 /** The open thread (if any) and the signed-in Gmail account of the panel's Gmail tab. */
 async function workspaceContext(senderTab?: chrome.tabs.Tab): Promise<{ context: WorkspaceContext | null; mailbox?: { email: string; name?: string } | null; tabId?: number; windowId?: number }> {
   const tab = senderTab?.url?.startsWith('https://mail.google.com/') ? senderTab : (await chrome.tabs.query({ active: true, currentWindow: true })).find((item) => item.url?.startsWith('https://mail.google.com/'));
   if (tab?.id == null) return { context: null };
-  const stored = await chrome.storage.session.get(['workspaceContexts', 'workspaceMailboxes']);
+  const stored = await chrome.storage.session.get<WorkspaceTabs>(['workspaceContexts', 'workspaceMailboxes']);
   const context = stored.workspaceContexts?.[tab.id] || null;
   return { context, mailbox: stored.workspaceMailboxes?.[tab.id] ?? context?.owner ?? null, tabId: tab.id, windowId: tab.windowId };
 }
@@ -1254,7 +1257,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     await loadSettings();
     if (!agent) rebuildAgent();
     if (message?.type === 'GET_WORKSPACE_PRESENTATION') {
-      const intention = await chrome.storage.session.get('workspaceReopen');
+      const intention = await chrome.storage.session.get<{ workspaceReopen?: { tabId?: number } }>('workspaceReopen');
       if (sender.tab?.id != null && intention.workspaceReopen?.tabId === sender.tab.id) {
         await updateWorkspace({ open: true, display: 'float' });
         await chrome.storage.session.remove('workspaceReopen');
@@ -1279,7 +1282,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     if (message?.type === 'CONSUME_WORKSPACE_COMMANDS') {
       commandWrites = commandWrites.catch(() => undefined).then(async () => {
-        const request = (await chrome.storage.session.get('workspaceCommandsRequest')).workspaceCommandsRequest;
+        const request = (await chrome.storage.session.get<{ workspaceCommandsRequest?: { tabId?: number | null } }>('workspaceCommandsRequest')).workspaceCommandsRequest;
         const context = await workspaceContext(sender.tab);
         const open = Boolean(request && (request.tabId == null || request.tabId === context.tabId));
         if (open) await chrome.storage.session.remove('workspaceCommandsRequest');
@@ -1296,7 +1299,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const context = row?.threadId ? { tabId, threadId: String(row.threadId).slice(0, 128), subject: String(row.subject || '').slice(0, 998), sender: String(row.sender || '').slice(0, 320), owner: mailboxOwnerFrom(row.owner), pending: row.pending ? String(row.pending).slice(0, 200) : null, drafting: Boolean(row.drafting) } : null;
       const mailbox = mailboxOwnerFrom(message.mailbox) ?? context?.owner ?? null;
       contextWrites = contextWrites.then(async () => {
-        const current = await chrome.storage.session.get(['workspaceContexts', 'workspaceMailboxes']);
+        const current = await chrome.storage.session.get<WorkspaceTabs>(['workspaceContexts', 'workspaceMailboxes']);
         if (JSON.stringify(current.workspaceContexts?.[tabId]) !== JSON.stringify(context)) await chrome.storage.session.set({ workspaceContexts: { ...current.workspaceContexts, [tabId]: context } });
         if (mailbox && JSON.stringify(current.workspaceMailboxes?.[tabId]) !== JSON.stringify(mailbox)) await chrome.storage.session.set({ workspaceMailboxes: { ...current.workspaceMailboxes, [tabId]: mailbox } });
       });
@@ -1888,11 +1891,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
       if (message?.type === 'inboxsdk__injectPageWorld' && sender?.tab?.id != null) {
+        const tabId = sender.tab.id;
+        const target: chrome.scripting.InjectionTarget = sender.documentId
+          ? { tabId, documentIds: [sender.documentId] }
+          : sender.frameId != null ? { tabId, frameIds: [sender.frameId] } : { tabId };
         try {
-          const documentIds = sender.documentId ? [sender.documentId] : undefined;
-          const frameIds = !documentIds && sender.frameId != null ? [sender.frameId] : undefined;
           await chrome.scripting.executeScript({
-            target: { tabId: sender.tab.id, documentIds, frameIds },
+            target,
             world: 'MAIN',
             files: ['inboxsdk/pageWorld.js'],
           });
@@ -1900,10 +1905,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         } catch (e) {
           console.warn('[gi] InboxSDK pageWorld injection failed', e);
           try {
-            const documentIds = sender.documentId ? [sender.documentId] : undefined;
-            const frameIds = !documentIds && sender.frameId != null ? [sender.frameId] : undefined;
             await chrome.scripting.executeScript({
-              target: { tabId: sender.tab.id, documentIds, frameIds },
+              target,
               world: 'MAIN',
               func: () => document.head.removeAttribute('data-inboxsdk-script-injected'),
             });

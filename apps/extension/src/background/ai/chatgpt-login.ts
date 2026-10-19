@@ -340,7 +340,7 @@ function waitUntilComplete(tabId: number): Promise<void> {
       chrome.tabs.onUpdated.removeListener(onUpdated);
       reject(new Error('ChatGPT did not finish loading.'));
     }, 20_000);
-    const onUpdated = (id: number, info: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
+    const onUpdated = (id: number, info: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) => {
       if (id !== tabId || info.status !== 'complete') return;
       if (!tab.url?.startsWith('https://chatgpt.com/')) return;
       clearTimeout(timer);
