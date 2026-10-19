@@ -25,6 +25,9 @@ export function gmailAccountKey(url: string | undefined): string | null {
   } catch { return null; }
 }
 
+/** Signed-in Gmail accounts, keyed by gmailAccountKey. */
+type StoredIdentities = { mailboxIdentities?: Record<string, MailboxIdentity> };
+
 export class MailboxIdentities {
   private writes: Promise<unknown> = Promise.resolve();
   private tabs = new Map<number, { key: string; owner: MailboxIdentity }>();
@@ -34,7 +37,7 @@ export class MailboxIdentities {
     const key = gmailAccountKey(url);
     if (key === null) return;
     const write = this.writes.then(async () => {
-      const stored = await this.storage.get('mailboxIdentities');
+      const stored = await this.storage.get<StoredIdentities>('mailboxIdentities');
       const resolved = mergeIdentity(owner, stored.mailboxIdentities?.[key]);
       this.tabs.set(tabId, { key, owner: resolved });
       await this.storage.set({ mailboxIdentities: { ...(stored.mailboxIdentities || {}), [key]: resolved } });
@@ -53,13 +56,13 @@ export class MailboxIdentities {
     if (key === null) return undefined;
     const current = tabId == null ? null : this.tabs.get(tabId);
     if (current?.key === key) return current.owner;
-    const stored = await this.storage.get('mailboxIdentities');
+    const stored = await this.storage.get<StoredIdentities>('mailboxIdentities');
     return stored.mailboxIdentities?.[key];
   }
 
   async forEmail(email: string): Promise<MailboxIdentity | undefined> {
-    const stored = await this.storage.get('mailboxIdentities');
-    return Object.values(stored.mailboxIdentities || {}).find((owner) => (owner as MailboxIdentity).email.toLowerCase() === email.toLowerCase()) as MailboxIdentity | undefined;
+    const stored = await this.storage.get<StoredIdentities>('mailboxIdentities');
+    return Object.values(stored.mailboxIdentities || {}).find((owner) => owner.email.toLowerCase() === email.toLowerCase());
   }
   forgetTab(tabId: number): void { this.tabs.delete(tabId); }
   perspective(owner?: MailboxIdentity): string { return ownerPerspectiveKey(owner); }

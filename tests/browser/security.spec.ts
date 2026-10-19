@@ -32,3 +32,18 @@ test('a Gmail renderer cannot read extension secrets or use the offscreen model'
   expect(result.model).toBeNull();
   expect(result.forbidden).toMatchObject({ ok: false, error: 'forbidden' });
 });
+
+test('extension pages run without tripping their own Content Security Policy', async ({ app }) => {
+  // Chrome reports a blocked eval even when the caller catches the error, as Zod's JIT probe does.
+  await app.context.addInitScript(() => {
+    const seen: string[] = [];
+    Object.assign(window, { cspViolations: seen });
+    document.addEventListener('securitypolicyviolation', (event) => seen.push(`${event.violatedDirective} ${event.blockedURI}`));
+  });
+  for (const name of ['sidepanel', 'workspace', 'onboarding', 'settings']) {
+    const page = await app.page(name);
+    await page.waitForLoadState('load');
+    expect(await page.evaluate(() => (window as unknown as { cspViolations: string[] }).cspViolations), name).toEqual([]);
+    await page.close();
+  }
+});

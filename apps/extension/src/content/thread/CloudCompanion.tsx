@@ -197,7 +197,7 @@ export function CloudCompanion(props: {
                     setVariantIndex(index);
                     // So opening Gmail's own Reply puts this version in, not the recommended one.
                     try {
-                      void chrome.storage.local.get(VARIANT_CHOICE_KEY).then((stored) =>
+                      void chrome.storage.local.get<Record<string, Record<string, string> | undefined>>(VARIANT_CHOICE_KEY).then((stored) =>
                         chrome.storage.local.set({ [VARIANT_CHOICE_KEY]: rememberVariantChoice(stored[VARIANT_CHOICE_KEY], offerable.id, item.id) }),
                       ).catch(() => undefined);
                     } catch {

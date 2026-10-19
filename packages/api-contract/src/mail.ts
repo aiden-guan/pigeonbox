@@ -346,6 +346,18 @@ export type Preferences = z.infer<typeof PreferencesSchema>;
 
 export const PreferencesResponseSchema = z.object({ preferences: PreferencesSchema });
 
+/**
+ * A section with every field optional and no defaults. Zod fills a field's
+ * default even when the field is optional, so a plain `.partial()` would turn
+ * an update of one setting into a reset of every defaulted setting left out.
+ */
+function partialSection<Shape extends z.ZodRawShape>(section: z.ZodObject<Shape>) {
+  const shape = Object.fromEntries(
+    Object.entries(section.shape).map(([key, field]) => [key, field instanceof z.ZodDefault ? field.removeDefault() : field]),
+  ) as { [K in keyof Shape]: Shape[K] extends z.ZodDefault<infer Inner> ? Inner : Shape[K] };
+  return z.object(shape).partial();
+}
+
 /** Partial update, one level deep per section. */
 export const PreferencesUpdateRequestSchema = z.object({
   preferences: z
@@ -353,19 +365,19 @@ export const PreferencesUpdateRequestSchema = z.object({
       timeZone: PreferencesSchema.shape.timeZone,
       workdays: PreferencesSchema.shape.workdays,
       workingHours: PreferencesSchema.shape.workingHours,
-      followUp: PreferencesSchema.shape.followUp.partial(),
-      autoDrafts: PreferencesSchema.shape.autoDrafts.partial(),
-      calendar: PreferencesSchema.shape.calendar.partial(),
-      memory: PreferencesSchema.shape.memory.removeDefault().partial(),
-      fastRecall: PreferencesSchema.shape.fastRecall.partial(),
+      followUp: partialSection(PreferencesSchema.shape.followUp),
+      autoDrafts: partialSection(PreferencesSchema.shape.autoDrafts),
+      calendar: partialSection(PreferencesSchema.shape.calendar),
+      memory: partialSection(PreferencesSchema.shape.memory.removeDefault()),
+      fastRecall: partialSection(PreferencesSchema.shape.fastRecall),
       briefings: z
         .object({
-          morning: PreferencesSchema.shape.briefings.shape.morning.partial(),
-          endOfDay: PreferencesSchema.shape.briefings.shape.endOfDay.partial(),
-          meeting: PreferencesSchema.shape.briefings.shape.meeting.partial(),
+          morning: partialSection(PreferencesSchema.shape.briefings.shape.morning),
+          endOfDay: partialSection(PreferencesSchema.shape.briefings.shape.endOfDay),
+          meeting: partialSection(PreferencesSchema.shape.briefings.shape.meeting),
         })
         .partial(),
-      notifications: PreferencesSchema.shape.notifications.partial(),
+      notifications: partialSection(PreferencesSchema.shape.notifications),
       webResearch: PreferencesSchema.shape.webResearch,
       voice: PreferencesSchema.shape.voice,
     })

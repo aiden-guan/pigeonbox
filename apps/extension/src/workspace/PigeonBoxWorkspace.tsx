@@ -96,8 +96,8 @@ export function PigeonBoxWorkspace() {
   const [active, setActive] = useState<boolean | null>(null);
   useEffect(() => {
     const apply = (value: { display?: string } | undefined) => setActive(!value?.display || (value.display === 'dock') === location.pathname.includes('sidepanel'));
-    void chrome.storage.local.get('workspaceState').then((stored) => apply(stored.workspaceState));
-    const changed = (changes: Record<string, chrome.storage.StorageChange>, area: string) => { if (area === 'local' && changes.workspaceState) apply(changes.workspaceState.newValue); };
+    void chrome.storage.local.get<{ workspaceState?: { display?: string } }>('workspaceState').then((stored) => apply(stored.workspaceState));
+    const changed = (changes: Record<string, chrome.storage.StorageChange>, area: string) => { if (area === 'local' && changes.workspaceState) apply(changes.workspaceState.newValue as { display?: string } | undefined); };
     chrome.storage.onChanged.addListener(changed);
     return () => chrome.storage.onChanged.removeListener(changed);
   }, []);

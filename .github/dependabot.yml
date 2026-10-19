@@ -6,8 +6,38 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      # React refuses to run when react and react-dom differ, so they move
+      # together. Listed first: a dependency joins the first group it matches.
+      react:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
       dev-tooling:
         dependency-type: development
+    # Majors that cannot land inside dev-tooling as-is. Each one fails the
+    # whole group, so they wait here until their blocker clears.
+    ignore:
+      # Stay on TypeScript 5: typescript-eslint supports TypeScript below 6.1,
+      # so a TypeScript 7 bump cannot install. Lift this once it supports 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # ESLint 9 needs a flat config, and eslint-plugin-react supports ESLint
+      # 9 at most, so ESLint 10 cannot install.
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      # jsdom 30, vite-plugin-static-copy 4 and vitest 5 need Node 22; CI runs
+      # Node 20 (.nvmrc).
+      - dependency-name: jsdom
+        update-types: ["version-update:semver-major"]
+      - dependency-name: vite-plugin-static-copy
+        update-types: ["version-update:semver-major"]
+      - dependency-name: vitest
+        update-types: ["version-update:semver-major"]
+      # Tailwind 4 replaces tailwind.config.js with CSS-first configuration.
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
