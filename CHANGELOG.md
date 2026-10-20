@@ -8,7 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Presentation update — 2026-10-19
+---
+
+## [0.8.4] — 2026-10-19
+
+### Changed
+- Building PigeonBox from source needs Node.js 24.15 or newer. Node.js 20 is no longer supported by its maintainers.
+- Chrome Web Store updates install once Gmail is out of sight and no email is being written, instead of waiting for Chrome to restart.
+
+### Fixed
+- A setting changed while Gmail is open no longer sometimes reverts in the open Gmail tabs, such as keyboard shortcuts staying on after you turn them off.
+- Open Gmail tabs no longer stop working after PigeonBox updates. Tabs in the background refresh themselves; the one on screen asks you to reload, and refreshes on its own once you switch away, never while a compose is open.
+- Dismissed open alerts no longer reappear when PigeonBox catches up on tracking activity.
+- Open tracking catches up again after a stalled self-view check, instead of stopping at it.
+
+### Repository presentation
 
 Refresh the repository around the Gmail workspace, reproducible extension captures, and explicit boundaries between Local features, hosted services, and verification evidence.
 
@@ -27,17 +41,10 @@ Refresh the repository around the Gmail workspace, reproducible extension captur
 - **Captures:** Add `scripts/capture-readme.mjs`, using the existing Chromium fixture in disposable profiles and an explicitly isolated build directory. Add an opt-in 2× scale to `tests/browser/fixtures.ts`; normal browser tests keep their existing scale.
 
 ### Verification
+- **Release source:** Full `npm run verify` passed on Node 24.22.0 with the 0.8.4 fixes rebased onto the dependency and presentation updates: 1,147 Vitest tests, 15 Node script tests, typecheck, lint, workspace build, and release ZIP validation.
 - **Publication source at `c5bd90f`:** Fresh dependency installation and full `npm run verify` passed on Node 24.22.0: dependency/version/hygiene checks, typecheck, lint, 1,133 Vitest tests, 15 Node script tests, workspace build, and isolated release ZIP validation. The original working Chrome build was preserved by directing build output to a temporary folder in an isolated checkout.
 - **Presentation:** The capture workflow passed against that compiled source. Cloud responses and generated text were fixtures; live Gmail, hosted inference, OAuth, recipient activity, and Chrome Web Store publication were not revalidated.
 - **Browser and docs:** 18 focused browser checks passed. Strict README and supporting-document validation passed; changelog validation introduced no errors or warnings beyond three existing historical warnings.
-
-### Changed
-- Building PigeonBox from source needs Node.js 24.15 or newer. Node.js 20 is no longer supported by its maintainers.
-- Chrome Web Store updates install once Gmail is out of sight and no email is being written, instead of waiting for Chrome to restart.
-
-### Fixed
-- A setting changed while Gmail is open no longer sometimes reverts in the open Gmail tabs, such as keyboard shortcuts staying on after you turn them off.
-- Open Gmail tabs no longer stop working after PigeonBox updates. Tabs in the background refresh themselves; the one on screen asks you to reload, and refreshes on its own once you switch away, never while a compose is open.
 
 ---
 
