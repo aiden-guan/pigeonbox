@@ -1,8 +1,15 @@
 /** Remembers which open-tracking events already produced a desktop notification. */
 import { isNotifiableTrackingEvent, type TrackingEvent } from '@pigeonbox/tracking';
 
-const STORAGE_KEY = 'trackingNotificationHistory';
-const MAX_EVENTS_PER_TRACKER = 500;
+const STORAGE_KEY = 'trackingAlertHistory';
+/**
+ * Earlier builds skipped the history for cursor catch-up, so this key lacks
+ * every alert raised since. Dropping it gives each tracker a fresh baseline
+ * instead of replaying those alerts once more.
+ */
+const LEGACY_STORAGE_KEY = 'trackingNotificationHistory';
+/** A catch-up poll reads up to 400 events; keep well over one full poll. */
+const MAX_EVENTS_PER_TRACKER = 1000;
 const MAX_TRACKERS = 5;
 
 type StorageArea = Pick<chrome.storage.StorageArea, 'get' | 'set'>;
@@ -15,8 +22,9 @@ type History = Record<string, string[]>;
  */
 export class TrackingNotificationHistory {
   private pending: Promise<unknown> = Promise.resolve();
+  private legacyDropped = false;
 
-  constructor(private readonly storage: StorageArea) {}
+  constructor(private readonly storage: Pick<chrome.storage.StorageArea, 'get' | 'set' | 'remove'>) {}
 
   claim(target: string, events: TrackingEvent[]): Promise<TrackingEvent[]> {
     const next = this.pending.then(() => this.claimNow(target, events));
@@ -38,6 +46,10 @@ export class TrackingNotificationHistory {
   }
 
   private async claimNow(target: string, events: TrackingEvent[]): Promise<TrackingEvent[]> {
+    if (!this.legacyDropped) {
+      this.legacyDropped = true;
+      await Promise.resolve(this.storage.remove(LEGACY_STORAGE_KEY)).catch(() => undefined);
+    }
     const value = (await this.storage.get(STORAGE_KEY))[STORAGE_KEY];
     const history: History = value && typeof value === 'object' && !Array.isArray(value) ? value as History : {};
     const previous = Array.isArray(history[target]) ? history[target].filter((id): id is string => typeof id === 'string') : null;

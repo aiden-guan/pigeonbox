@@ -11,7 +11,7 @@ describe('settled tracking attribution', () => {
   it('holds a proxy that beats the claim in counts, animation, activity and notifications', async () => {
     const state = new SelfViewAttribution();
     const storage: Record<string, unknown> = {};
-    const history = new TrackingNotificationHistory({ get: async (key: string) => ({ [key]: storage[key] }), set: async (value: Record<string, unknown>) => { Object.assign(storage, value); } } as never);
+    const history = new TrackingNotificationHistory({ get: async (key: string) => ({ [key]: storage[key] }), set: async (value: Record<string, unknown>) => { Object.assign(storage, value); }, remove: async (key: string) => { delete storage[key]; } } as never);
     await history.claim('scope', []);
     const revision = state.revision(claim.issuer, claim.trackingId);
     state.begin({ ...claim, navigation: true });

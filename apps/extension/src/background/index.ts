@@ -1084,9 +1084,11 @@ async function pollTrackingNow(): Promise<void> {
   const settledEvents = attribution.events(issuer, events).filter((event) => attribution.publishable(issuer, event.tracking_id, revisions.get(event.tracking_id) || 0));
   const scope = await notificationScope(target.baseUrl);
   if (scope !== receiptScope) return;
-  // Cursor pages replay until display and cursor persistence both succeed.
-  // A stable notification ID replaces a replay after a worker crash.
-  newEvents = catchup?.cursorBacked ? settledEvents : await notificationHistory.claim(scope, settledEvents);
+  // Cursor pages replay until display and cursor persistence both succeed, and a
+  // provisional sender claim can hold the cursor for many polls. The persistent
+  // history keeps every replay, even after a restart clears session state, from
+  // raising an alert again: re-creating a dismissed notification shows it anew.
+  newEvents = await notificationHistory.claim(scope, settledEvents);
   if (newEvents.some((event) => event.type === 'OPEN')) void recordProductEvent('first_open_received', { surface: 'gmail' });
   await navigationAttribution;
   await claimAttribution;

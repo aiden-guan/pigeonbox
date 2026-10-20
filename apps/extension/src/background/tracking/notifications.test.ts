@@ -10,6 +10,7 @@ function memoryStorage() {
     async set(items: Record<string, unknown>) {
       for (const [key, value] of Object.entries(items)) data.set(key, structuredClone(value));
     },
+    async remove(key: string) { data.delete(key); },
   };
 }
 
@@ -58,11 +59,20 @@ describe('tracking notification history', () => {
     expect(first.map((item) => item.id)).toEqual(['same']);
     expect(second).toEqual([]);
 
-    const burst = Array.from({ length: 510 }, (_, index) => ({ ...event(`event-${index}`, 4), timestamp: new Date(Date.UTC(2026, 8, 25, 12, 0, index)).toISOString() }));
+    const burst = Array.from({ length: 1010 }, (_, index) => ({ ...event(`event-${index}`, 4), timestamp: new Date(Date.UTC(2026, 8, 25, 12, 0, index)).toISOString() }));
     await history.claim('tracker-a', burst.reverse());
-    const stored = storage.data.get('trackingNotificationHistory') as Record<string, string[]>;
-    expect(stored['tracker-a']).toHaveLength(500);
-    expect(stored['tracker-a']).toContain('event-509');
+    const stored = storage.data.get('trackingAlertHistory') as Record<string, string[]>;
+    expect(stored['tracker-a']).toHaveLength(1000);
+    expect(stored['tracker-a']).toContain('event-1009');
+  });
+
+  it('starts a fresh baseline instead of trusting history from builds that skipped it', async () => {
+    const storage = memoryStorage();
+    storage.data.set('trackingNotificationHistory', { 'tracker-a': ['old-1'] });
+    const history = new TrackingNotificationHistory(storage);
+    expect(await history.claim('tracker-a', [event('old-1', 1), event('shown-since', 2)])).toEqual([]);
+    expect(storage.data.has('trackingNotificationHistory')).toBe(false);
+    expect((await history.claim('tracker-a', [event('shown-since', 2), event('new', 3)])).map((item) => item.id)).toEqual(['new']);
   });
 });
 
@@ -157,6 +167,19 @@ describe('tracking alerts', () => {
       expect(await shown.plan('other-scope', again!)).toMatchObject({ action: 'show', count: 1 });
       const [later] = groupTrackingAlerts([open('a3', 'trk_a', 600)], threadOf);
       expect(await shown.plan('scope', later!)).toMatchObject({ action: 'show', count: 1 });
+    });
+
+    it('never re-alerts a replayed catch-up page once a restart clears session state', async () => {
+      const storage = memoryStorage();
+      const page = [open('a1', 'trk_a', 0), open('o1', 'trk_other', 5)];
+      const history = new TrackingNotificationHistory(storage);
+      await history.claim('tracker-a', []);
+      expect(groupTrackingAlerts(await history.claim('tracker-a', page), threadOf)).toHaveLength(2);
+
+      // The cursor did not advance, and the browser restarted: the same page comes back.
+      const restarted = new TrackingNotificationHistory(storage);
+      expect(groupTrackingAlerts(await restarted.claim('tracker-a', page), threadOf)).toEqual([]);
+      expect((await restarted.claim('tracker-a', [...page, open('a2', 'trk_a', 30)])).map((item) => item.id)).toEqual(['a2']);
     });
   });
 
