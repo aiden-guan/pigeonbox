@@ -44,6 +44,7 @@ import { aiDataDestination, resolveCapabilities, type CloudState } from '@pigeon
 import { cloudErrorMessage } from '@pigeonbox/cloud-client';
 import {
   TrackingClient,
+  TrackingHttpError,
   SelfViewAttribution,
   type AttributionSnapshot,
   type PendingSelfView,
@@ -924,6 +925,16 @@ async function reconcileSelfView(claim: PendingSelfView, result: Awaited<ReturnT
 }
 let claimAttribution: Promise<unknown> = attributionReady;
 const deliveringClaims = new Set<string>();
+function selfViewRetry(message: Record<string, any>): NonNullable<PendingSelfView['retry']> {
+  return {
+    source: message.source || 'MESSAGE_EXPANDED',
+    gmailThreadId: normalizeGmailId(message.gmailThreadId),
+    gmailMessageId: normalizeGmailId(message.gmailMessageId),
+    quotedRender: message.quotedRender === true,
+    pixelRender: message.pixelRender === true,
+    reconcileGmailIds: message.reconcileGmailIds === true,
+  };
+}
 async function reserveClaim(message: Record<string, any>, tabId?: number) {
   await navigationAttribution;
   await loadSettings();
@@ -933,7 +944,10 @@ async function reserveClaim(message: Record<string, any>, tabId?: number) {
   if (!trackingId || !issuer || (email?.issuer && email.issuer !== issuer)) return;
   const observedAt = Date.parse(message.timestamp || '') || Date.now();
   const eventId = message.selfViewEventId || `sv_${trackingId}_${normalizeGmailId(message.gmailMessageId) || 'nomessage'}_${message.source || 'MESSAGE_EXPANDED'}_${observedAt}`;
-  attribution.begin({ issuer, trackingId, eventId, observedAt, tabId });
+  // Carry the delivery payload from the start: if the self-view handler cannot
+  // deliver (no tracker target yet, worker stopped), polls still settle the
+  // claim instead of holding its events, and the catch-up cursor, until restart.
+  attribution.begin({ issuer, trackingId, eventId, observedAt, tabId, retry: selfViewRetry(message) });
   await persistAttribution();
 }
 
@@ -976,7 +990,14 @@ async function pollTrackingNow(): Promise<void> {
     try {
       const result = await client.recordSelfView(claim.trackingId, { ...claim.retry, timestamp: new Date(claim.observedAt).toISOString(), selfViewEventId: claim.eventId });
       if (result.ok) await reconcileSelfView(claim, result, client);
-    } catch { /* Keep last settled state until this claim can be delivered. */ }
+    } catch (error) {
+      // A claim the tracker rejects outright can never settle; holding it would hold catch-up forever.
+      if (error instanceof TrackingHttpError && (error.status === 400 || error.status === 404 || error.status === 409)) {
+        attribution.settled(claim);
+        await persistAttribution();
+      }
+      /* Otherwise keep last settled state until this claim can be delivered. */
+    }
   }
   // Turning off tracking stops new polling, while receipts for already-sent
   // mail and pending sender corrections still settle durably.
@@ -2064,7 +2085,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         try {
         await persistAttribution();
 
-        const retryPayload = { source, gmailThreadId: normThreadId, gmailMessageId: normMessageId, quotedRender: msg.quotedRender === true, pixelRender: msg.pixelRender === true, reconcileGmailIds: msg.reconcileGmailIds === true };
+        const retryPayload = selfViewRetry(msg);
         // Also retry a successful legacy claim whose canonical detail lookup fails.
         attribution.retry(pendingClaim, retryPayload);
         await persistAttribution();
