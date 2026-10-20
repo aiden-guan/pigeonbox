@@ -1,0 +1,23 @@
+{
+  "capturedAt": "2026-10-20T03:50:28.001Z",
+  "sourceCommit": "c5bd90fc98eda3070e7a624c85fee7ee1168b7f8",
+  "extensionVersion": "0.8.3",
+  "runtime": "Compiled extension in disposable Chromium profile",
+  "data": "Synthetic IndexedDB mail, summaries, Cloud session, API responses and prepared text; no live Gmail or model inference",
+  "deviceScaleFactor": 2,
+  "heroViewport": {
+    "width": 960,
+    "height": 540
+  },
+  "featureViewport": {
+    "width": 480,
+    "height": 640
+  },
+  "files": [
+    "hero.png",
+    "feature-triage.png",
+    "feature-companion.png",
+    "feature-drafting.png",
+    "feature-ask.png"
+  ]
+}

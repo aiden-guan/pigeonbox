@@ -3,6 +3,7 @@
 - **Release:** [release process](release-process.md), [Chrome Web Store](chrome-web-store.md), [verification](VERIFICATION.md), [listing and assets](store/listing.md).
 - **Build and use:** [Local setup](local-setup.md), [self-hosting](self-hosting.md), [tracking](tracking.md), [tracking diagnostics](tracking-debug.md).
 - **Engineering:** [architecture](architecture.md), [current workspace](workspace-refactor.md), [Cloud protocol](cloud-protocol.md), [design system](design-system.md).
+- **Repository presentation:** [claim evidence and GitHub metadata](presentation.md), [screenshot provenance and reproduction](../assets/readme/README.md).
 - **Data:** [privacy model](privacy-model.md), [threat model](threat-model.md), [optional analytics](product-analytics.md).
 - **History:** [archived reports](archive/README.md). Future Pidgy art lives in `apps/extension/brand-src/` and does not ship in the extension.
 

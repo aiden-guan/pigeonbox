@@ -8,6 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Presentation update — 2026-10-19
+
+Refresh the repository around the Gmail workspace, reproducible extension captures, and explicit boundaries between Local features, hosted services, and verification evidence.
+
+| Area | Change | Reader impact |
+| :--- | :--- | :--- |
+| **Product walkthrough** | Replace older illustrated panels with 2× captures of the compiled extension | Show the current interface with synthetic data disclosed |
+| **Architecture** | Link the message gateway, provider router, storage, and tracking lifecycle to source | Make engineering claims inspectable |
+| **Setup and evidence** | Separate local setup, optional tracking, browser fixtures, and live acceptance | Explain what runs without accounts and what still needs external services |
+
+### Documentation & Presentation
+- **README:** Reorder the product walkthrough, installation, architecture, engineering tradeoffs, and codebase map. Correct the self-hosting-only tracking claim, the offline claim, and the blanket manual-action guarantee.
+- **Media:** Add a wide Home capture, refresh the four feature panels, and record synthetic-data provenance and reproduction instructions in [assets/readme](assets/readme/README.md).
+- **Evidence:** Add a [claim map and proposed GitHub metadata](docs/presentation.md); record the current wide inbox layout defect without changing application CSS.
+
+### Tooling & Hygiene
+- **Captures:** Add `scripts/capture-readme.mjs`, using the existing Chromium fixture in disposable profiles and an explicitly isolated build directory. Add an opt-in 2× scale to `tests/browser/fixtures.ts`; normal browser tests keep their existing scale.
+
+### Verification
+- **Publication source at `c5bd90f`:** Fresh dependency installation and full `npm run verify` passed on Node 24.22.0: dependency/version/hygiene checks, typecheck, lint, 1,133 Vitest tests, 15 Node script tests, workspace build, and isolated release ZIP validation. The original working Chrome build was preserved by directing build output to a temporary folder in an isolated checkout.
+- **Presentation:** The capture workflow passed against that compiled source. Cloud responses and generated text were fixtures; live Gmail, hosted inference, OAuth, recipient activity, and Chrome Web Store publication were not revalidated.
+- **Browser and docs:** 18 focused browser checks passed. Strict README and supporting-document validation passed; changelog validation introduced no errors or warnings beyond three existing historical warnings.
+
 ### Changed
 - Building PigeonBox from source needs Node.js 24.15 or newer. Node.js 20 is no longer supported by its maintainers.
 

@@ -513,6 +513,7 @@ export const test = base.extend<{ app: App }>({
       headless: true,
       args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
       viewport: { width: 1280, height: 900 },
+      deviceScaleFactor: process.env.PIGEONBOX_README_CAPTURE === '1' ? 2 : 1,
       recordVideo: process.env.PIGEONBOX_MOTION_QA ? { dir: 'test-results/dispatch-videos', size: { width: 1280, height: 900 } } : undefined,
     });
     closeContext = context;

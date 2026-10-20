@@ -1,350 +1,219 @@
 # PigeonBox
 
-https://github.com/user-attachments/assets/d334da3f-d4c5-453b-8cd5-c12ca366e33e
+**Sort Gmail, understand a thread, and prepare a reply from a workspace inside your inbox.**
 
-<p align="center">
-  <strong>Private, local-first email intelligence for Gmail.</strong><br>
-  Local inbox intelligence inside Gmail, with optional Cloud work that continues while Gmail is closed.
-</p>
+PigeonBox is a Manifest V3 Chrome extension with a local mailbox index, on-device AI options, and optional hosted services. Start without a PigeonBox account; choose where AI runs and whether to enable tracking.
 
-<p align="center">
-  <a href="https://github.com/aiden-guan/pigeonbox/releases"><img src="https://img.shields.io/github/v/release/aiden-guan/pigeonbox?color=blue&label=version" alt="GitHub Release"></a>
-  <a href="https://github.com/aiden-guan/pigeonbox/actions/workflows/ci.yml"><img src="https://github.com/aiden-guan/pigeonbox/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
-  <a href="#-install"><img src="https://img.shields.io/badge/node-%3E%3D24.15-brightgreen.svg" alt="Node.js 24.15+"></a>
-</p>
+[Install](#install) · [How it works](#architecture) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md)
 
-<p align="center">
-  <a href="#-install"><img src="https://img.shields.io/badge/Install-Local_(free)-2563eb?style=for-the-badge" alt="Install PigeonBox Local"></a>
-  <a href="#option-a--let-your-ai-agent-install-it"><img src="https://img.shields.io/badge/Install_with-your_AI_agent-7c3aed?style=for-the-badge" alt="Install with your AI agent"></a>
-  <a href="https://github.com/aiden-guan/pigeonbox/releases/latest"><img src="https://img.shields.io/badge/Download-latest_release-111827?style=for-the-badge" alt="Download latest release"></a>
-</p>
+[![CI](https://github.com/aiden-guan/pigeonbox/actions/workflows/ci.yml/badge.svg)](https://github.com/aiden-guan/pigeonbox/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/aiden-guan/pigeonbox?label=release)](https://github.com/aiden-guan/pigeonbox/releases)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-<p align="center">
-  <a href="#-install">Install</a> ·
-  <a href="#core-capabilities">Capabilities</a> ·
-  <a href="#local-vs-cloud">Local vs. Cloud</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#engineering-deep-dives">Engineering Deep Dives</a> ·
-  <a href="docs/architecture.md">Technical Docs</a>
-</p>
+![PigeonBox's Cloud Home workspace, captured from the compiled extension with synthetic mail and API responses](assets/readme/hero.png)
 
-<br>
+*All captures below render the compiled extension in a disposable Chromium profile with synthetic mail. Cloud responses and prepared text are fixtures; these images demonstrate the interface, not live Gmail, model quality, or a deployed backend. [Capture provenance and reproduction](assets/readme/README.md).*
 
----
+## From inbox to next action
 
-## 📦 Install
+Gmail tells you what arrived. PigeonBox adds a working view of what needs a reply, what is waiting on someone else, and what can be read later. Open a brief, inspect its source thread, and prepare your response without moving to another mail client.
 
-PigeonBox's on-device inbox and AI features are free, need no PigeonBox account or API key, and take about five minutes to install. Email tracking is optional; recipient opens require a public tracker you own, which may require a Convex account or Cloudflare and Supabase accounts. Pick one install path:
+| Triage the inbox | Read the thread brief |
+| :--- | :--- |
+| <img src="assets/readme/feature-triage.png" width="400" alt="Local Respond inbox rendered with synthetic threads"> | <img src="assets/readme/feature-companion.png" width="400" alt="Local Pidgy Brief showing a seeded summary and action items"> |
+| Respond, Waiting, FYI, and Follow-ups organize locally indexed threads. Rules work with AI disabled; local importance ranking can learn from your choices. | A thread brief brings the summary, action items, dates, and source email into the workspace. Full text becomes available as threads are opened or ingested. |
 
-### Option A — Let your AI agent install it
+| Review a prepared reply · Cloud fixture | Ask with sources · Cloud fixture |
+| :--- | :--- |
+| <img src="assets/readme/feature-drafting.png" width="400" alt="Prepared reply review rendered with a synthetic Cloud response"> | <img src="assets/readme/feature-ask.png" width="400" alt="Chat answer rendered with a fixture citation and partial coverage notice"> |
+| Inspect a prepared variant before placing it in Gmail. Local drafting uses the selected AI provider; hosted prepared drafts require Cloud access and permissions. | Chat shows source references and coverage information. Local mode searches the browser's index; Cloud uses the connected service. An incomplete index cannot establish that mail does not exist. |
 
-Paste this into Claude Code, Codex, Cursor, or any coding agent with terminal access:
+Also included: keyboard triage, reusable snippets, reminders, open/click activity, and a Track PDF composer action for hosted document links. Availability depends on settings, build configuration, and account capabilities.
 
-```text
-Install PigeonBox for me by following https://raw.githubusercontent.com/aiden-guan/pigeonbox/main/INSTALL.md
-```
+### Try one complete workflow
 
-The agent checks prerequisites, clones and builds the extension, then offers the recommended Convex tracker setup in your own account. If you approve, it deploys the tracker and pre-fills this local extension build. You still click **Load unpacked** in Chrome and **Save** in tracker Settings to grant Chrome access. The instructions it follows are in [INSTALL.md](INSTALL.md).
+1. Load the extension, open Gmail, and choose **On this computer** during onboarding. AI can stay disabled.
+2. Open a few threads so the local index has message text, then inspect **Mail → Respond**.
+3. Open a thread's brief. With AI configured, request a summary or draft; inspect the text in Gmail's composer before sending.
+4. Open **Chat** and search the indexed mail. Check the cited thread and the coverage notice alongside the answer.
+5. If tracking is enabled, inspect **Waiting** for observed activity. An open signal is evidence of an image request, not proof that someone read the email.
 
-### Option B — One command
+## Choose where work runs
 
-Requires [Node.js](https://nodejs.org) 20+ and Chrome (or Edge/Brave) 116+.
+Free/Pro describe product access; Local/Cloud describe execution. They are separate choices: signed-in Free accounts can use hosted tracking without moving local AI to Cloud.
+
+| | On this computer | PigeonBox Cloud |
+| :--- | :--- | :--- |
+| **Account** | No PigeonBox account for local inbox and AI | Sign-in, explicit consent, and server-granted capabilities |
+| **AI** | WebGPU models, Chrome built-in AI where available, Ollama, or your API endpoint/key | Configured hosted provider through the Cloud API |
+| **Mail context** | IndexedDB and local lexical search, populated as mail is ingested | Client support for Google-connected thread intelligence, drafts, tasks, and briefings |
+| **When Gmail closes** | No continuous server mailbox sync | Connected service can process mail in the background; requires its own backend and Google authorization |
+| **Failure behavior** | Local capabilities do not depend on a Cloud session | Provider errors are surfaced; the router does not silently select another provider |
+| **Source in this repo** | Extension, agent, provider adapters, local storage/search, self-hostable trackers | Client, protocol schemas, UI, and synthetic API fixtures; the hosted application is maintained separately |
+
+**Local mode does not mean every setting is offline.** A remote BYOK endpoint receives the context needed for that request. Model downloads, Gmail itself, tracking, release checks, and optional services need connectivity. Cached local data and supported on-device inference can operate without a hosted AI backend.
+
+Anonymous usage events are on by default and can be disabled in **Settings → Privacy & data**. They use an allowlisted event format with a random install ID; they are separate from email tracking. See [product analytics](docs/product-analytics.md).
+
+## Install
+
+### Build from source
+
+Use the Node.js version in [.nvmrc](.nvmrc), npm, Git, and Chrome 116+ (or a compatible Chromium browser). With nvm installed, run `nvm install` and `nvm use` after cloning.
 
 ```bash
-git clone https://github.com/aiden-guan/pigeonbox.git && cd pigeonbox && npm run setup -- --tracking --open
+git clone https://github.com/aiden-guan/pigeonbox.git
+cd pigeonbox
+npm run setup -- --open
 ```
 
-`setup` installs dependencies, generates a local `.env`, builds everything, and asks before creating or updating a public Convex tracker in your account. If approved, it deploys and health-checks the tracker, pre-fills this local extension build, rebuilds, and opens `chrome://extensions`. If skipped, inbox and on-device AI features still work. To set up tracking later, run `npm run setup:tracker -- --open`.
+The setup helper installs missing dependencies, generates ignored local tracker configuration, builds the workspaces, and opens Chrome's extensions page. Local inbox features need no AI key or backend account.
 
-### Option C — Download a prebuilt release
+1. Open `chrome://extensions` and enable **Developer mode**.
+2. Select **Load unpacked → apps/extension/dist**.
+3. Open or reload Gmail and start onboarding from the PigeonBox toolbar icon.
 
-No Node needed: grab `PigeonBox-vX.Y.Z.zip` from the [latest release](https://github.com/aiden-guan/pigeonbox/releases/latest) and unzip it into its own folder. Releases are published on version tags and can lag behind `main`, so the latest release may be older than the version in `package.json`; build from source (Options A and B) for the newest code. `npm run package` creates one ZIP with Local and optional Cloud modes; store publication is a separate release step.
+For an AI-assisted install, give your coding agent the instructions in [INSTALL.md](INSTALL.md). See [local setup](docs/local-setup.md) for manual dependency installation, provider setup, and troubleshooting; `npm run dev` watches the extension.
 
-### Then, in Chrome (all options)
+### Download a release
 
-1. Go to `chrome://extensions` and turn on **Developer mode** (top right).
-2. Click **Load unpacked** and select `apps/extension/dist` (or the unzipped release folder).
-3. Open [Gmail](https://mail.google.com), click the PigeonBox toolbar icon, and choose **On this computer**.
+Unzip `PigeonBox-vX.Y.Z.zip` from [GitHub Releases](https://github.com/aiden-guan/pigeonbox/releases/latest) and load the extracted directory. Node.js is unnecessary for a prebuilt ZIP. A tagged release can lag behind the source branch, and a GitHub release is separate from Chrome Web Store publication.
 
-More detail: [docs/local-setup.md](docs/local-setup.md).
+Unpacked extensions need a new download/build and a reload in `chrome://extensions` to update. Store-managed installs use Chrome's update mechanism; see the [release process](docs/release-process.md).
 
-**Tracking is separate from local AI.** To count opens when a recipient opens your email on another device, use a public tracker you own. The guided install defaults to Convex, which provides the endpoint and durable database in one service. Cloudflare Worker + Supabase is the alternative. The localhost tracker is only for development on your computer. See [self-hosting options](docs/self-hosting.md).
+### Enable tracking separately
 
-### Updates
+Tracking is optional. A recipient's device needs a public HTTPS endpoint; a localhost tracker is only useful for development.
 
-Open the PigeonBox workspace in Gmail and click the **Settings** gear, then go to **Updates** to check the latest GitHub release or opt in to a daily check. Automatic checks are off by default. The request sends no email or settings data to GitHub; GitHub can see your IP address. If a release is available, **Download** saves the ZIP. Unzip it and reload or load the extracted folder from `chrome://extensions` to apply it.
+| Path | What it requires |
+| :--- | :--- |
+| **Hosted tracking** | A build with hosted endpoints, a signed-in PigeonBox account, and tracking enabled. Free supports opens/clicks; hosted document features depend on capabilities. |
+| **Your Convex tracker** | Run `npm run setup:tracker -- --open`. The helper requests approval before creating or updating resources in your provider account. [Guide](docs/convex-self-hosting.md). |
+| **Your Cloudflare Worker + Supabase** | Deploy the HTTP tracker and its durable database, then save the endpoint/token in Settings. [Guide](docs/self-hosting.md). |
+| **Development tracker** | `npm run tracker`; in-memory storage resets when the process stops. |
 
----
-
-## Overview
-
-PigeonBox is a Chrome extension (Manifest V3) that provides on-device email organization, thread summarization, draft generation, and open tracking directly inside Gmail. Local mode needs no cloud backend or Gmail API OAuth scopes, and by default keeps email contents on your computer. Chrome asks for access to a tracker or AI host only when you turn that feature on. Cloud is optional and requires explicit consent; connecting Google separately grants the permissions used for continuous sync.
-
-In Local mode, indexing, search, rule evaluation, and on-device model inference use browser primitives: IndexedDB, WebGPU (via Transformers.js and ONNX Runtime Web), Chrome's built-in Gemini Nano (`window.ai`), or a local Ollama instance. For teams seeking hosted convenience, PigeonBox also offers an optional Cloud mode backed by typed API contracts and strict zero-fallback privacy boundaries.
-
----
-
-## Local vs. Cloud
-
-PigeonBox has two execution environments in one extension, selectable under **Settings → PigeonBox** (the gear in the Gmail workspace). The standard release ZIP includes both modes and starts in Local. Cloud requires explicit consent, account sign-in and the relevant subscription capabilities; connecting Google requires separate authorization. Real-time Pidgy checks are an additional opt-in and remain off by default. No separate Cloud extension or download is needed.
-
-| Feature / Dimension | On This Computer (Local) | PigeonBox Cloud |
-| :--- | :--- | :--- |
-| **Account Requirement** | No PigeonBox account; a tracker provider account is needed only if you enable tracking | PigeonBox account (OAuth + PKCE) |
-| **Availability** | Free, open-source (MIT); the default build | Included in the same extension; account access and paid capabilities required |
-| **Inference Engine** | WebGPU (Transformers.js), Gemini Nano, Ollama, or BYOK | Hosted cloud inference cluster |
-| **Email Content Boundary** | Stays on this computer unless you explicitly choose a remote BYOK provider | Explicit consent and Google permissions; synced mail and derived intelligence are encrypted at rest. AI payloads are not logged |
-| **Search & Mailbox Index** | Local IndexedDB (`gi_mailbox_v1`) | Separate account-scoped synced Cloud index; Local data stays separate |
-| **While Gmail is Closed** | Browser-dependent local work | Continuous sync, follow-ups, prepared drafts and scheduled briefings |
-| **Rules and Documents** | Local inbox rules | Explainable Smart Views and automations with Shadow Mode; privately uploaded PDFs and observed viewing activity |
-| **Open & Click Tracking** | Optional self-hosted public tracker (Convex or Cloudflare Worker + Supabase) | Hosted managed tracker |
-| **Network Resilience** | Fully functional offline | Requires connectivity; switch to Local at any time |
-| **Fallback Guarantee** | Deterministic local evaluation | **Zero silent fallback** (uses the configured Cloud provider boundary) |
-
-On-device mode provides inbox intelligence without a cloud service; tracking runs separately. Cloud keeps organizing, preparing and monitoring work while you are away. Its Overview shows real recent work, sync coverage, prepared items, briefings and approvals. Ask uses the selected execution mode and cites available sources. Sending and invitations require explicit approval; new action rules start in Shadow Mode. If Cloud connectivity is interrupted, PigeonBox surfaces an explicit error rather than silently rerouting mail to third-party endpoints.
-
----
-
-## Core Capabilities
-
-| Inbox Triage & Categorization | Thread Companion Card & Action Items |
-| :---: | :---: |
-| <img src="assets/readme/feature-triage.png" alt="Inbox Triage in Side Panel" width="400" /> | <img src="assets/readme/feature-companion.png" alt="Thread Companion Card" width="400" /> |
-| Automatically sorts threads into Respond, Waiting, FYI, and Follow-ups using plain-language rules. Operates via on-device heuristics even when AI inference is disabled. | Draggable and resizable companion card floating inside Gmail threads. Surfaces structured summaries, action items, key dates, and open questions without leaving your view. |
-
-| Voice-Matched Draft Generation | Ask Pigeon with Citation Provenance |
-| :---: | :---: |
-| <img src="assets/readme/feature-drafting.png" alt="AI Draft Generation" width="400" /> | <img src="assets/readme/feature-ask.png" alt="Ask Pigeon Natural Language Search" width="400" /> |
-| Generates context-aware replies matching the mailbox owner's tone and signature. Drafts are injected into Gmail's native composer; PigeonBox **never automatically sends mail**. | Natural-language query interface across locally indexed threads using MiniSearch hybrid retrieval. Provides direct citations and explicitly discloses partial index coverage. |
-
----
+**Track PDF** uploads a document for a hosted viewer link. Ordinary Gmail paperclip attachments do not emit PigeonBox document events. Image proxies, blocked images, scanners, and sender views make all tracking signals imperfect. See [tracking](docs/tracking.md) and [tracking diagnostics](docs/tracking-debug.md).
 
 ## Architecture
 
-PigeonBox separates untrusted webpage DOM manipulation from trusted state and intelligence orchestration using Manifest V3 isolated contexts.
+The Gmail content script handles page integration. The extension service worker owns settings, credentials, provider selection, and persistence; an offscreen document hosts on-device model work.
 
 ```mermaid
-flowchart TD
-    subgraph GmailPage["Gmail Web Client (mail.google.com)"]
-        UI["Gmail DOM & Composer"]
-        ContentScript["Content Script<br/>(Isolated World)"]
-        Adapter["packages/gmail<br/>(InboxSDK + DOM Fallback)"]
-        ThreadCard["Thread Companion Card & Chips"]
+flowchart LR
+    subgraph Gmail["Gmail tab"]
+        DOM["Inbox and composer"]
+        Adapter["Gmail adapters + content script"]
+        DOM <--> Adapter
     end
-
-    subgraph ExtensionWorker["MV3 Background Service Worker (Trusted)"]
-        MsgGateway["Messaging Gateway<br/>(senderMaySend Allowlist)"]
-        Agent["packages/agent<br/>(Rules, Tiers, AIJobQueue)"]
-        Core["packages/core<br/>(Run Mode & Capabilities)"]
-        Tracking["packages/tracking<br/>(Protocol v3 Engine)"]
+    subgraph Extension["Trusted extension origin"]
+        UI["Workspace / side panel / settings"]
+        Gateway["Message sender allowlist"]
+        Worker["Background orchestration"]
+        Router["Local / Cloud provider router"]
+        Model["Offscreen on-device inference"]
+        Store[("IndexedDB mailbox + MiniSearch")]
+        Gateway --> Worker
+        UI <--> Worker
+        Worker <--> Store
+        Worker --> Router
+        Router --> Model
     end
-
-    subgraph Offscreen["Offscreen Document (High-Compute Sandbox)"]
-        WebGPU["Transformers.js + ONNX Runtime<br/>(WebGPU On-Device LLM)"]
-        Nano["Chrome Gemini Nano<br/>(window.ai)"]
+    subgraph Optional["Optional services"]
+        Provider["Ollama / chosen API provider"]
+        Cloud["PigeonBox Cloud API"]
+        Tracker["Hosted or self-hosted tracker"]
     end
-
-    subgraph LocalStorage["Local Browser Storage"]
-        IDB[("IndexedDB: gi_mailbox_v1<br/>packages/mailbox (Dexie)")]
-        SearchIndex[("MiniSearch Engine<br/>packages/search")]
-        OPFS[("OPFS Cache: model-files/<br/>Model Weights")]
-    end
-
-    subgraph ExternalBackends["External / Self-Hosted Services"]
-        LocalOllama["Local Ollama / BYOK API<br/>(http://localhost:11434)"]
-        TrackerService["Tracker Service<br/>(Cloudflare Worker / Convex)"]
-        CloudAPI["PigeonBox Cloud API<br/>(Optional Hosted Service)"]
-    end
-
-    UI <--> Adapter
-    Adapter --> ContentScript
-    ContentScript --> ThreadCard
-    ContentScript <-->|Typed Messages| MsgGateway
-    MsgGateway --> Agent
-    Agent --> Core
-    Agent <--> IDB
-    Agent <--> SearchIndex
-    Agent --> WebGPU
-    Agent --> Nano
-    WebGPU <--> OPFS
-    Agent -.->|BYOK / Local| LocalOllama
-    Agent -.->|Optional HTTPS| CloudAPI
-    Tracking -.->|HTTPS Tracking Protocol v3| TrackerService
+    Adapter <-->|"Typed runtime messages"| Gateway
+    Router -.-> Provider
+    Router -.-> Cloud
+    Worker -.->|"Tracking metadata"| Tracker
 ```
 
-### Execution Flow
+1. [Gmail adapters](packages/gmail/src/index.ts) observe thread/row lifecycles and normalize the mail available in the page.
+2. The content script sends ingestion and action requests through the [message allowlist](apps/extension/src/background/messaging.ts). Settings mutations and other privileged messages require an extension page.
+3. The [mailbox database](packages/mailbox/src/db.ts) persists indexed mail. [MiniSearch](packages/search/src/index.ts) indexes subject, text, participants, and labels; its coverage notice describes the available local corpus.
+4. The [provider router](apps/extension/src/background/ai/provider-router.ts) selects the configured execution path. [Core capabilities](packages/core/src/index.ts) keep Local availability independent of Cloud state; [API contracts](packages/api-contract/src/index.ts) define hosted requests and responses.
+5. The [workspace](apps/extension/src/workspace/PigeonBoxWorkspace.tsx) renders results. Gmail integration places prepared text in the composer; tracking receipts and sender-view signals use their own retry paths.
 
-1. **Thread Lifecycle Detection**: When opening an email in Gmail, `packages/gmail/src/InboxSdkAdapter.ts` (or `DomFallbackAdapter.ts`) intercepts the thread view and extracts thread metadata.
-2. **Context-Grounded Message Ingestion**: The content script packages thread text and dispatches typed `INGEST_THREAD` messages through the background message gateway (`apps/extension/src/background/messaging.ts`).
-3. **Local Indexing**: `packages/mailbox/src/index.ts` stores thread records in IndexedDB (`gi_mailbox_v1` Dexie schema v4) and updates the lexical search index (`packages/search/src/search.ts`) for instant citation retrieval.
-4. **Guarded Inference Dispatch**: `apps/extension/src/background/ai/provider-router.ts` checks `@pigeonbox/core` capabilities. Local inference routes to WebGPU in an offscreen document or local endpoints (`http://localhost:11434`). Cloud requests validate through `@pigeonbox/api-contract` Zod schemas.
-5. **UI Rendering & Draft Injection**: Summaries, key dates, and drafted replies return to `apps/extension/src/content/thread/ThreadPanel.tsx`. Generated drafts inject directly into Gmail's native compose window for manual user review and approval.
+Detailed modules and message flows: [architecture](docs/architecture.md). Hosted request shapes: [Cloud protocol](docs/cloud-protocol.md).
 
----
+## Engineering decisions
 
-## Engineering Deep Dives
+### Tracking a sender's view without calling it a recipient open
 
-### 1. One-Shot Claims Protocol for Sender Self-Open Suppression
+- **Problem:** Opening your own Sent thread can make Gmail's image proxy fetch the same pixel a recipient would load. Timing alone cannot reliably identify the reader.
+- **Approach:** [Tracking lifecycle helpers](packages/tracking/src/lifecycle.ts) model sender fingerprints, expiring self-view claims, one-shot proxy consumption, duplicate bursts, and evidence classification. The [Worker tracker](workers/tracker/src/index.ts) applies those rules to persisted events; the extension retries sender claims and send receipts.
+- **Why:** Explicit event identity and bounded claims let retries repair state without treating each request as a new recipient interaction.
+- **Tradeoff:** Proxy requests remain ambiguous. Suppression can miss or absorb activity, so the UI reports observations and confidence rather than proof of reading. [Reliability boundaries](docs/tracking-reliability.md).
 
-- **Problem**: When a sender views an email in their Sent folder, Gmail's caching image proxy (`ci3.googleusercontent.com/proxy/*`) fetches the tracking pixel asynchronously. Traditional email trackers suppress self-opens by ignoring pixel hits within a fixed timestamp window (e.g., 8 seconds post-send). However, if Gmail delays fetching the pixel until the user re-opens the thread days later, the proxy fetch arrives without timestamp correlation and triggers a false "Recipient opened email" notification. Conversely, wide timestamp windows swallow legitimate recipient opens that occur quickly.
-- **Approach**: Built an exact-identity, one-shot claim lifecycle (`packages/tracking/src/lifecycle.ts`, `apps/extension/src/content/tracking/message-self-view.ts`, `workers/tracker/src/index.ts`). When the user views a sent thread in Gmail, the extension detects distinct render milestones (`expandedAt` and `loadedAt`), applies client-side priority deduplication (`MESSAGE_LOAD` > `MESSAGE_EXPANDED` > `ROW_INTERACTION`), and registers a short-lived (25-second) self-view claim via `TRACKING_SELF_VIEW` with exponential retries and deterministic idempotency (`selfViewEventId`). The tracking server atomically consumes the claim upon the proxy's pixel request, classifies it as `SELF_LIKELY`, and re-opens the window for subsequent recipient opens.
-- **Why**: Eliminates false positives from delayed proxy fetches and reloads without suppressing legitimate recipient interactions.
-- **Tradeoff**: Requires coordinated state handling between the content script, background worker, and tracking store (Cloudflare Worker, Convex, or in-memory dev store) over Tracking Protocol v3.
+### Credentials across several browser contexts
 
-### 2. Multi-Context Privilege Boundaries in Manifest V3
+- **Problem:** Gmail's page, content scripts, extension pages, and the service worker need different privileges, even when they participate in the same workflow.
+- **Approach:** [Messaging](apps/extension/src/background/messaging.ts) checks the sender and message type, restricts extension storage to `TRUSTED_CONTEXTS`, and gives content scripts a public settings projection. [Credential handling](apps/extension/src/background/settings-credentials.ts) clears saved credentials when their destination changes.
+- **Why:** The Gmail integration can request specific work without receiving the API keys or tracker tokens that perform it.
+- **Tradeoff:** UI state crosses asynchronous messages, and each new message needs a deliberate permission boundary. This does not make untrusted email safe by itself. [Threat model](docs/threat-model.md).
 
-- **Problem**: In Chrome Manifest V3, content scripts run inside the untrusted DOM environment of `mail.google.com`. If credentials (BYOK API keys, tracker tokens, or Cloud session tokens) were stored in unrestricted extension storage, malicious third-party scripts or untrusted email HTML could extract secrets via DOM inspection or `storage.onChanged` listeners.
-- **Approach**: Enforced strict privilege separation across contexts (`apps/extension/src/background/messaging.ts`, `docs/threat-model.md`). Extension storage (`chrome.storage.local` and `.session`) is locked to `TRUSTED_CONTEXTS`. Content scripts receive only sanitized `PublicExtensionSettings` stripped of tokens. A central messaging gateway (`senderMaySend`) intercepts all incoming messages and rejects any privileged action (settings mutation, Cloud authentication, run-mode alterations, index resets, or downloads) originating from a content script.
-- **Why**: Quarantines all sensitive credentials inside the background service worker while permitting the content script to perform necessary Gmail DOM mutations.
-- **Tradeoff**: Content scripts cannot synchronously read user configuration and must await asynchronous message broadcasts from the worker upon initialization or settings updates.
+### Provider failures preserve the selected boundary
 
-### 3. Strict Run-Mode Boundaries with Zero Silent Fallback
+- **Problem:** Falling back to another model provider during an outage would change where mail content goes.
+- **Approach:** The [router](apps/extension/src/background/ai/provider-router.ts) returns an explicit Cloud error; [capability resolution](packages/core/src/index.ts) derives Local features from device settings rather than a hosted entitlement response.
+- **Why:** Provider selection remains a user decision, including when a service fails.
+- **Tradeoff:** A Cloud-dependent request can remain unavailable until connectivity returns or the user changes mode. [Router tests](apps/extension/src/background/ai/provider-router.test.ts).
 
-- **Problem**: Hybrid email assistants frequently suffer from privacy leaks when cloud services fail: an unreachable hosted model triggers an automatic fallback to remote third-party APIs, inadvertently routing private email bodies across unapproved networks without user consent.
-- **Approach**: Implemented strict capability isolation in `@pigeonbox/core` and `@pigeonbox/cloud-client`. Local capabilities are computed entirely from device settings and run independently of Cloud infrastructure. In Cloud mode, if the API endpoint becomes unavailable or returns an error, the provider halts immediately and returns an explicit, user-facing error message. Local heuristics continue sorting incoming mail, but no email content is redirected to external endpoints.
-- **Why**: Guarantees deterministic privacy boundaries and compliance with enterprise security requirements.
-- **Tradeoff**: Cloud users experience explicit downtime notifications during outages rather than automatic fallback, requiring an intentional toggle in settings to switch to Local execution.
+## Codebase map
 
-### 4. Resilient Dual-Strategy Gmail Adapter Lifecycle
+| Responsibility | Source and tools |
+| :--- | :--- |
+| **Gmail workspace** | [apps/extension](apps/extension) — React, Vite, Manifest V3; content scripts, trusted UI, background worker, offscreen runtime |
+| **Mail integration** | [packages/gmail](packages/gmail) — InboxSDK and DOM integration, lifecycle handling, compose actions |
+| **Intelligence** | [packages/agent](packages/agent), [packages/ai](packages/ai) — rules, job queue, prompts, provider adapters; Transformers.js for on-device models |
+| **Data and retrieval** | [packages/mailbox](packages/mailbox), [packages/search](packages/search) — Dexie/IndexedDB, local importance ranking, MiniSearch lexical retrieval |
+| **Mode and protocol** | [packages/core](packages/core), [packages/api-contract](packages/api-contract), [packages/cloud-client](packages/cloud-client) — capabilities, Zod schemas, authenticated client |
+| **Tracking** | [packages/tracking](packages/tracking), [workers/tracker](workers/tracker), [convex](convex) — shared event protocol and self-hostable backends |
+| **Shared settings** | [packages/shared](packages/shared) — types, owner identity, settings defaults and migrations |
+| **Verification and delivery** | [scripts](scripts), [tests/browser](tests/browser), [.github/workflows](.github/workflows) — hygiene, release validation, Vitest, Playwright, CI |
 
-- **Problem**: Webmail DOM trees frequently mutate due to Google A/B testing and class obfuscation, causing single-strategy extensions to break abruptly. Furthermore, injecting multiple event listeners across client-side router transitions leads to memory leaks and duplicate handler execution.
-- **Approach**: Implemented a composite adapter architecture (`packages/gmail/src/CompositeGmailAdapter.ts`, `InboxSdkAdapter.ts`, `DomFallbackAdapter.ts`, `selectors.ts`). Primary interactions bind through InboxSDK. If InboxSDK encounters unmounted views or unhandled routes (such as navigation on `#inbox`), the composite adapter degrades to pure DOM observation using a centralized selector registry. A strictly-once lifecycle manager tracks active handler instances with Symbol metadata, preventing registration stacking across view navigations.
-- **Why**: Centralizing DOM selectors in a single file isolates maintenance to one mapping file, while SDK hooks provide rich thread metadata whenever available.
-- **Tradeoff**: Maintaining dual DOM selectors alongside SDK adapters requires ongoing validation against Gmail web client updates.
+### Configuration
 
----
+- [.env.example](.env.example) describes optional self-hosted tracker settings. The Supabase service-role credential belongs only on the backend.
+- [apps/extension/.env.example](apps/extension/.env.example) documents public build-time origins and the optional unpacked extension public key. Anything compiled into the extension must be public.
+- Enter AI endpoint/key and tracker settings through the extension settings UI. Local secret files, generated tracker configuration, model/build outputs, and test reports are ignored by Git.
+- The hosted backend's deployment secrets and database are outside this repository. Building the client does not provision that service.
 
-## Technology Stack
-
-### Client & Browser Runtime
-- **Runtime**: Chrome Extension Manifest V3 (Service Worker, Content Script, Offscreen Document)
-- **UI Framework**: React 19, Tailwind CSS, Lucide Icons, Vite
-- **Gmail Surface Integration**: `@pigeonbox/gmail` (InboxSDK 2.2 + custom DOM Fallback Adapter)
-- **Local Model Execution**: WebGPU via `@huggingface/transformers` and ONNX Runtime Web
-
-### AI & Agent Orchestration
-- **Agent Framework**: `@pigeonbox/agent` (Plain-language rule engine, safety-tiered job queue, and fingerprinting)
-- **Provider Layer**: `@pigeonbox/ai` (`AIProvider` interface, prompt engineering, on-device model catalog)
-- **Protocol Contract**: `@pigeonbox/api-contract` (Typed Zod protocol schemas, route definitions, and error codes)
-- **Cloud Client**: `@pigeonbox/cloud-client` (Fetch client with PKCE authentication and capability negotiation)
-
-### Persistence & Search Engine
-- **Primary Mailbox Store**: `@pigeonbox/mailbox` (IndexedDB schema v4 via Dexie.js)
-- **Full-Text Retrieval**: `@pigeonbox/search` (MiniSearch lexical indexing and hybrid citation retrieval)
-- **Model Storage**: Origin Private File System (`OPFS`) for quantized model weights
-
-### Tracking & Backend Infrastructure
-- **Tracking Engine**: `@pigeonbox/tracking` (Protocol v3 classification: `RECIPIENT_LIKELY`, `SELF_LIKELY`, `MACHINE_LIKELY`)
-- **Worker Tracker**: `workers/tracker` (Cloudflare Worker with in-memory dev store or Supabase Postgres backend)
-- **Convex Tracker**: `convex/` (Optional serverless tracking backend)
-
----
-
-## Development
-
+## Verify a checkout
 
 ```bash
-# Rebuild extension on file changes
-npm run dev
+# Repository checks, versions, typecheck, lint, unit/script tests,
+# workspace build, and an isolated release build + ZIP validation
+npm run verify
 
-# Or: use Settings → Developer → Reload extension to rebuild before reloading
-npm run dev:reload
-
-# Run the Vitest suite across all packages
-npm test
-
-# Run the Playwright browser tests against a built fixture
+# Install the browser once, then run extension integration fixtures
+npx playwright install chromium
 npm run test:browser
-
-# Run full CI verification pipeline (hygiene, typecheck, lint, tests, build, release packaging)
-npm run verify
 ```
 
----
+`verify` needs no Cloud backend, AI key, or deployed tracker. It does **not** run Playwright. Browser fixtures exercise the compiled extension in disposable profiles with a synthetic Gmail page and API responses; they do not establish live provider acceptance or current Gmail compatibility.
 
-## Self-Hosting
+CI runs those checks plus browser tests against a packaged release. The badge links to remote CI; a local pass alone does not establish deployed behavior or store publication. See [manual verification](docs/VERIFICATION.md), [capture instructions](assets/readme/README.md), and [release process](docs/release-process.md).
 
-PigeonBox email tracking is optional and completely self-hostable. Mail triage, summarization, drafting, and search do not require a tracking server. For opens from another person's mail client, the tracker needs a public HTTPS URL; `127.0.0.1` only works on the computer running it.
+## Status and limits
 
-| Option | Command / Reference | Use Case |
-| :--- | :--- | :--- |
-| **Convex (default)** | [docs/convex-self-hosting.md](docs/convex-self-hosting.md) | Guided installer sets up a public endpoint with durable storage in one provider. |
-| **Cloudflare Worker + Supabase** | [docs/self-hosting.md](docs/self-hosting.md) | Public Cloudflare endpoint with durable Postgres storage. Supabase alone is not the HTTP tracker. |
-| **Local tracker** | `npm run tracker` | Development only. Reachable from this computer; uses memory by default. |
+This repository contains the working extension and optional self-hosted trackers. Hosted UI and typed contracts are included; the Cloud service is a separate dependency. Feature availability comes from build configuration, settings, and server capabilities.
 
-Configure tracking endpoints in the extension under **Settings → Email tracking**.
+- **Gmail changes:** SDK and DOM integration need maintenance when Gmail changes its interface. Local mode uses the web page rather than requesting Gmail API scopes.
+- **Wide inbox layout:** At widths of 600 CSS pixels or more, an older inbox grid rule can compress the current list and brief into a narrow column. The feature captures use a 480-pixel panel; the wide Home capture uses a different view.
+- **Coverage:** Local search covers ingested mail. Snippets, partial threads, and full threads carry different evidence; an answer cannot safely imply full-mailbox coverage.
+- **Models:** On-device availability depends on browser APIs, model downloads, memory, and hardware. Generated summaries and replies need review.
+- **Actions:** Generated text can be placed in Gmail for review. Scheduled sends, enabled rules, and Cloud approval flows have their own authorization paths; this project does not claim that every action is manual.
+- **Privacy:** Remote AI, hosted tracking, and PDF uploads send the data needed by those services. Tracking includes subjects, addresses, IDs, and events, rather than message bodies. See [privacy model](docs/privacy-model.md).
+- **Acceptance:** Live Gmail, Google OAuth, hosted AI, recipient tracking, and Chrome Web Store status require separate checks. The screenshots and fixture tests do not verify them.
 
----
+For current work, use [issues](https://github.com/aiden-guan/pigeonbox/issues) and the [Unreleased changelog](CHANGELOG.md#unreleased). Historical investigations are kept in [docs/archive](docs/archive/README.md).
 
-## Repository Structure
+## Contribute
 
-```text
-.
-├── apps/
-│   └── extension/             # Manifest V3 Chrome Extension (Vite, React 19, Tailwind)
-│       ├── src/background/    # Service worker (messaging gateway, intelligence routing)
-│       ├── src/content/       # Gmail content script and companion card UI
-│       ├── src/offscreen/     # WebGPU and on-device model inference environment
-│       └── src/settings/      # Extension settings, run-mode configuration, diagnostics
-├── packages/
-│   ├── agent/                 # Rule engine, safety tiers, AIJobQueue, and classification
-│   ├── ai/                    # AIProvider interface, local model catalog, prompt templates
-│   ├── api-contract/          # Typed PigeonBox Cloud protocol schemas (Zod)
-│   ├── cloud-client/          # HTTP client for PigeonBox Cloud and PKCE authorization
-│   ├── core/                  # Run mode state machine (Local vs. Cloud) and capabilities
-│   ├── gmail/                 # Dual-strategy Gmail adapters (InboxSDK + DOM fallback)
-│   ├── mailbox/               # Local IndexedDB persistence layer (Dexie schema v4)
-│   ├── search/                # MiniSearch lexical search and hybrid RAG retrieval
-│   ├── shared/                # Common schemas, crypto fingerprints, settings migration
-│   └── tracking/              # Protocol v3 email tracking engine and event classification
-├── workers/
-│   └── tracker/               # Self-hostable Cloudflare Worker open/click tracking service
-├── convex/                    # Recommended one-provider tracking backend
-├── docs/                      # Architectural specs, threat models, and self-hosting guides
-└── scripts/                   # Verification (verify.mjs), packaging, and hygiene checks
-```
-
----
-
-## Privacy & Threat Model
-
-| Data Category | Storage Location | Access Controls |
-| :--- | :--- | :--- |
-| **Email Text & Indices** | IndexedDB (`gi_mailbox_v1`) | Restricted to browser profile; never synced without explicit Cloud mode. |
-| **Local AI Prompts** | On-device memory | Evaluated via WebGPU, Gemini Nano, or local Ollama; never transmitted externally. |
-| **Cloud AI Prompts** | Ephemeral inference over TLS | Inference payloads are not logged. Connecting Google separately stores encrypted synced mail and derived intelligence for continuous processing, subject to account controls. |
-| **Tracking Records** | Self-hosted backend / Cloud | Metadata only (event timestamps, user agent); never captures email bodies. |
-| **Credentials & Tokens** | Extension Service Worker | Storage scoped to `TRUSTED_CONTEXTS`; never exposed to page scripts or DOM. |
-
-- **Strict Zero-Auto-Send Guarantee**: PigeonBox inserts drafts into Gmail's composer for manual inspection. No automated path exists to send, delete, or mark emails as spam without direct user interaction.
-- Full threat modeling and trust boundaries are detailed in [docs/privacy-model.md](docs/privacy-model.md) and [docs/threat-model.md](docs/threat-model.md).
-
----
-
-## Limitations & Boundaries
-
-- **Gmail Interface Evolution**: Gmail updates DOM layouts and CSS classes periodically. While PigeonBox uses InboxSDK and a centralized selector fallback registry, upstream Google changes may require adapter updates.
-- **Index Coverage**: PigeonBox indexes email as threads are loaded or explicitly selected for ingestion. The Ask Pigeon interface discloses when search queries span partially indexed mailboxes.
-- **Open Tracking Nature**: Email open tracking is a probabilistic signal rather than definitive proof. Image blocking, VPNs, and Apple Mail Privacy Protection can suppress or simulate pixel loads. PigeonBox reports "Open detected", never "Read".
-- **On-Device Model Constraints**: Quantized WebGPU models are optimized for factual extraction, categorization, and concise draft replies. Complex multi-step reasoning benefits from local Ollama or BYOK endpoints.
-
----
-
-## Contributing
-
-Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for local workflow instructions and architectural guidelines. All pull requests must pass the automated verification suite:
-
-```bash
-npm run verify
-```
-
-To report security vulnerabilities, please refer to [SECURITY.md](SECURITY.md).
-
----
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development conventions and verification requirements. Report vulnerabilities through [SECURITY.md](SECURITY.md).
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
-
-Documentation starts at [docs/README.md](docs/README.md).
+[MIT](LICENSE).
