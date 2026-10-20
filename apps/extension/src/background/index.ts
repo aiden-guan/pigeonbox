@@ -1137,11 +1137,11 @@ async function pollTrackingNow(): Promise<void> {
       const email = fresh.find((item) => item.trackingId === alert.event.tracking_id);
       const hex = gmailThreadHex(email?.gmailThreadId);
       const conversation = alert.emails > 1 || (hex ? (threadSize.get(hex) || 0) > 1 : false);
-      const plan = await conversationAlerts.plan(scope, alert).catch((): AlertPlan => ({ action: 'show', count: alert.count, render: alert.render }));
+      const plan = await conversationAlerts.plan(scope, alert).catch((): AlertPlan => ({ action: 'show', count: alert.count }));
       if (plan.action === 'skip') continue;
       const { title, message } = describeTrackingNotification(alert.event, email, plan.count, { conversation });
       if (plan.action === 'merge') {
-        // The rest of an opening the last poll already alerted: refresh that alert quietly.
+        // The rest of an opening the last poll already alerted, or a reopening in the same sitting: refresh that alert quietly.
         await Promise.resolve(chrome.notifications.update(plan.id, { title, message, silent: true })).catch(() => false);
         await conversationAlerts.record(scope, alert, plan.id, plan).catch(() => undefined);
         continue;

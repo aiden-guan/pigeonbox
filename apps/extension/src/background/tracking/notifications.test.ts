@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TrackingEvent } from '@pigeonbox/tracking';
-import { ConversationAlerts, gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './notifications';
+import { type AlertPlan, ConversationAlerts, gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './notifications';
 
 function memoryStorage() {
   const data = new Map<string, unknown>();
@@ -131,7 +131,7 @@ describe('tracking alerts', () => {
       ]);
     });
 
-    it('counts a later reopening of the conversation, and every click', () => {
+    it('counts a reopening only once the conversation went quiet, and every click', () => {
       const alerts = groupTrackingAlerts([
         open('a1', 'trk_a', 0),
         open('b1', 'trk_b', 1),
@@ -140,8 +140,47 @@ describe('tracking alerts', () => {
         event('k1', at(301), { tracking_id: 'trk_a', type: 'CLICK', classification: 'RECIPIENT_LIKELY', user_agent: 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/130 Safari/537.36' }),
         event('k2', at(302), { tracking_id: 'trk_b', type: 'CLICK', classification: 'RECIPIENT_LIKELY', user_agent: 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/130 Safari/537.36' }),
       ], threadOf);
-      // a2 reopens trk_a within the same minute; b2 is a fresh opening five minutes on.
-      expect(alerts.map((alert) => [alert.event.type, alert.count])).toEqual([['OPEN', 3], ['CLICK', 2]]);
+      // a2 redisplays trk_a within the same opening; b2 is a fresh opening five minutes on.
+      expect(alerts.map((alert) => [alert.event.type, alert.count])).toEqual([['OPEN', 2], ['CLICK', 2]]);
+    });
+
+    it('keeps one opening while the client refetches, until a quiet minute', () => {
+      const count = (seconds: number[]) => groupTrackingAlerts(seconds.map((s, index) => open(`a${index}`, 'trk_a', s)), threadOf)[0]?.count;
+      expect(count([0, 50, 100, 150, 200])).toBe(1);
+      expect(count([0, 50, 109.9])).toBe(1);
+      expect(count([0, 50, 110])).toBe(2);
+    });
+
+    it('counts an Apple Mail reading session once, however often it refetches the pixel', async () => {
+      const appleMail = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)';
+      const detection = (time: string, index: number) => event(`m${index}`, new Date(`2026-10-20T${time}Z`).toISOString(), { tracking_id: 'trk_a', user_agent: appleMail, classification: 'RECIPIENT_LIKELY' });
+      // One reader on one Mac, as logged by the hosted tracker. The pixel is no-store,
+      // so Apple Mail fetched it again on every selection or redisplay.
+      const first = ['15:44:33', '15:44:39', '15:45:02', '15:45:03.081', '15:45:03.108', '15:45:03.114', '15:45:30', '15:45:32', '15:45:36.4', '15:45:36.8', '15:45:38.5', '15:45:39.3', '15:45:47', '15:45:50'];
+      // Back 131 seconds later (the ends are logged, the times between illustrative), then again 70 seconds after that.
+      const later = ['15:48:01', '15:48:02', '15:48:33', '15:49:04', '15:49:21', '15:49:40', '15:50:50'];
+      const fetches = [...first, ...later].map(detection);
+
+      expect(groupTrackingAlerts(fetches.slice(0, first.length), threadOf).map((alert) => [alert.count, alert.emails])).toEqual([[1, 1]]);
+      expect(groupTrackingAlerts(fetches, threadOf).map((alert) => alert.count)).toEqual([3]);
+
+      // Polled once a minute, the session raises one alert and updates it in place.
+      const shown = new ConversationAlerts(memoryStorage());
+      const polls = new Map<string, TrackingEvent[]>();
+      for (const item of fetches) {
+        const minute = item.timestamp.slice(0, 16);
+        polls.set(minute, [...polls.get(minute) ?? [], item]);
+      }
+      const plans: AlertPlan[] = [];
+      for (const page of polls.values()) {
+        for (const alert of groupTrackingAlerts(page, threadOf)) {
+          const plan = await shown.plan('scope', alert);
+          plans.push(plan);
+          if (plan.action !== 'skip') await shown.record('scope', alert, plan.action === 'merge' ? plan.id : trackingNotificationId(alert.event), plan);
+        }
+      }
+      expect(plans.map((plan) => plan.action)).toEqual(['show', 'merge', 'merge', 'merge', 'merge']);
+      expect(plans.map((plan) => plan.action === 'skip' ? null : plan.count)).toEqual([1, 1, 2, 2, 3]);
     });
 
     it('updates the shown alert when one opening lands on both sides of a poll', async () => {
@@ -160,12 +199,15 @@ describe('tracking alerts', () => {
 
       // A replay after a worker restart is already on screen.
       expect(await shown.plan('scope', rest!)).toEqual({ action: 'skip' });
-      // The same email fetched again a few seconds later is a reopening, still merged.
+      // The same email fetched again a few seconds later is the same opening redisplayed.
       const [again] = groupTrackingAlerts([open('a2', 'trk_a', 20)], threadOf);
-      expect(await shown.plan('scope', again!)).toMatchObject({ action: 'merge', count: 2 });
-      // Other trackers and much later openings raise their own alert.
+      expect(await shown.plan('scope', again!)).toMatchObject({ action: 'merge', count: 1 });
+      // A reopening after a quiet minute, in the same sitting, updates the shown alert.
+      const [reopened] = groupTrackingAlerts([open('a3', 'trk_a', 66)], threadOf);
+      expect(await shown.plan('scope', reopened!)).toMatchObject({ action: 'merge', id: 'trkn:trk_a:a1', count: 2 });
+      // Other trackers and openings after a quiet five minutes raise their own alert.
       expect(await shown.plan('other-scope', again!)).toMatchObject({ action: 'show', count: 1 });
-      const [later] = groupTrackingAlerts([open('a3', 'trk_a', 600)], threadOf);
+      const [later] = groupTrackingAlerts([open('a4', 'trk_a', 306)], threadOf);
       expect(await shown.plan('scope', later!)).toMatchObject({ action: 'show', count: 1 });
     });
 

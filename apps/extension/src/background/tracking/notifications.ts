@@ -73,15 +73,22 @@ export class TrackingNotificationHistory {
   }
 }
 
-/** Opens closer together than this are one render (Gmail's proxy often fetches twice). */
-const SAME_RENDER_MS = 800;
-
 /**
  * Opening a Gmail conversation renders every tracked message in it, so each
- * pixel fires within moments of the others. Detections in one conversation
- * this close together, each one chained to the last, are one opening.
+ * pixel fires within moments of the others, and mail clients fetch the pixel
+ * again whenever they redisplay a message: Gmail's proxy often twice per
+ * render, Apple Mail and Outlook on every selection. Detections in one
+ * conversation this close together, each one chained to the last, are one
+ * opening, however often the same email repeats.
  */
 export const CONVERSATION_RENDER_MS = 60_000;
+
+/**
+ * A reader moving between messages keeps coming back to one in a single
+ * sitting. An opening this soon after the last one an alert counted updates
+ * that alert instead of raising another.
+ */
+const SITTING_MS = 5 * 60_000;
 
 export type TrackingAlert = {
   /** The newest detection, which names the email in the alert. */
@@ -96,8 +103,6 @@ export type TrackingAlert = {
   first: TrackingEvent;
   firstMs: number;
   lastMs: number;
-  /** When each email was last detected in the latest opening. */
-  render: Record<string, number>;
 };
 
 /**
@@ -118,33 +123,25 @@ export function groupTrackingAlerts(
     const ms = Date.parse(event.timestamp);
     const current = groups.get(key);
     if (!current) {
-      groups.set(key, { event, count: 1, key, emails: 1, first: event, firstMs: ms, lastMs: ms, ids: new Set([event.tracking_id]), render: { [event.tracking_id]: ms } });
+      groups.set(key, { event, count: 1, key, emails: 1, first: event, firstMs: ms, lastMs: ms, ids: new Set([event.tracking_id]) });
       continue;
     }
     current.event = event;
     current.ids.add(event.tracking_id);
     current.emails = current.ids.size;
-    if (sameRender(current.render, current.lastMs, event, ms)) {
-      current.render[event.tracking_id] = ms;
-    } else {
-      current.count += 1;
-      current.render = { [event.tracking_id]: ms };
-    }
+    if (!sameOpening(event, current.lastMs, ms)) current.count += 1;
     current.lastMs = ms;
   }
   return [...groups.values()].map(({ ids: _ids, ...alert }) => alert);
 }
 
 /**
- * Whether a detection belongs to the opening already under way: another email
- * of the conversation arriving soon after, or a proxy refetch of the same one.
- * Clicks are deliberate, so every click counts.
+ * Whether a detection belongs to the opening already under way, which lasts
+ * until the conversation goes quiet. Clicks are deliberate, so every click counts.
  */
-function sameRender(render: Record<string, number>, lastMs: number, event: TrackingEvent, ms: number): boolean {
+function sameOpening(event: Pick<TrackingEvent, 'type'>, lastMs: number, ms: number): boolean {
   if (event.type !== 'OPEN' || !Number.isFinite(ms) || !Number.isFinite(lastMs)) return false;
-  if (ms - lastMs >= CONVERSATION_RENDER_MS) return false;
-  const seen = render[event.tracking_id];
-  return seen === undefined || ms - seen < SAME_RENDER_MS;
+  return ms - lastMs < CONVERSATION_RENDER_MS;
 }
 
 /** Gmail's hex thread ID; InboxSDK can report the decimal `thread-f:` form. */
@@ -164,16 +161,17 @@ const SHOWN_KEY = 'trackingAlertsShown';
 const MAX_SHOWN = 100;
 
 export type AlertPlan =
-  | { action: 'show'; count: number; render: Record<string, number> }
-  | { action: 'merge'; id: string; count: number; render: Record<string, number> }
+  | { action: 'show'; count: number }
+  | { action: 'merge'; id: string; count: number }
   | { action: 'skip' };
 
-type Shown = Record<string, { id: string; count: number; lastMs: number; render: Record<string, number> }>;
+type Shown = Record<string, { id: string; count: number; lastMs: number }>;
 
 /**
  * Remembers the alert last shown for each conversation, so an opening whose
- * pixels land on both sides of a poll updates that alert instead of raising a
- * second one. Session storage: a browser restart starts afresh.
+ * pixels land on both sides of a poll, or a reopening in the same sitting,
+ * updates that alert instead of raising another. Session storage: a browser
+ * restart starts afresh.
  */
 export class ConversationAlerts {
   private pending: Promise<unknown> = Promise.resolve();
@@ -187,29 +185,24 @@ export class ConversationAlerts {
   plan(scope: string, alert: TrackingAlert): Promise<AlertPlan> {
     const next = this.pending.then(async (): Promise<AlertPlan> => {
       const prior = (await this.read())[`${scope}\n${alert.key}`];
-      const fresh: AlertPlan = { action: 'show', count: alert.count, render: alert.render };
+      const fresh: AlertPlan = { action: 'show', count: alert.count };
       if (!prior || !Number.isFinite(alert.firstMs)) return fresh;
       if (alert.lastMs <= prior.lastMs) return { action: 'skip' };
-      if (alert.firstMs - prior.lastMs >= CONVERSATION_RENDER_MS) return fresh;
+      if (alert.firstMs - prior.lastMs >= SITTING_MS) return fresh;
       // The first detection here may continue the opening the shown alert already counted.
-      const continues = sameRender(prior.render ?? {}, prior.lastMs, alert.first, alert.firstMs);
-      return {
-        action: 'merge',
-        id: prior.id,
-        count: prior.count + alert.count - (continues ? 1 : 0),
-        render: continues && alert.count === 1 ? { ...prior.render, ...alert.render } : alert.render,
-      };
+      const continues = sameOpening(alert.first, prior.lastMs, alert.firstMs);
+      return { action: 'merge', id: prior.id, count: prior.count + alert.count - (continues ? 1 : 0) };
     });
     this.pending = next.catch(() => undefined);
     return next;
   }
 
-  record(scope: string, alert: TrackingAlert, id: string, { count, render }: { count: number; render: Record<string, number> }): Promise<void> {
+  record(scope: string, alert: TrackingAlert, id: string, { count }: { count: number }): Promise<void> {
     const next = this.pending.then(async () => {
       const shown = await this.read();
       const key = `${scope}\n${alert.key}`;
       delete shown[key];
-      shown[key] = { id, count, lastMs: alert.lastMs, render };
+      shown[key] = { id, count, lastMs: alert.lastMs };
       const entries = Object.entries(shown).slice(-MAX_SHOWN);
       await this.storage.set({ [SHOWN_KEY]: Object.fromEntries(entries) });
     });
