@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@pigeonbox/shared": "*",
-    "dexie": "^4.0.11"
+    "dexie": "^4.4.7"
   },
   "devDependencies": {
     "fake-indexeddb": "^6.2.6",
