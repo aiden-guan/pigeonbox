@@ -10,24 +10,23 @@ export type { PigeonBoxCapability, PigeonBoxMode };
 export { KNOWN_CAPABILITIES };
 
 /**
- * State of the Cloud connection as the background worker sees it.
- * - not_configured: this build has no Cloud API URL (typical for source builds)
+ * State of the PigeonBox server connection as the background worker sees it.
+ * - not_configured: no server URL (typical for release and source builds without one)
  * - signed_out:     no session
  * - ready:          signed in and capabilities fetched
- * - not_entitled:   signed in, but the server grants no Cloud AI
+ * - not_entitled:   signed in, but the server grants this account no server AI
  * - expired:        the session could not be refreshed
  * - unreachable:    the last request failed at the network level
  */
-/** `update_required`: this extension version is too old for the Cloud server (never reported as an outage). */
+/** `update_required`: this extension version is too old for the PigeonBox server (never reported as an outage). */
 export type CloudConnectionStatus = 'not_configured' | 'signed_out' | 'ready' | 'not_entitled' | 'expired' | 'unreachable' | 'update_required';
 
-/** Set when the server asks for a newer extension; `required` blocks Cloud, otherwise it is a recommendation. */
+/** Set when the server asks for a newer extension; `required` blocks server mode, otherwise it is a recommendation. */
 export type CloudUpdateNotice = { required: boolean; installed: string; minimum: string | null; recommended: string | null };
 
 export type CloudState = {
   status: CloudConnectionStatus;
   email: string | null;
-  plan: string | null;
   /** Capabilities from `/v1/capabilities`; empty until fetched. */
   capabilities: readonly string[];
   update?: CloudUpdateNotice;
@@ -35,7 +34,7 @@ export type CloudState = {
   notice?: 'maintenance' | 'degraded';
 };
 
-export const SIGNED_OUT_CLOUD: CloudState = { status: 'signed_out', email: null, plan: null, capabilities: [] };
+export const SIGNED_OUT_CLOUD: CloudState = { status: 'signed_out', email: null, capabilities: [] };
 
 export type LocalCapabilityInput = Pick<ExtensionSettings, 'aiMode' | 'aiProvider'>;
 
@@ -70,9 +69,9 @@ export class CapabilitySet {
 /**
  * The capabilities PigeonBox has right now.
  *
- * Local mode never looks at Cloud state, so a Cloud outage, an expired
- * subscription or a signed-out account cannot change what Local does.
- * Cloud mode uses what the server granted, plus the parts of the product that
+ * Local mode never looks at server state, so a server outage, an account the
+ * server no longer allows or a signed-out session cannot change what Local does.
+ * Server mode uses what the server granted, plus the parts of the product that
  * always run on the device (the local index behind Ask Pigeon).
  */
 export function resolveCapabilities(input: {

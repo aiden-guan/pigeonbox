@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { pageCall } from './page-calls';
 import { cloudThreadStateAvailable, forgetThreadIntel, threadIntel } from './thread-state';
 
-const ready: CloudState = { status: 'ready', email: 'a@example.com', plan: 'cloud', capabilities: ['cloud_ai', 'cloud_mail_sync'] };
+const ready: CloudState = { status: 'ready', email: 'a@example.com', capabilities: ['cloud_ai', 'cloud_mail_sync'] };
 
 function fakeClient(handler: (route: string, body: unknown) => unknown) {
   const call = vi.fn(async (route: string, body: unknown) => handler(route, body));

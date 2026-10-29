@@ -13,7 +13,7 @@ function requestedOrigins(): string[] {
 /**
  * Chrome only shows a permission prompt after a click on an extension page.
  * The dashboard asks the worker to open this window when something it set up
- * (a tracker or AI provider address, or PigeonBox Cloud) needs access to a new site.
+ * (a tracker or AI provider address, or your PigeonBox server) needs access to a new site.
  */
 export function GrantApp() {
   useAppearance();

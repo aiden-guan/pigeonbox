@@ -5,9 +5,6 @@ import { MemoryChatRequestSchema, MemoryChatResponseSchema, MemoryListRequestSch
 import type { z } from 'zod';
 import {
   AccountDeleteRequestSchema,
-  BillingCheckoutRequestSchema,
-  BillingPortalRequestSchema,
-  BillingRedirectResponseSchema,
   CapabilitiesResponseSchema,
   EntitlementsResponseSchema,
   HealthResponseSchema,
@@ -182,7 +179,7 @@ export type RouteDef = {
 };
 
 /**
- * The canonical PigeonBox Cloud route table. The client and the server both
+ * The canonical PigeonBox server route table. The client and the server both
  * build from this object, so a route cannot exist on one side only.
  */
 export const ROUTES = {
@@ -199,9 +196,6 @@ export const ROUTES = {
   capabilities: { method: 'GET', path: '/v1/capabilities', auth: 'user', response: CapabilitiesResponseSchema },
   entitlements: { method: 'GET', path: '/v1/account/entitlements', auth: 'user', response: EntitlementsResponseSchema },
   accountDelete: { method: 'POST', path: '/v1/account/delete', auth: 'user', request: AccountDeleteRequestSchema, response: OkResponseSchema },
-
-  billingCheckout: { method: 'POST', path: '/v1/billing/checkout', auth: 'user', request: BillingCheckoutRequestSchema, response: BillingRedirectResponseSchema },
-  billingPortal: { method: 'POST', path: '/v1/billing/portal', auth: 'user', request: BillingPortalRequestSchema, response: BillingRedirectResponseSchema },
 
   classify: { method: 'POST', path: '/v1/ai/classify', auth: 'user', request: ClassifyRequestSchema, response: ClassifyResponseSchema, operation: 'classify' },
   summarize: { method: 'POST', path: '/v1/ai/summarize', auth: 'user', request: SummarizeRequestSchema, response: SummarizeResponseSchema, operation: 'summarize' },
@@ -233,7 +227,7 @@ export const ROUTES = {
   followUps: { method: 'POST', path: '/v1/followups/list', auth: 'user', request: FollowUpListRequestSchema, response: FollowUpListResponseSchema, capability: 'cloud_mail_sync' },
   followUpUpdate: { method: 'POST', path: '/v1/followups/update', auth: 'user', request: FollowUpUpdateRequestSchema, response: FollowUpUpdateResponseSchema, capability: 'cloud_mail_sync' },
 
-  // Personal context controls stay available after a subscription ends.
+  // Personal context controls stay available when the server has no AI configured.
   memoryList: { method: 'POST', path: '/v1/memory/list', auth: 'user', request: MemoryListRequestSchema, response: MemoryListResponseSchema },
   memoryGet: { method: 'POST', path: '/v1/memory/get', auth: 'user', request: MemoryIdRequestSchema, response: MemoryResponseSchema },
   memoryForget: { method: 'POST', path: '/v1/memory/forget', auth: 'user', request: MemoryIdRequestSchema, response: OkResponseSchema },

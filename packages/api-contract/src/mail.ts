@@ -139,9 +139,9 @@ export const ThreadsIntelRequestSchema = MailboxSelectorSchema.extend({
   threadIds: z.array(GmailIdSchema).min(1).max(40),
 });
 export const ThreadsIntelResponseSchema = z.object({
-  /** Keyed by the thread ID exactly as requested. Threads PigeonBox Cloud has not synced are absent. */
+  /** Keyed by the thread ID exactly as requested. Threads the server has not synced are absent. */
   threads: z.record(z.string().max(64), ThreadIntelSchema),
-  /** The mailbox is connected and synced by PigeonBox Cloud. */
+  /** The mailbox is connected and synced by the server. */
   synced: z.boolean(),
   accountId: IdSchema.nullable(),
 });
@@ -316,7 +316,7 @@ export const PreferencesSchema = z.object({
     realtimeComposeChecks: z.boolean().default(false),
     /** Optional source-grounded inline continuations; live prose is never retained. */
     smartComposeCompletion: z.boolean().default(false),
-  }).default({ enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true, realtimeComposeChecks: false, smartComposeCompletion: false }),
+  }).default(() => ({ enabled: true, learnFromReceivedMail: true, learnFromSentMail: true, learnFromDraftEdits: true, realtimeComposeChecks: false, smartComposeCompletion: false })),
   fastRecall: z.object({
     /** Opt-in: keep encrypted excerpts of synced mail for deep search. Off by default. */
     enabled: z.boolean(),

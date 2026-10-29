@@ -1,4 +1,4 @@
-/** PigeonBox Cloud sign-in (Authorization Code + PKCE) and token storage for the service worker. */
+/** PigeonBox server sign-in (Authorization Code + PKCE) and token storage for the service worker. */
 import { PROTOCOL_HEADER, PROTOCOL_VERSION, type CloudSession } from '@pigeonbox/api-contract';
 import { ASK_HISTORY_KEY } from '../../sidepanel/ask-history';
 import {
@@ -10,7 +10,7 @@ import {
 } from '@pigeonbox/cloud-client';
 
 /**
- * PigeonBox Cloud session, owned by the service worker.
+ * PigeonBox server session, owned by the service worker.
  *
  * - The refresh token is the only long-lived secret. It sits in
  *   chrome.storage.local, which `hardenExtensionStorage` restricts to trusted

@@ -1,12 +1,11 @@
 /**
- * PigeonBox Cloud in the side panel: Home (what needs you, what is prepared,
+ * Your PigeonBox server in the side panel: Home (what needs you, what is prepared,
  * what happened while you were away), every prepared draft, approvals and
  * activity. Shown only in Cloud mode. Every call goes through the service
  * worker (`CLOUD_CALL`), which holds the session and allows only listed routes.
  */
 import type { Approval, CloudOverview, DraftListItem, RouteResponse } from '@pigeonbox/api-contract';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { trackProductEvent } from '../ui/analytics';
 import { Orb } from '../ui/Orb';
 import { relative } from './WaitingView';
 import { CloudHome, type HomeTarget } from './CloudHome';
@@ -56,7 +55,6 @@ function ApprovalCard(props: { approval: Approval; focused?: boolean; onDone: (m
     const result = await cloudCall<{ approval: Approval }>('approvalDecide', { id: approval.id, decision, idempotencyKey: decisionKeys.current[decision], ...edited });
     setBusy(false);
     if (!result.ok) return setError(result.reason);
-    trackProductEvent('first_approval_decided', { surface: 'sidepanel', outcome: 'success' });
     setCompleted(decision === 'approve' ? 'Approved.' : 'Rejected. Nothing was done.');
     await new Promise((resolve) => window.setTimeout(resolve, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200));
     props.onDone(decision === 'approve' ? (approval.kind === 'send_email' ? 'Approved. Sending now.' : 'Approved.') : 'Rejected. Nothing was done.');
@@ -209,11 +207,9 @@ function useCloudOverview(enabled: boolean, account: string | null, onCount: (co
     const result = await callCloud('cloudOverview', since.current ? { since: since.current } : {});
     if (id !== request.current) return;
     if (!result.ok) {
-      console.warn('[PigeonBox] Cloud overview refresh failed', result.code);
+      console.warn('[PigeonBox] Server overview refresh failed', result.code);
       return setState((current) => ({ ...current, loading: false, error: result.reason }));
     }
-    trackProductEvent('first_cloud_overview_viewed', { surface: 'sidepanel', mode: 'cloud' });
-    if (result.data.accounts?.some((item) => item.status === 'active' && item.sync.state === 'healthy' && item.sync.lastSyncAt)) trackProductEvent('first_cloud_sync_completed', { surface: 'sidepanel', mode: 'cloud' });
     setState((current) => ({ ...current, data: result.data, loading: false, error: '', checkedAt: result.data.generatedAt }));
     onCount(result.data.prepared?.approvalsWaiting ?? result.data.work?.approvalsWaiting ?? 0);
     if (!result.data.unavailable.length) void chrome.storage.local.set({ cloudOverviewVisit: { account, at: result.data.generatedAt } });

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '@pigeonbox/shared';
 import { SIGNED_OUT_CLOUD, aiDataDestination, localCapabilities, resolveCapabilities, type CloudState } from './index';
 
-const ready: CloudState = { status: 'ready', email: 'a@example.com', plan: 'cloud', capabilities: ['cloud_ai', 'cloud_tracking', 'unknown_future'] };
+const ready: CloudState = { status: 'ready', email: 'a@example.com', capabilities: ['cloud_ai', 'cloud_tracking', 'unknown_future'] };
 
 describe('capabilities', () => {
   it('Local with AI off still has Ask Pigeon and no account capabilities', () => {

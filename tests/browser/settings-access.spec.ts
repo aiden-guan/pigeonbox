@@ -1,7 +1,9 @@
 import { test, expect } from './fixtures';
 import type { BrowserContext, Page } from '@playwright/test';
 
-// Settings live on the PigeonBox dashboard; the fixture API serves a stand-in that says HELLO like the real one.
+// With a PigeonBox server configured, Settings live on its dashboard (<server>/dashboard). The
+// fixture server is on loopback, which source builds let message the extension; it serves a
+// stand-in that says HELLO like the real one.
 const DASHBOARD = /\/dashboard\?ext=[a-p]{32}#general$/;
 const settingsTabs = (context: BrowserContext) => context.pages().filter((page) => page.url().includes('/dashboard?ext='));
 async function opensSettings(context: BrowserContext, action: () => Promise<void>): Promise<Page> {
@@ -9,16 +11,12 @@ async function opensSettings(context: BrowserContext, action: () => Promise<void
   await action();
   const page = await opened;
   await expect(page).toHaveURL(DASHBOARD);
-  // chrome.tabs.create starts the public navigation before Playwright attaches
-  // routing to the new page. Reload once to serve the synthetic dashboard.
-  if (page.url().startsWith('https://usepigeonbox.com/')) await page.reload();
   await expect(page.locator('body[data-hello="1"]')).toHaveCount(1);
   return page;
 }
 
 test('the floating Gmail workspace opens Settings from its gear without disturbing the workspace', async ({ app }) => {
   await app.page('workspace');
-  await app.worker.evaluate(() => chrome.storage.local.set({ productAnalyticsEnabled: true, productEventCounts: {} }));
   const gmail = await app.gmail();
   const host = gmail.locator('[data-gi-ui="workspace"]');
   const shell = host.locator('.gi-shell');
@@ -45,15 +43,25 @@ test('the floating Gmail workspace opens Settings from its gear without disturbi
 
   const settings = await opensSettings(app.context, () => gear.click());
   expect(settingsTabs(app.context)).toHaveLength(1);
-  await expect.poll(async () => (await app.worker.evaluate(async () => (await chrome.storage.local.get('productEventCounts')).productEventCounts))?.settings_opened).toBe(1);
 
   // Keyboard activation reuses the open Settings tab instead of adding another.
+  await app.worker.evaluate(() => {
+    const update = chrome.tabs.update.bind(chrome.tabs) as (...args: unknown[]) => Promise<unknown>;
+    chrome.tabs.update = (async (...args: unknown[]) => {
+      const { fixtureTabUpdates = 0 } = await chrome.storage.session.get('fixtureTabUpdates');
+      await chrome.storage.session.set({ fixtureTabUpdates: Number(fixtureTabUpdates) + 1 });
+      return update(...args);
+    }) as typeof chrome.tabs.update;
+  });
   await gmail.bringToFront();
   await gear.focus();
   await expect(gear).toBeFocused();
   await gear.press('Enter');
-  await expect.poll(async () => (await app.worker.evaluate(async () => (await chrome.storage.local.get('productEventCounts')).productEventCounts))?.settings_opened).toBe(2);
+  await expect.poll(async () => (await app.worker.evaluate(() => chrome.storage.session.get('fixtureTabUpdates'))).fixtureTabUpdates).toBe(1);
+  await expect(settings).toHaveURL(DASHBOARD);
   expect(settingsTabs(app.context)).toHaveLength(1);
+  // Opening Settings records nothing: PigeonBox keeps no product analytics.
+  expect(await app.worker.evaluate(() => chrome.storage.local.get(['productEventCounts', 'productAnalyticsInstallId']))).toEqual({});
 
   expect(await app.worker.evaluate(async () => (await chrome.storage.local.get('workspaceState')).workspaceState)).toEqual(before);
   await expect(shell).toBeVisible();
@@ -80,9 +88,9 @@ test('the docked side panel exposes Settings with the dock control', async ({ ap
   await settings.close();
 });
 
-test('an enabled Cloud workspace opens Settings on the dashboard of its configured Cloud API', async ({ app }) => {
+test('a workspace running on the server opens Settings on that server’s dashboard', async ({ app }) => {
   const panel = await app.page('sidepanel', true);
-  await expect(panel.locator('.pb-mode-label')).toHaveText('Cloud');
+  await expect(panel.locator('.pb-mode-label')).toHaveText('Server');
   const settings = await opensSettings(app.context, () => panel.getByRole('button', { name: 'Open PigeonBox Settings' }).click());
   expect(settings.url().startsWith(`${new URL(app.api.baseUrl).origin}/dashboard?ext=${app.id}`)).toBe(true);
 });
@@ -115,15 +123,24 @@ test('Settings stays usable at a narrow width and links only to visible sections
   await expect(trackOpens).toHaveAttribute('aria-checked', was === 'true' ? 'false' : 'true');
 });
 
-test('a public Local build keeps Settings one click away and shows Cloud only as a waitlist', async ({ app }) => {
+test('without a PigeonBox server, Settings open inside the extension and offer no server mode', async ({ app }) => {
   const panel = await app.page('sidepanel');
   await panel.evaluate(() => chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { runMode: 'local', cloudApiUrl: '' } }));
   const state = await panel.evaluate(() => chrome.runtime.sendMessage({ type: 'GET_PRODUCT_STATE' }));
-  test.skip(state.cloudAvailable, 'Requires an unconfigured Local build (PIGEONBOX_BROWSER_EXTENSION_PATH=/path/to/unzipped-release).');
+  test.skip(state.cloudAvailable, 'Requires a build without a server (no VITE_PIGEONBOX_CLOUD_API_URL), such as the unzipped release.');
+  expect(state).toMatchObject({ cloudAvailable: false, dashboardAvailable: false, cloudOrigins: [] });
   await panel.reload();
   await expect(panel.locator('.pb-mode-label')).toHaveText('Local');
-  const settings = await opensSettings(app.context, () => panel.getByRole('button', { name: 'Open PigeonBox Settings' }).click());
-  // A build without Cloud still opens the published dashboard, where Local settings live.
-  expect(settings.url().startsWith(`https://usepigeonbox.com/dashboard?ext=${app.id}`)).toBe(true);
-  expect(app.api.calls.some((call) => /auth|checkout|billing/.test(call.route))).toBe(false);
+  const opened = app.context.waitForEvent('page');
+  await panel.getByRole('button', { name: 'Open PigeonBox Settings' }).click();
+  const settings = await opened;
+  await expect(settings).toHaveURL(`chrome-extension://${app.id}/settings.html?here`);
+  await expect(settings.getByRole('heading', { name: 'Settings.' })).toBeVisible();
+  await expect(settings.locator('#run-mode .gi-choice')).toHaveCount(2);
+  await expect(settings.getByRole('link', { name: 'Run your own server ↗' })).toHaveAttribute('href', 'https://github.com/aiden-guan/pigeonbox/blob/main/docs/self-hosting.md');
+  await expect(settings.getByText(/waitlist|upgrade|Sent with PigeonBox/i)).toHaveCount(0);
+  // Server pages have nowhere to open, and say how to add a server.
+  expect(await settings.evaluate(() => chrome.runtime.sendMessage({ type: 'CLOUD_OPEN', section: 'documents' }))).toMatchObject({ ok: false, code: 'not_configured' });
+  expect(await settings.evaluate(() => chrome.runtime.sendMessage({ type: 'SET_RUN_MODE', mode: 'cloud', consent: true }))).toMatchObject({ ok: false, reason: expect.stringContaining('No PigeonBox server is configured') });
+  expect(app.api.calls.some((call) => /auth|checkout|billing|events/.test(call.route))).toBe(false);
 });

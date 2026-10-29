@@ -2,7 +2,7 @@
 
 Tracking is optional and independent of AI. It never sees mailbox bodies.
 
-For recipient opens from another device, use a public HTTPS tracker you own, such as Convex or Cloudflare Worker + Supabase. `npm run tracker` listens on this computer only and is for local development.
+For recipient opens from another device, use a public HTTPS tracker you own: your [PigeonBox server](self-hosting.md)'s tracker, or a standalone single-user tracker on [Convex](convex-self-hosting.md) or [Cloudflare Worker + Supabase](tracker-cloudflare.md). `npm run tracker` listens on this computer only and is for local development.
 
 ## How it works
 
@@ -10,7 +10,7 @@ For recipient opens from another device, use a public HTTPS tracker you own, suc
 2. When you send, the pixel and tracked links are added to **Gmail's outbound send request** through InboxSDK, not to the compose box, so composing never loads the pixel. Each `http(s)` link gets a stable `clk_…` ID; the request modifier stores those IDs on the tracker and rewrites a link only after the tracker confirms it (within 4 seconds), so a recipient never gets a link that leads to an error. The rewrite is idempotent: a second pass adds no second pixel and no new link IDs. If anything fails, the mail is sent untracked (or with the pixel but plain links); tracking never blocks Send. Plain-text sends are left untracked.
 3. A recipient's mail client fetches `GET /open/:id` (a 1×1 GIF) and link clicks go through `GET /c/:id` (302 to the stored `http(s)` URL). Unknown or malformed IDs get the same GIF, or a plain "not available" page for links; there is no redirect without a stored link.
 4. The worker polls the tracker, updates sent-mail marks in Gmail (○ sent, ✓ opened, ↗ link clicked) and the detail card's activity list, and shows notifications.
-5. Each tracked email remembers which tracker issued it (`local:<tracker origin>` or `cloud:<API origin>`). Updates, self-view claims and activity for that email go only to that tracker, so switching between Local and Cloud never sends an ID to the wrong one. Cloud is keyed by its API, so a new hosted-tracker hostname keeps existing emails working.
+5. Each tracked email remembers which tracker issued it (`local:<tracker origin>` or `cloud:<API origin>`). Updates, self-view claims and activity for that email go only to that tracker, so switching between a standalone tracker and your server never sends an ID to the wrong one. Server-issued emails are keyed by the server's API, so a new server-tracker hostname keeps existing emails working.
 
 ## Telling your own views from recipients (protocol v3)
 
@@ -29,11 +29,11 @@ The logic lives in `packages/tracking/src/lifecycle.ts` (client), `workers/track
 | Backend | Where | Auth |
 |---|---|---|
 | `npm run tracker` | This computer, memory by default | Personal token |
-| Cloudflare Worker + Supabase | Your accounts | Personal token |
+| Cloudflare Worker + Supabase (`workers/tracker`) | Your accounts | Personal token |
 | Convex | Your Convex deployment | Personal token |
-| PigeonBox Cloud tracker | PigeonBox | Cloud access token; records scoped to your account |
+| Your PigeonBox server's tracker (`workers/server-tracker`) | Your Cloudflare and Supabase accounts | Server access token; records scoped to each account on the server |
 
-All four speak the same protocol and report `protocolVersion: 3` on `/health`. The Cloud tracker runs the same request handler as `workers/tracker` (`handleTrackerRequest`) with a per-user store. It records pixel and click events after responding (`TrackerDeps.defer`), so image loads and redirects never wait on the database. A Cloud access token that expires is refreshed through the Cloud session and the request retried once; a 401 is rejected before any work, so the retry cannot create a duplicate.
+All four speak the same protocol and report `protocolVersion: 3` on `/health`. The server tracker runs the same request handler as `workers/tracker` (`handleTrackerRequest`) with a per-account store. It records pixel and click events after responding (`TrackerDeps.defer`), so image loads and redirects never wait on the database. A server access token that expires is refreshed through the server session and the request retried once; a 401 is rejected before any work, so the retry cannot create a duplicate.
 
 Counters (`open_count`, `click_count`, first and last times) are always recomputed from the email's stored events, up to 5,000 per email, never incremented. That keeps them correct when a later self-view claim reclassifies an earlier fetch.
 

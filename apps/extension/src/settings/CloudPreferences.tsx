@@ -48,7 +48,7 @@ export function CloudPreferences({ capabilities }: { capabilities: readonly stri
   return (
     <div className="space-y-3">
       <p className="gi-muted text-xs">
-        These preferences apply to background Cloud work. Sending and invitations always require approval.
+        These preferences apply to background work on your PigeonBox server. Sending and invitations always require approval.
       </p>
       {error ? (
         <p className="gi-warn" role="alert">
@@ -164,7 +164,7 @@ export function CloudPreferences({ capabilities }: { capabilities: readonly stri
             <>
               <Toggle
                 label="Prepare replies automatically"
-                description="PigeonBox writes replies and keeps them in your Drafts queue in Pro."
+                description="Your PigeonBox server writes replies and keeps them in your Drafts queue."
                 checked={prefs.autoDrafts.enabled}
                 onChange={(enabled) => patch('autoDrafts', { ...prefs.autoDrafts, enabled })}
               />
@@ -196,17 +196,17 @@ export function CloudPreferences({ capabilities }: { capabilities: readonly stri
             </>
           ) : null}
           <button className="gi-btn" type="submit" disabled={busy || !prefs.workdays.length}>
-            {busy ? 'Saving…' : 'Save Pro preferences'}
+            {busy ? 'Saving…' : 'Save server preferences'}
           </button>
           {saved ? (
             <p className="gi-note" role="status">
-              Cloud preferences saved.
+              Server preferences saved.
             </p>
           ) : null}
         </form>
       ) : !error ? (
         <p className="gi-muted" role="status">
-          Loading Cloud preferences…
+          Loading server preferences…
         </p>
       ) : null}
       <div className="gi-cloud-actions">

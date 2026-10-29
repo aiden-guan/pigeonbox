@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS, type ExtensionSettings } from '@pigeonbox/shared';
-import { editablePatch, handleWebMessage, isDashboardSender, type WebBridgeDeps } from './web-bridge';
+import { DASHBOARD_ORIGINS, editablePatch, handleWebMessage, isDashboardOrigin, isDashboardSender, type WebBridgeDeps } from './web-bridge';
+import { BUILD_CLOUD_API_URL } from '../config';
 
-const DASHBOARD = { origin: 'https://usepigeonbox.com', url: 'https://usepigeonbox.com/dashboard' };
+// The configured PigeonBox server serves the dashboard at /dashboard.
+const DASHBOARD = { origin: 'https://api.example.com', url: 'https://api.example.com/dashboard' };
 
 function deps(overrides: Partial<WebBridgeDeps> = {}) {
   let settings: ExtensionSettings = { ...DEFAULT_SETTINGS, aiApiKey: 'sk-secret', personalApiToken: 'tok-secret', cloudApiUrl: '' };
@@ -25,7 +27,6 @@ function deps(overrides: Partial<WebBridgeDeps> = {}) {
     dashboardCode: vi.fn(async (input) => ({ code: 'one-use-account-code', state: input.state })),
     agentRules: async () => [],
     saveAgentRules: async () => undefined,
-    analytics: { get: async () => false, set: async () => undefined },
     action: async () => null,
     noteDashboardTab: async () => undefined,
     hasOrigins: async () => false,
@@ -47,30 +48,45 @@ function deps(overrides: Partial<WebBridgeDeps> = {}) {
 describe('dashboard bridge', () => {
   it('answers only the dashboard origins', async () => {
     const { deps: d } = deps();
+    // The configured PigeonBox server serves the dashboard.
     expect(isDashboardSender(DASHBOARD, d)).toBe(true);
     expect(isDashboardSender({ origin: 'https://evil.example' }, d)).toBe(false);
+    expect(isDashboardSender({ origin: 'https://dashboard.example' }, d)).toBe(false);
     expect(isDashboardSender({ origin: 'http://127.0.0.1:8788' }, d)).toBe(false);
     expect(isDashboardSender({ origin: 'http://127.0.0.1:8788' }, { ...d, allowLoopback: true })).toBe(true);
-    // The Cloud API serves its own copy of the dashboard.
-    expect(isDashboardSender({ origin: 'https://api.example.com' }, d)).toBe(true);
+    // Without a configured server, no website is the dashboard.
+    expect(isDashboardSender({ origin: 'https://api.example.com' }, { ...d, apiBaseUrl: () => null })).toBe(DASHBOARD_ORIGINS.includes('https://api.example.com'));
     expect(await handleWebMessage({ type: 'HELLO' }, { origin: 'https://evil.example' }, d)).toMatchObject({ ok: false, code: 'forbidden' });
+  });
+
+  it('lets only the build-time server reach the worker, plus loopback in source builds', () => {
+    expect(DASHBOARD_ORIGINS).toEqual(BUILD_CLOUD_API_URL ? [new URL(BUILD_CLOUD_API_URL).origin] : []);
+    expect(isDashboardOrigin('https://dashboard.example', false)).toBe(false);
+    expect(isDashboardOrigin('http://localhost:8788', false)).toBe(false);
+    expect(isDashboardOrigin('http://localhost:8788', true)).toBe(true);
+  });
+
+  it('reports no analytics preference and ignores the old analytics switch', async () => {
+    const { deps: d } = deps();
+    expect(await handleWebMessage({ type: 'GET_SETTINGS' }, DASHBOARD, d)).not.toHaveProperty('analytics');
+    expect(await handleWebMessage({ type: 'SET_ANALYTICS', enabled: true }, DASHBOARD, d)).toMatchObject({ ok: false, reason: 'Unknown request.' });
   });
 
   it('opens a dashboard account session using only a one-use code', async () => {
     const dashboardCode = vi.fn(async (input: { state: string }) => ({ code: 'one-use-account-code', state: input.state }));
     const { deps: d } = deps({ currentAccount: async () => ({ id: 'u1', email: 'a@example.com' }), dashboardCode });
     expect(await handleWebMessage({ type: 'HELLO' }, DASHBOARD, d)).toMatchObject({ accountLink: true, account: { id: 'u1' } });
-    const message = { type: 'ACCOUNT_LINK', redirectUri: 'https://usepigeonbox.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) };
+    const message = { type: 'ACCOUNT_LINK', redirectUri: 'https://api.example.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) };
     expect(await handleWebMessage(message, DASHBOARD, d)).toEqual({ ok: true, code: 'one-use-account-code', state: message.state });
     expect(dashboardCode).toHaveBeenCalledTimes(1);
-    for (const patch of [{ redirectUri: 'https://evil.example/dashboard' }, { redirectUri: 'https://usepigeonbox.com/other' }, { redirectUri: 'https://usepigeonbox.com/dashboard?next=evil' }, { codeChallenge: 'bad' }, { state: 'bad' }]) {
+    for (const patch of [{ redirectUri: 'https://evil.example/dashboard' }, { redirectUri: 'https://api.example.com/other' }, { redirectUri: 'https://api.example.com/dashboard?next=evil' }, { codeChallenge: 'bad' }, { state: 'bad' }]) {
       expect(await handleWebMessage({ ...message, ...patch }, DASHBOARD, d)).toMatchObject({ ok: false });
     }
     expect(dashboardCode).toHaveBeenCalledTimes(1);
     expect(await handleWebMessage(message, { origin: 'https://evil.example' }, d)).toMatchObject({ ok: false });
   });
 
-  it('never returns secrets or the developer API override', async () => {
+  it('never returns secrets or the server URL override', async () => {
     const { deps: d } = deps();
     const reply = (await handleWebMessage({ type: 'GET_SETTINGS' }, DASHBOARD, d)) as { settings: Record<string, unknown> };
     expect(JSON.stringify(reply)).not.toContain('secret');
@@ -78,7 +94,7 @@ describe('dashboard bridge', () => {
     expect(reply.settings).not.toHaveProperty('cloudApiUrl');
   });
 
-  it('saves only editable settings; run mode and the Cloud API stay out of reach', async () => {
+  it('saves only editable settings; run mode and the server URL stay out of reach', async () => {
     expect(editablePatch({ runMode: 'cloud', cloudConsentAt: 'x', cloudApiUrl: 'https://evil.example', autoArchive: true, aiApiKey: 42 })).toEqual({ autoArchive: true });
     const { deps: d, current } = deps();
     await handleWebMessage({ type: 'SAVE_SETTINGS', settings: { runMode: 'cloud', trackOpens: false } }, DASHBOARD, d);
@@ -92,7 +108,7 @@ describe('dashboard bridge', () => {
     expect(reply).toMatchObject({ ok: true, missingOrigins: expect.arrayContaining(['https://track.example/*']) });
   });
 
-  it('switches to Cloud only with consent from the page', async () => {
+  it('switches to the server only with consent from the page', async () => {
     const { deps: d, productMessage } = deps();
     await handleWebMessage({ type: 'SET_RUN_MODE', mode: 'cloud' }, DASHBOARD, d);
     expect(productMessage).toHaveBeenLastCalledWith({ type: 'SET_RUN_MODE', mode: 'cloud', consent: false });
@@ -100,9 +116,9 @@ describe('dashboard bridge', () => {
     expect(productMessage).toHaveBeenLastCalledWith({ type: 'SET_RUN_MODE', mode: 'cloud', consent: true });
   });
 
-  it('links Cloud with PKCE: the page carries the code, the worker keeps the verifier', async () => {
+  it('links the server with PKCE: the page carries the code, the worker keeps the verifier', async () => {
     const { deps: d, exchangeLinkedCode } = deps();
-    const begin = (await handleWebMessage({ type: 'LINK_BEGIN', redirectUri: 'https://usepigeonbox.com/dashboard' }, DASHBOARD, d)) as { codeChallenge: string; state: string };
+    const begin = (await handleWebMessage({ type: 'LINK_BEGIN', redirectUri: 'https://api.example.com/dashboard' }, DASHBOARD, d)) as { codeChallenge: string; state: string };
     expect(begin.codeChallenge).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(JSON.stringify(begin)).not.toContain('verifier');
 
@@ -110,14 +126,14 @@ describe('dashboard bridge', () => {
     // A failed attempt does not consume the pending link.
     const done = await handleWebMessage({ type: 'LINK_COMPLETE', code: 'the-code', state: begin.state }, DASHBOARD, d);
     expect(done).toMatchObject({ ok: true, user: { email: 'a@example.com' } });
-    expect(exchangeLinkedCode).toHaveBeenCalledWith('https://api.example.com', expect.objectContaining({ code: 'the-code', redirectUri: 'https://usepigeonbox.com/dashboard', codeVerifier: expect.any(String) }));
+    expect(exchangeLinkedCode).toHaveBeenCalledWith('https://api.example.com', expect.objectContaining({ code: 'the-code', redirectUri: 'https://api.example.com/dashboard', codeVerifier: expect.any(String) }));
     // Single use.
     expect(await handleWebMessage({ type: 'LINK_COMPLETE', code: 'the-code', state: begin.state }, DASHBOARD, d)).toMatchObject({ ok: false });
   });
 
   it('refuses a sign-in return address on another origin or path', async () => {
     const { deps: d } = deps();
-    for (const redirectUri of ['https://evil.example/dashboard', 'https://usepigeonbox.com/other', 'https://usepigeonbox.com/dashboard?x=1']) {
+    for (const redirectUri of ['https://evil.example/dashboard', 'https://api.example.com/other', 'https://api.example.com/dashboard?x=1']) {
       expect(await handleWebMessage({ type: 'LINK_BEGIN', redirectUri }, DASHBOARD, d)).toMatchObject({ ok: false });
     }
   });

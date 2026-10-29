@@ -1,5 +1,5 @@
 /**
- * Adapter for Cloud-derived thread state: the `ThreadIntel` PigeonBox Cloud's
+ * Adapter for server-derived thread state: the `ThreadIntel` the PigeonBox server's
  * always-on service keeps for each synced thread (state, next action,
  * commitments, deadlines, follow-up stage, prepared drafts).
  *

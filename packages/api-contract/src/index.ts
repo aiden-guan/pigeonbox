@@ -1,7 +1,7 @@
 /**
- * @pigeonbox/api-contract — the one canonical definition of the PigeonBox Cloud
- * protocol. The public extension and the private Cloud service both build from
- * these schemas. This package must stay dependency-light (zod + @pigeonbox/shared)
+ * @pigeonbox/api-contract — the one canonical definition of the protocol between
+ * the extension and a PigeonBox server (packages/server). Both build from these
+ * schemas. This package must stay dependency-light (zod + @pigeonbox/shared)
  * and must never import server code.
  */
 export * from './protocol.js';

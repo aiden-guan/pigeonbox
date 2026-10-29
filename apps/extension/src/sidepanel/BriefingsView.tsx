@@ -43,7 +43,7 @@ export function BriefingsView({ onOpenThread }: { onOpenThread: (id: string, acc
     <section className="gi-cloud-reader">
       <h2>Briefings</h2>
       <p className="gi-muted">
-        Replies, commitments and meetings with sources. Prepared only when requested or scheduled in Cloud.
+        Replies, commitments and meetings with sources. Prepared only when requested or scheduled on your server.
       </p>
       <div className="gi-cloud-actions">
         <button className="gi-btn" type="button" disabled={busy} onClick={() => void generate('morning')}>
@@ -93,7 +93,7 @@ export function BriefingsView({ onOpenThread }: { onOpenThread: (id: string, acc
           </button>
         ))
       ) : items ? (
-        <p className="gi-muted">No briefing yet. Prepare one above or set a schedule in Pro.</p>
+        <p className="gi-muted">No briefing yet. Prepare one above or set a schedule on your server.</p>
       ) : null}
       <button className="gi-text-btn" type="button" onClick={() => openCloud('briefings')}>
         Manage schedule ↗

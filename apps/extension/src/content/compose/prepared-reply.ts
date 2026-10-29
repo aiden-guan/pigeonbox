@@ -1,7 +1,7 @@
 /**
  * Prepared replies, placed where the reply is written.
  *
- * When the person opens Gmail's reply composer on a thread PigeonBox Cloud has
+ * When the person opens Gmail's reply composer on a thread the PigeonBox server has
  * a ready reply for, the reply is put in that composer through the existing
  * insertion path (at the top, keeping Gmail's signature and quoted history),
  * and Gmail's composer becomes the only place it is edited. Strictly:
@@ -93,7 +93,7 @@ export function forgetPlaced(body: HTMLElement): void {
 export function selectOwnText(body: HTMLElement): boolean {
   const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
-      const skipped = node.parentElement?.closest('.gmail_quote, .gmail_quote_container, blockquote, .gmail_signature, [data-smartmail="gmail_signature"], .gmail_extra, [data-pigeonbox-footer]');
+      const skipped = node.parentElement?.closest('.gmail_quote, .gmail_quote_container, blockquote, .gmail_signature, [data-smartmail="gmail_signature"], .gmail_extra');
       return skipped && body.contains(skipped) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
     },
   });

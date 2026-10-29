@@ -1,0 +1,9 @@
+# Your PigeonBox server serves its API under /v1 and this dashboard. Every
+# other page address opens the dashboard. /app is what released extensions
+# open; keep it.
+/ /dashboard 302
+/index /dashboard 302
+/app /dashboard 302
+/account /dashboard 302
+/sign-in /dashboard 302
+/auth/callback /dashboard 302

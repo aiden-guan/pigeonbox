@@ -97,7 +97,7 @@ if (release) process.env.VITE_PIGEONBOX_EXPERIMENTAL = 'false';
 /** Source builds call the local `npm run dev:reload` helper; release builds never do. */
 if (release) process.env.VITE_PIGEONBOX_DEV_REBUILD_URL = '';
 else process.env.VITE_PIGEONBOX_DEV_REBUILD_URL ??= 'http://127.0.0.1:5199';
-/** Source builds also accept a dashboard served on loopback (the local Cloud API's copy). */
+/** Source builds also accept a dashboard served on loopback (a local PigeonBox server's copy). */
 process.env.VITE_PIGEONBOX_RELEASE = release ? '1' : '';
 
 /** Files that must never ship even if they sit in public/ on a developer machine. */
@@ -121,8 +121,8 @@ function releaseHygiene(): Plugin {
  * Chrome derives an extension's ID from the manifest `key`, or from the folder
  * path when there is none. Setting `PIGEONBOX_EXTENSION_KEY` (the store item's
  * public key: Developer Dashboard → Package → View public key) gives the
- * unpacked dev build the same ID as the Chrome Web Store item, so Cloud sign-in
- * redirects and ID allowlists behave the same locally. Release builds never
+ * unpacked dev build the same ID as the Chrome Web Store item, so server
+ * sign-in redirects and ID allowlists behave the same locally. Release builds never
  * carry it: the store assigns its own key.
  */
 function extensionKey(mode: string): string | undefined {
@@ -145,16 +145,42 @@ function extensionIdFromKey(key: string): string {
   return [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
 }
 
-/** Development dashboards on loopback may talk to source builds; release builds only to usepigeonbox.com. */
+/** Development dashboards on loopback may talk to source builds, never to release builds. */
 const LOOPBACK_DASHBOARDS = ['http://127.0.0.1/*', 'http://localhost/*'];
 
+/**
+ * The origin of the PigeonBox server this build is made with
+ * (`VITE_PIGEONBOX_CLOUD_API_URL`, from the shell or apps/extension/.env*), or
+ * null. Same rule as `normalizeBaseUrl`: https, or plain http on loopback.
+ */
+function buildServerOrigin(mode: string): string | null {
+  const raw = loadEnv(mode, __dirname, 'VITE_PIGEONBOX_').VITE_PIGEONBOX_CLOUD_API_URL?.trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
+    return url.protocol === 'https:' || (url.protocol === 'http:' && loopback) ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `externally_connectable` is fixed at build time: the dashboard of the server
+ * this build is made with (`<origin>/dashboard`), plus loopback dashboards in
+ * source builds. Without either it is left out, since Chrome rejects an empty
+ * `matches`, and then no website can message the extension.
+ */
 function manifestTransform(mode: string) {
   const key = extensionKey(mode);
   if (key) console.log(`[pigeonbox] Unpacked build uses the store extension ID ${extensionIdFromKey(key)}`);
+  const server = buildServerOrigin(mode);
+  const matches = [...new Set([...(server ? [`${server}/*`] : []), ...(release ? [] : LOOPBACK_DASHBOARDS)])];
   return (content: string) => {
     const manifest = JSON.parse(content);
     if (key) manifest.key = key;
-    if (!release) manifest.externally_connectable = { matches: [...manifest.externally_connectable.matches, ...LOOPBACK_DASHBOARDS] };
+    delete manifest.externally_connectable;
+    if (matches.length) manifest.externally_connectable = { matches };
     return JSON.stringify(manifest, null, 2) + '\n';
   };
 }

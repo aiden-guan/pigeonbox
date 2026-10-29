@@ -1,12 +1,8 @@
-import { trackProductEvent } from './analytics';
-
-export type SettingsSource = 'workspace_header' | 'command_palette';
-
 /**
- * Opens PigeonBox Settings, which live on the dashboard. The worker reuses a
- * dashboard tab that is already open.
+ * Opens PigeonBox Settings: on your PigeonBox server's dashboard when this
+ * build can reach it (the worker reuses a dashboard tab that is already open),
+ * otherwise the Settings page inside the extension.
  */
-export function openSettings(source: SettingsSource, mode: 'local' | 'cloud') {
-  trackProductEvent('settings_opened', { surface: 'workspace', mode, source });
+export function openSettings() {
   void Promise.resolve(chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD', section: 'general' })).catch(() => undefined);
 }

@@ -1,5 +1,5 @@
 /**
- * Protocol versioning between the PigeonBox extension and PigeonBox Cloud.
+ * Protocol versioning between the PigeonBox extension and a PigeonBox server.
  *
  * Compatibility rules:
  * - `PROTOCOL_VERSION` is a major version. It changes only for breaking changes:

@@ -12,7 +12,7 @@ function usage(value: CloudUsage | undefined): UsageStats | undefined {
 }
 
 /**
- * PigeonBox Cloud as an `AIProvider`. Inference runs on PigeonBox servers; the
+ * A PigeonBox server as an `AIProvider`. Inference runs on that server; the
  * caller sees the same results as from a local model.
  *
  * Failures surface as `CloudApiError`. This provider never retries against

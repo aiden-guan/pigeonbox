@@ -5,12 +5,17 @@
  * JavaScript, so it must never hold a secret. See docs/cloud-protocol.md.
  */
 interface ImportMetaEnv {
-  /** PigeonBox Cloud API origin for this build. Blank: Cloud is unavailable and Local is the only mode. */
+  /**
+   * Your PigeonBox server's API origin for this build. Blank (always in release
+   * builds): no server unless one is set in Settings → Advanced, and PigeonBox runs
+   * on this computer only. Also the only website the build lets message it
+   * (`externally_connectable`, for the server's dashboard).
+   */
   readonly VITE_PIGEONBOX_CLOUD_API_URL?: string;
-  /** Hosted tracker origin used in Cloud mode. */
+  /** Your PigeonBox server's tracker origin. */
   readonly VITE_PIGEONBOX_CLOUD_TRACKER_URL?: string;
   /**
-   * Comma-separated earlier origins of the same hosted tracker (for example the
+   * Comma-separated earlier origins of the same server tracker (for example the
    * workers.dev address before a custom domain). Mail already sent carries those
    * pixel URLs; listing them keeps the sender's own views of that mail suppressed.
    */

@@ -69,7 +69,7 @@ export const AssignmentUpdateRequestSchema = z.object({ assignmentId: IdSchema, 
 export const CommentAddRequestSchema = z.object({
   shareId: IdSchema,
   body: z.string().min(1).max(5_000),
-  mentions: z.array(IdSchema).max(20).default([]),
+  mentions: z.array(IdSchema).max(20).default(() => []),
 });
 
 // ---------------------------------------------------------------------------
@@ -99,14 +99,14 @@ export const SnippetSaveRequestSchema = z.object({
   name: z.string().min(1).max(120),
   body: z.string().min(1).max(10_000),
   workspaceId: IdSchema.nullable().default(null),
-  allowedSources: z.array(SnippetSourceSchema).max(4).default(['thread', 'profile']),
+  allowedSources: z.array(SnippetSourceSchema).max(4).default(() => ['thread' as const, 'profile' as const]),
 });
 export const SnippetResponseSchema = z.object({ snippet: SnippetSchema });
 export const SnippetDeleteRequestSchema = z.object({ id: IdSchema });
 export const SnippetRenderRequestSchema = MailboxSelectorSchema.extend({
   snippetId: IdSchema,
   threadId: GmailIdSchema.optional(),
-  values: z.record(z.string().max(40), z.string().max(500)).default({}),
+  values: z.record(z.string().max(40), z.string().max(500)).default(() => ({})),
   timeZone: z.string().max(64).optional(),
 });
 export const SnippetRenderResponseSchema = z.object({

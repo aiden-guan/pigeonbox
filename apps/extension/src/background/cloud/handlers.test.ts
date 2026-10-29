@@ -9,7 +9,6 @@ const gmail = { id, origin: 'https://mail.google.com', tab: { id: 10 } };
 const state: CloudState = {
   status: 'ready',
   email: 'fixture@test.test',
-  plan: 'cloud',
   capabilities: ['cloud_documents', 'cloud_mail_sync'],
 };
 const uploadDocument = vi.fn(async () => ({}));
@@ -103,13 +102,13 @@ it('allowlists deep-link sections and refuses arbitrary caller URLs', async () =
   expect(chrome.tabs.create).toHaveBeenNthCalledWith(1, { url: 'https://cloud.test/app#documents' });
   expect(chrome.tabs.create).toHaveBeenNthCalledWith(2, { url: 'https://cloud.test/app#overview' });
 });
-it('opens the public waitlist when Cloud is unavailable without loading a client', async () => {
+it('opens nothing without a PigeonBox server and says how to add one, without loading a client', async () => {
   const client = vi.fn(deps.client);
   const settings = { ...DEFAULT_SETTINGS, runMode: 'local' as const };
   expect(await handleCloudRequest({ type: 'CLOUD_OPEN', section: 'documents' }, page, {
     ...deps, client, settings: () => settings, webUrl: () => null,
-  })).toEqual({ ok: true });
-  expect(chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://usepigeonbox.com/waitlist?source=extension' });
+  })).toEqual({ ok: false, code: 'not_configured', reason: 'No PigeonBox server is configured. Add one in Settings → Advanced.' });
+  expect(chrome.tabs.create).not.toHaveBeenCalled();
   expect(client).not.toHaveBeenCalled();
   expect(settings.runMode).toBe('local');
 });

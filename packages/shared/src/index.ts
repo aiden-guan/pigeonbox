@@ -57,7 +57,7 @@ export const DraftSuggestionSchema = z.object({
   mode: z.enum(['direct', 'warm', 'short']).default('direct'),
   subject: z.string().optional(),
   body: z.string().min(1),
-  placeholders: z.array(z.string()).default([]),
+  placeholders: z.array(z.string()).default(() => []),
   confidence: z.number().min(0).max(1).optional(),
 });
 export type DraftSuggestion = {
@@ -340,19 +340,20 @@ export type ExtensionSettings = {
   settingsVersion: number;
   /**
    * `local`: AI runs on this device or with the user's own provider (BYOK/Ollama).
-   * `cloud`: AI runs on PigeonBox Cloud. Chosen explicitly by the user; never
-   * changed automatically, including when Cloud is unavailable.
+   * `cloud`: AI runs on the user's PigeonBox server. Chosen explicitly by the
+   * user; never changed automatically, including when the server is unavailable.
    */
   runMode: RunMode;
-  /** When the user agreed that Cloud mode sends email content to PigeonBox Cloud. */
+  /** When the user agreed that server mode sends email content to their PigeonBox server. */
   cloudConsentAt: string | null;
-  /** Developer override for the Cloud API URL. Blank uses the URL built into this release. */
+  /** "PigeonBox server URL" from Settings → Advanced. Blank uses the URL this build was made with, if any. */
   cloudApiUrl: string;
   /**
-   * Free only: when true, PigeonBox uses no PigeonBox servers. Tracking then
-   * goes to a self-hosted tracker (`trackerBaseUrl`) or is off. When false, the
-   * PigeonBox-hosted tracker records opens and clicks for the signed-in account
-   * (metadata only: subject, addresses, IDs, link URLs). Pro always uses hosted.
+   * On this computer only: when true, PigeonBox uses no PigeonBox server.
+   * Tracking then goes to a standalone tracker (`trackerBaseUrl`) or is off.
+   * When false and a server is configured, the server's tracker records opens
+   * and clicks for the signed-in account (metadata only: subject, addresses,
+   * IDs, link URLs). Server mode always uses the server's tracker.
    */
   localOnly: boolean;
   trackingEnabled: boolean;

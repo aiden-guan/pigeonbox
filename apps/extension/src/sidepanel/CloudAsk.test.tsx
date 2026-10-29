@@ -27,7 +27,6 @@ vi.mock('./cloud-api', () => ({
     return { ok: true, data: reply };
   },
 }));
-vi.mock('../ui/analytics', () => ({ trackProductEvent: () => undefined }));
 vi.mock('../workspace/session', () => ({ useWorkspaceInput: (_key: string, initial: string) => useState(initial) }));
 
 const sent: Array<{ type: string; draft?: unknown; action?: string; session?: string }> = [];

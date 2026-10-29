@@ -3,12 +3,12 @@
  * Repository hygiene checks, run by `npm run verify` and CI.
  *
  *  - namespace: no stale `@gi/*` package references
- *  - private-imports: the public repo never imports PigeonBox Cloud source
- *  - boundaries: only extension orchestration talks to Cloud; the contract stays UI- and DB-free
+ *  - boundaries: only extension orchestration talks to the server; the contract stays UI- and DB-free;
+ *    nothing in the extension imports server code
  *  - secrets: no credentials in tracked files
  *  - env-files: local env/credential files are ignored, not tracked
  *
- *   node scripts/check-repo.mjs [namespace|private-imports|boundaries|secrets|env-files]...
+ *   node scripts/check-repo.mjs [namespace|boundaries|secrets|env-files]...
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -18,7 +18,7 @@ import { findSecrets } from './lib/extension-package.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const requested = process.argv.slice(2);
-const checks = requested.length ? requested : ['namespace', 'private-imports', 'boundaries', 'secrets', 'env-files'];
+const checks = requested.length ? requested : ['namespace', 'boundaries', 'secrets', 'env-files'];
 
 function trackedFiles() {
   // Tracked plus new, not-ignored files, so a check sees what the next commit would contain.
@@ -47,30 +47,16 @@ if (checks.includes('namespace')) {
   }
 }
 
-if (checks.includes('private-imports')) {
-  const privateRef = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](?:@pigeonbox-cloud\/|pigeonbox-cloud(?:\/|['"])|(?:\.\.\/)+pigeonbox-cloud\/)/;
-  for (const file of files) {
-    if (!/\.(m?[jt]sx?|cjs)$/.test(file)) continue;
-    if (privateRef.test(read(file))) problems.push(`[private-imports] ${file} imports PigeonBox Cloud source`);
-  }
-  for (const file of files.filter((f) => f.endsWith('package.json'))) {
-    const pkg = JSON.parse(read(file) || '{}');
-    const deps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies, ...pkg.optionalDependencies };
-    for (const [name, spec] of Object.entries(deps)) {
-      if (/pigeonbox-cloud/.test(name) || /pigeonbox-cloud/.test(String(spec))) problems.push(`[private-imports] ${file} depends on ${name}`);
-    }
-  }
-}
-
 if (checks.includes('boundaries')) {
   // See docs/architecture.md, "Dependency direction".
   const importOf = (name) => new RegExp(`(?:from\\s+|import\\s*\\(\\s*)['"]${name}(?:/|['"])`);
   const rules = [
-    { dirs: ['gmail', 'mailbox', 'search', 'tracking', 'ai', 'agent', 'core', 'shared'], banned: ['@pigeonbox/cloud-client'], why: 'Cloud access belongs in extension orchestration' },
-    { dirs: ['api-contract'], banned: ['react', 'react-dom', '@supabase/supabase-js'], why: 'the Cloud contract stays UI- and database-free' },
+    { dirs: ['gmail', 'mailbox', 'search', 'tracking', 'ai', 'agent', 'core', 'shared'], banned: ['@pigeonbox/cloud-client'], why: 'server access belongs in extension orchestration' },
+    { dirs: ['api-contract'], banned: ['react', 'react-dom', '@supabase/supabase-js'], why: 'the server contract stays UI- and database-free' },
+    { dirs: ['gmail', 'mailbox', 'search', 'tracking', 'ai', 'agent', 'core', 'shared', 'api-contract', 'cloud-client', 'extension'], banned: ['@pigeonbox/server'], why: 'server code (with its secrets handling) never ships in the extension' },
   ];
   for (const file of files) {
-    const match = file.match(/^packages\/([^/]+)\/src\/.*\.tsx?$/);
+    const match = file.match(/^(?:packages|apps)\/([^/]+)\/src\/.*\.tsx?$/);
     if (!match) continue;
     for (const rule of rules) {
       if (!rule.dirs.includes(match[1])) continue;
@@ -93,6 +79,7 @@ if (checks.includes('env-files')) {
     /(^|\/)\.env$/,
     /(^|\/)\.env\.(?!example$)[^/]+$/,
     /(^|\/)\.dev\.vars$/,
+    /^server\.env$/,
     /(^|\/)tracker-config\.json$/,
     /^\.local\//,
     /\.pem$/,
@@ -104,7 +91,7 @@ if (checks.includes('env-files')) {
     if (forbidden.some((re) => re.test(file))) problems.push(`[env-files] ${file} must not be committed`);
   }
   const ignore = read('.gitignore');
-  for (const entry of ['.env', '.env.local', '.dev.vars', 'apps/extension/public/tracker-config.json', '.local/']) {
+  for (const entry of ['.env', '.env.local', '.dev.vars', 'server.env', 'apps/extension/public/tracker-config.json', '.local/']) {
     if (!ignore.split('\n').some((line) => line.trim() === entry)) problems.push(`[env-files] .gitignore does not list ${entry}`);
   }
 }

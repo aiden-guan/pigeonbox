@@ -1,0 +1,14 @@
+{
+  "name": "@pigeonbox/server-tracker",
+  "version": "0.8.4",
+  "private": true,
+  "type": "module",
+  "description": "PigeonBox server tracker Worker: public pixel/click routes and per-account tracking",
+  "scripts": {
+    "dev": "wrangler dev --port 8789"
+  },
+  "dependencies": {
+    "@pigeonbox/server": "*"
+  },
+  "license": "MIT"
+}

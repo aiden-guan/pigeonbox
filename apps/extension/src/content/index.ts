@@ -65,7 +65,6 @@ import type { Snippet } from './compose/snippets';
 import { createKeyboardLayer } from './keyboard';
 import { closeShortcutHelp, performShortcut } from './keyboard-actions';
 import { SELECTORS } from '@pigeonbox/gmail';
-import { trackProductEvent } from '../ui/analytics';
 
 export const adapter = new CompositeGmailAdapter();
 let settings: PublicExtensionSettings = toPublicSettings(DEFAULT_SETTINGS);
@@ -366,7 +365,6 @@ async function boot(): Promise<void> {
 
 function composeExtrasDeps(): ComposeExtrasDeps {
   return {
-    isFree: () => settings.runMode !== 'cloud',
     myName: () => settings.voiceProfile?.name ?? '',
     snippets: async () => {
       const res = await send<{ snippets?: Snippet[] }>({ type: 'GET_SNIPPETS' });
@@ -380,7 +378,6 @@ function composeExtrasDeps(): ComposeExtrasDeps {
     },
     reminderBusinessDays: () => settings.reminderBusinessDays || 3,
     toast: (message) => showToast(message),
-    count: (event) => trackProductEvent(event, { surface: 'gmail', mode: settings.runMode === 'cloud' ? 'cloud' : 'local' }),
   };
 }
 
@@ -768,7 +765,7 @@ async function waitForSummaryJob(threadId: string, jobId: string, preview: strin
   await refreshThread(threadId);
 }
 
-/** Whether PigeonBox Cloud's always-on features are on (Cloud mode, Google connected). Learned from the worker. */
+/** Whether the PigeonBox server's always-on features are on (Cloud mode, Google connected). Learned from the worker. */
 let cloudAvailable = false;
 let cloudCapabilities: string[] = [];
 let cloudCheckedAt = 0;
@@ -1177,7 +1174,6 @@ function setupKeyboardShortcuts(): void {
     }
     event.preventDefault();
     event.stopPropagation();
-    trackProductEvent('keyboard_shortcut_used', { surface: 'gmail' });
     void performShortcut(id, event, {
       runCommand: (command) => runCommand(command),
       toast: (message) => showToast(message),
@@ -1223,7 +1219,7 @@ async function runCommand(id: string): Promise<void> {
   if (command === 'cloud' || command.startsWith('cloud_')) {
     const section = command === 'cloud' ? 'overview' : command.slice(6);
     const res = await send<{ ok?: boolean; reason?: string }>({ type: 'FOCUS_SIDEPANEL', mode: 'cloud', section });
-    if (!res?.ok) showToast(res?.reason || 'Could not open PigeonBox Pro.');
+    if (!res?.ok) showToast(res?.reason || 'Could not open your PigeonBox server.');
     return;
   }
   if (command === 'settings') {

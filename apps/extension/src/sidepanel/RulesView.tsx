@@ -1,4 +1,3 @@
-import { trackProductEvent } from '../ui/analytics';
 import { useCallback, useEffect, useState } from 'react';
 import type { RouteResponse, SmartView, Automation, ActionSpec } from '@pigeonbox/api-contract';
 import { callCloud } from './cloud-api';
@@ -92,7 +91,6 @@ export function RulesView({
       setError(result.reason);
       return;
     }
-    trackProductEvent(isView ? 'smart_view_created' : 'automation_created', { surface: 'sidepanel', mode: 'cloud' });
     setCompiled(null);
     setPrompt('');
     setNotice('Saved in Shadow Mode. Nothing changes in Gmail. Review decisions before enabling actions.');
@@ -147,7 +145,7 @@ export function RulesView({
       <p className="gi-muted">
         {isView
           ? 'Find mail by intent. Preview what a rule would change before turning it on.'
-          : 'Prepare and organize work using the existing Pro policy. New automations start in Shadow Mode.'}
+          : 'Prepare and organize work using your server’s existing policy. New automations start in Shadow Mode.'}
       </p>
       {notice ? (
         <p className="gi-note" role="status">
@@ -275,7 +273,7 @@ export function RulesView({
                       ))}
                     </ul>
                     {run.status === 'failed' ? (
-                      <p className="gi-warn">This run did not complete. Review it in Pro before retrying.</p>
+                      <p className="gi-warn">This run did not complete. Review it on your server before retrying.</p>
                     ) : null}
                   </div>
                 ))
@@ -285,7 +283,7 @@ export function RulesView({
             </section>
           ) : null}
           <button className="gi-btn gi-btn-ghost" type="button" onClick={() => openCloud(kind)}>
-            Review activation in Cloud ↗
+            Review activation on your server ↗
           </button>
         </>
       ) : (

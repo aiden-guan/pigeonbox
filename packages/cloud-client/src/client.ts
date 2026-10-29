@@ -18,9 +18,9 @@ import {
 } from '@pigeonbox/api-contract';
 
 /**
- * A Cloud failure. `code` is one of the contract's error codes, or a client-side
+ * A PigeonBox server failure. `code` is one of the contract's error codes, or a client-side
  * code: `network` (unreachable), `timeout`, `invalid_response`, `not_configured`
- * (no API URL in this build), `signed_out`.
+ * (no server URL configured), `signed_out`.
  */
 export class CloudApiError extends Error {
   readonly code: CloudErrorCode | 'network' | 'timeout' | 'aborted' | 'invalid_response' | 'signed_out';
@@ -90,7 +90,7 @@ export function normalizeBaseUrl(value: string): string | null {
   try {
     const url = new URL(trimmed);
     const loopback = url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]';
-    // Plain HTTP is only acceptable for a Cloud server on this machine (development).
+    // Plain HTTP is only acceptable for a PigeonBox server on this machine (development).
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) return null;
     if (url.username || url.password || url.search || url.hash) return null;
     return `${url.origin}${url.pathname === '/' ? '' : url.pathname}`;
@@ -109,7 +109,7 @@ export class PigeonBoxCloudClient {
   constructor(options: CloudClientOptions) {
     const base = normalizeBaseUrl(options.baseUrl);
     if (!base) {
-      throw new CloudApiError({ code: 'not_configured', message: 'PigeonBox Cloud is not configured in this build.' });
+      throw new CloudApiError({ code: 'not_configured', message: 'No PigeonBox server is configured.' });
     }
     this.baseUrl = base;
     this.tokens = options.tokens;
@@ -156,12 +156,6 @@ export class PigeonBoxCloudClient {
   entitlements() {
     return this.call('entitlements');
   }
-  billingCheckout() {
-    return this.call('billingCheckout', {});
-  }
-  billingPortal() {
-    return this.call('billingPortal', {});
-  }
 
   listMemories(body: RouteRequest<'memoryList'>) { return this.call('memoryList', body); }
   getMemory(body: RouteRequest<'memoryGet'>) { return this.call('memoryGet', body); }
@@ -175,7 +169,7 @@ export class PigeonBoxCloudClient {
    */
   composeCheck(body: RouteRequest<'composeCheck'>, options: CallOptions = {}) { return this.call('composeCheck', body, options); }
 
-  /** Upload only to the issuing Cloud origin, with the same refresh and privacy policy as JSON calls. */
+  /** Upload only to the issuing server origin, with the same refresh and privacy policy as JSON calls. */
   async uploadDocument(id: string, bytes: Uint8Array<ArrayBuffer>, options: CallOptions = {}) {
     const path = documentUploadPath(id);
     if (!bytes.length || bytes.length > 20_000_000 || new TextDecoder().decode(bytes.subarray(0, 5)) !== '%PDF-') {
@@ -192,11 +186,11 @@ export class PigeonBoxCloudClient {
       }
     };
     const token = await this.tokens?.get();
-    if (!token) throw new CloudApiError({ code: 'signed_out', message: 'Sign in to PigeonBox Cloud first.' });
+    if (!token) throw new CloudApiError({ code: 'signed_out', message: 'Sign in to your PigeonBox server first.' });
     let response = await send(token);
     if (response.status === 401) {
       const next = await this.tokens?.refresh();
-      if (!next) throw new CloudApiError({ code: 'signed_out', message: 'Sign in to PigeonBox Cloud again.' });
+      if (!next) throw new CloudApiError({ code: 'signed_out', message: 'Sign in to your PigeonBox server again.' });
       response = await send(next);
     }
     return this.readResponse(response, DocumentResponseSchema) as Promise<import('@pigeonbox/api-contract').RouteResponse<'documentCreate'>>;
@@ -214,7 +208,7 @@ export class PigeonBoxCloudClient {
     if ('request' in route) {
       const parsed = route.request.safeParse(body ?? {});
       if (!parsed.success) {
-        throw new CloudApiError({ code: 'invalid_request', status: 400, message: 'The request did not match the PigeonBox Cloud contract.' });
+        throw new CloudApiError({ code: 'invalid_request', status: 400, message: 'The request did not match the PigeonBox server contract.' });
       }
       payload = parsed.data;
     }
@@ -222,13 +216,13 @@ export class PigeonBoxCloudClient {
     let token: string | null = null;
     if (route.auth === 'user') {
       token = (await this.tokens?.get()) ?? null;
-      if (!token) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Sign in to PigeonBox Cloud first.' });
+      if (!token) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Sign in to your PigeonBox server first.' });
     }
 
     let response = await this.send(route.method, route.path, payload, token, options);
     if (response.status === 401 && route.auth === 'user' && this.tokens) {
       const refreshed = await this.tokens.refresh();
-      if (!refreshed) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Your PigeonBox Cloud session ended. Sign in again.' });
+      if (!refreshed) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Your PigeonBox server session ended. Sign in again.' });
       response = await this.send(route.method, route.path, payload, refreshed, options);
     }
     return this.readResponse(response, route.response) as Promise<RouteResponse<N>>;
@@ -242,24 +236,24 @@ export class PigeonBoxCloudClient {
    */
   async stream<N extends RouteName>(name: N, body: RouteRequest<N>, onEvent: (event: RouteResponse<N>) => void, options: CallOptions = {}): Promise<void> {
     const route = ROUTES[name] as (typeof ROUTES)[RouteName] & { stream?: 'ndjson' };
-    if (route.stream !== 'ndjson') throw new CloudApiError({ code: 'invalid_request', message: 'That PigeonBox Cloud route does not stream.' });
+    if (route.stream !== 'ndjson') throw new CloudApiError({ code: 'invalid_request', message: 'That PigeonBox server route does not stream.' });
     const parsed = 'request' in route ? route.request.safeParse(body ?? {}) : null;
-    if (parsed && !parsed.success) throw new CloudApiError({ code: 'invalid_request', status: 400, message: 'The request did not match the PigeonBox Cloud contract.' });
+    if (parsed && !parsed.success) throw new CloudApiError({ code: 'invalid_request', status: 400, message: 'The request did not match the PigeonBox server contract.' });
     const payload = parsed?.data;
     let token = (await this.tokens?.get()) ?? null;
-    if (route.auth === 'user' && !token) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Sign in to PigeonBox Cloud first.' });
+    if (route.auth === 'user' && !token) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Sign in to your PigeonBox server first.' });
     const timeoutMs = options.timeoutMs ?? (name === 'askPigeonStream' ? ASK_STREAM_TIMEOUT_MS : this.timeoutMs);
     const timeout = AbortSignal.timeout(timeoutMs);
     const streamOptions = { ...options, timeoutMs, signal: combineSignals(options.signal, timeout), accept: 'application/x-ndjson' };
     let response = await this.send(route.method, route.path, payload, token, streamOptions);
     if (response.status === 401 && route.auth === 'user' && this.tokens) {
       token = await this.tokens.refresh();
-      if (!token) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Your PigeonBox Cloud session ended. Sign in again.' });
+      if (!token) throw new CloudApiError({ code: 'signed_out', status: 401, message: 'Your PigeonBox server session ended. Sign in again.' });
       response = await this.send(route.method, route.path, payload, token, streamOptions);
     }
     if (!response.ok || !response.body) {
       await this.readResponse(response, route.response);
-      throw new CloudApiError({ code: 'invalid_response', status: response.status, message: 'PigeonBox Cloud did not stream a response.' });
+      throw new CloudApiError({ code: 'invalid_response', status: response.status, message: 'Your PigeonBox server did not stream a response.' });
     }
     const requestId = response.headers.get(REQUEST_ID_HEADER) ?? undefined;
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -273,7 +267,7 @@ export class PigeonBoxCloudClient {
         json = null;
       }
       const event = route.response.safeParse(json);
-      if (!event.success) throw new CloudApiError({ code: 'invalid_response', requestId, message: 'PigeonBox Cloud sent a response this version of PigeonBox does not understand.' });
+      if (!event.success) throw new CloudApiError({ code: 'invalid_response', requestId, message: 'Your PigeonBox server sent a response this version of PigeonBox does not understand.' });
       onEvent(event.data as RouteResponse<N>);
     };
     try {
@@ -293,8 +287,8 @@ export class PigeonBoxCloudClient {
       await reader.cancel().catch(() => undefined);
       if (error instanceof CloudApiError) throw error;
       if (options.signal?.aborted) throw new CloudApiError({ code: 'aborted', retryable: false, message: 'The request was cancelled.' });
-      if (timeout.aborted) throw new CloudApiError({ code: 'timeout', retryable: true, requestId, message: 'PigeonBox Cloud did not respond in time.' });
-      throw new CloudApiError({ code: 'network', retryable: true, requestId, message: 'The connection to PigeonBox Cloud dropped.' });
+      if (timeout.aborted) throw new CloudApiError({ code: 'timeout', retryable: true, requestId, message: 'Your PigeonBox server did not respond in time.' });
+      throw new CloudApiError({ code: 'network', retryable: true, requestId, message: 'The connection to your PigeonBox server dropped.' });
     }
   }
 
@@ -321,9 +315,9 @@ export class PigeonBoxCloudClient {
         throw new CloudApiError({ code: 'aborted', retryable: false, message: 'The request was cancelled.' });
       }
       if (name === 'TimeoutError' || name === 'AbortError') {
-        throw new CloudApiError({ code: 'timeout', retryable: true, message: 'PigeonBox Cloud did not respond in time.' });
+        throw new CloudApiError({ code: 'timeout', retryable: true, message: 'Your PigeonBox server did not respond in time.' });
       }
-      throw new CloudApiError({ code: 'network', retryable: true, message: 'Could not reach PigeonBox Cloud.' });
+      throw new CloudApiError({ code: 'network', retryable: true, message: 'Could not reach your PigeonBox server.' });
     }
   }
 
@@ -354,12 +348,12 @@ export class PigeonBoxCloudClient {
         status: response.status,
         retryable: response.status >= 500,
         requestId,
-        message: `PigeonBox Cloud returned HTTP ${response.status}.`,
+        message: `Your PigeonBox server returned HTTP ${response.status}.`,
       });
     }
     const parsed = schema.safeParse(json);
     if (!parsed.success) {
-      throw new CloudApiError({ code: 'invalid_response', status: response.status, requestId, message: 'PigeonBox Cloud sent a response this version of PigeonBox does not understand.' });
+      throw new CloudApiError({ code: 'invalid_response', status: response.status, requestId, message: 'Your PigeonBox server sent a response this version of PigeonBox does not understand.' });
     }
     return parsed.data;
   }

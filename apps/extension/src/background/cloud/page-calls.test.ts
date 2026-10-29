@@ -8,9 +8,9 @@ function fakeClient(handler: (route: string, body: unknown) => unknown) {
   return { client: { call } as unknown as PigeonBoxCloudClient, call };
 }
 
-describe('extension page Cloud calls', () => {
-  it('never lets extension pages reach billing, account deletion, tokens or webhooks', async () => {
-    for (const route of ['billingCheckout', 'billingPortal', 'accountDelete', 'authToken', 'connectionDisconnect']) expect(PAGE_ROUTES.has(route as never)).toBe(false);
+describe('extension page server calls', () => {
+  it('never lets extension pages reach account deletion, tokens or webhooks', async () => {
+    for (const route of ['accountDelete', 'authToken', 'connectionDisconnect']) expect(PAGE_ROUTES.has(route as never)).toBe(false);
     const { client, call } = fakeClient(() => ({}));
     expect(await pageCall(client, 'accountDelete', { confirm: 'delete my account' })).toMatchObject({ ok: false, code: 'forbidden' });
     expect(await pageCall(client, 'controlTokenCreate', {})).toMatchObject({ ok: false, code: 'forbidden' });

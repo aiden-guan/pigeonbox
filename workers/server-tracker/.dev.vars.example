@@ -1,0 +1,3 @@
+# Copy to .dev.vars for `npm run dev`. Gitignored. Development values only.
+DEV_AUTH_SECRET=replace-with-a-long-random-development-secret
+IP_HASH_SALT=replace-with-a-random-development-salt

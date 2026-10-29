@@ -7,10 +7,10 @@ import { Brand, Pigeon } from '../ui/Pigeon';
 import { useProductState } from '../ui/product-state';
 
 /**
- * AI setup for Local mode. Settings live on the PigeonBox dashboard, but
- * choosing an on-device model, downloading it, signing in to ChatGPT or
- * granting access to a provider has to happen on an extension page, so the
- * dashboard's AI section opens this one.
+ * AI setup for Local mode. With a PigeonBox server, Settings live on its
+ * dashboard, but choosing an on-device model, downloading it, signing in to
+ * ChatGPT or granting access to a provider has to happen on an extension page,
+ * so the dashboard's AI section opens this one.
  */
 export function AiSetupApp() {
   useAppearance();
@@ -37,18 +37,18 @@ export function AiSetupApp() {
           <div>
             <div className="gi-kicker">PigeonBox / Local AI</div>
             <h1 className="gi-display">Set up AI.</h1>
-            <p className="gi-muted mt-3 text-sm">Choose where PigeonBox runs AI on this computer. Other settings are on your dashboard.</p>
+            <p className="gi-muted mt-3 text-sm">Choose where PigeonBox runs AI on this computer. Other settings are in PigeonBox Settings.</p>
           </div>
           <Pigeon size={48} />
         </div>
         {product.state.runMode === 'cloud' ? (
-          <p className="gi-warn mt-6 text-sm">PigeonBox is in Pro, so PigeonBox runs AI for you. This setup applies when you switch back to Free.</p>
+          <p className="gi-warn mt-6 text-sm">PigeonBox runs on your PigeonBox server, so the server runs AI for you. This setup applies when you switch back to this computer.</p>
         ) : null}
         <div className="mt-6">
           <AiConnect settings={settings} onPatch={patch} onSignedIn={patch} experimental={product.state.experimental} />
         </div>
         <div className="mt-8 flex flex-wrap items-center gap-3">
-          <button type="button" className="gi-btn" onClick={() => { openDashboard('ai'); window.close(); }}>Back to dashboard</button>
+          <button type="button" className="gi-btn" onClick={() => { openDashboard('ai'); window.close(); }}>Back to Settings</button>
           {saved ? <span className="gi-muted text-xs" role="status">Saved</span> : null}
         </div>
       </div>

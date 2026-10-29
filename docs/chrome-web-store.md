@@ -1,6 +1,6 @@
 # Chrome Web Store readiness
 
-Status checked in the owner dashboard on 2026-10-03: existing item `hmoiiokfmacghpddabpgaajolbeljhcp` has v0.4.0 **Published to testers**. That historical status does not confirm a later submission. The v0.5.0 submission kit at `release/chrome-web-store-20261003/` is a local ignored archive; its older screenshots and promo tiles were removed during this cleanup. Use the current listing images in `docs/store/`. The current package is the unified v0.5.3 ZIP described below; preparing it does not upload or submit it.
+Publishing to the Chrome Web Store is optional. The tagged GitHub Release ZIP is the same package and can be loaded unpacked. These notes cover what a store submission needs, whether for this repository's item or a fork's own. Use the current listing images in `docs/store/`; preparing a package does not upload or submit it.
 
 Listing text, dashboard answers and images: [store/listing.md](store/listing.md). Privacy policy: [PRIVACY.md](../PRIVACY.md).
 
@@ -15,7 +15,7 @@ Build with `npm run package`. The ZIP (`release/PigeonBox-vX.Y.Z.zip`) is what g
 - files referenced by `manifest.json` that are missing,
 - a manifest version that differs from `package.json`.
 
-Default release builds include both Local and Cloud using the public production endpoints in `scripts/lib/release-config.mjs`, turn off experimental features (ChatGPT web sign-in), and omit source maps. Local remains the default. Upload the canonical ZIP manually when publication is authorized; do not push a release tag merely to prepare it.
+Release builds carry no PigeonBox server endpoint and run on this computer, turn off experimental features (ChatGPT web sign-in), and omit source maps. Upload the canonical ZIP manually when publication is authorized; do not push a release tag merely to prepare it.
 
 ## Manifest V3 audit
 
@@ -38,9 +38,9 @@ Removed in 0.2.0: `tabs`, `activeTab`, and required hosts `chatgpt.com`, `*.conv
 
 | Permission | When |
 |---|---|
-| `identity` | Signing in to PigeonBox Cloud (`launchWebAuthFlow`) |
+| `identity` | Signing in to your own PigeonBox server (`launchWebAuthFlow`) |
 | `https://api.github.com/*` | Settings → Updates, only after the person turns on update checks: lists GitHub releases so unpacked copies learn about a new version. Store copies never ask. |
-| `https://*/*` | The user connects a specific HTTPS origin: their BYOK endpoint, their tracker, Hugging Face for model downloads, or PigeonBox Cloud. Each request names the exact origin. |
+| `https://*/*` | The user connects a specific HTTPS origin: their BYOK endpoint, their tracker, Hugging Face for model downloads, or their own PigeonBox server. Each request names the exact origin. |
 | `http://127.0.0.1/*`, `http://localhost/*` | A local AI server or tracker the person runs on their own computer, on a port they choose |
 | `http://127.0.0.1:8787/*`, `http://localhost:8787/*` | The self-hosted tracker's default local port |
 | `http://127.0.0.1:11434/*`, `http://localhost:11434/*` | Ollama's default local port |
@@ -67,8 +67,8 @@ Prepared in this repository:
 
 - [x] 128×128 icon in the package, and a store icon (`docs/store/store-icon-128.png`)
 - [x] Single purpose, permission justifications, data-use answers and reviewer test instructions ([store/listing.md](store/listing.md))
-- [x] Privacy policy: [PRIVACY.md](../PRIVACY.md), covering Local and Cloud
-- [x] Store description consistent with the README and the unified Local + Cloud build
+- [x] Privacy policy: [PRIVACY.md](../PRIVACY.md), covering Local and a self-hosted server
+- [x] Store description consistent with the README
 - [x] Screenshots (1280×800), small promo tile (440×280) and marquee (1400×560) in `docs/store/`, generated from real UI with fictional mail by `apps/extension/scripts/make-store-assets.py`
 - [x] Store installs hide the GitHub update check and the developer Reload button; Chrome updates them
 
@@ -97,20 +97,18 @@ An OAuth client (`CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN` secre
 
 To publish a release by hand: `CWS_PUBLISHER_ID=… CWS_EXTENSION_ID=… CWS_SERVICE_ACCOUNT_JSON="$(cat key.json)" node scripts/publish-chrome-web-store.mjs release/PigeonBox-vX.Y.Z.zip`.
 
-## Cloud in store builds
+## Server mode and store builds
 
-Run `npm run package` to produce one `release/PigeonBox-vX.Y.Z.zip` containing both modes. Packaging pins public production URLs regardless of local environment variables and rejects existing output without those endpoints. `--cloud` remains a compatibility alias for the same package. There is no second Cloud ZIP.
+A store build is the release ZIP: it carries no server endpoint and contacts no PigeonBox-operated service. Server mode is for people who run their own PigeonBox server; they build the extension from source with `npm run server:deploy`, which writes the server URLs into `apps/extension/.env.local` and rebuilds (see [self-hosting.md](self-hosting.md)). Consent, the server's access list, Google authorization and capabilities remain runtime checks there. Real-time Pidgy checks remain off until explicitly enabled. CI loads the extracted release ZIP to verify that it runs on this computer and that no website can message it.
 
-Cloud availability in the extension does not open public account registration or grant a subscription. Consent, account access, Google authorization and paid capabilities remain runtime checks. Real-time Pidgy checks remain off until explicitly enabled. CI loads the extracted ZIP to verify Local defaults, Cloud availability, consent and dashboard settings. See "Cloud release verification" in [store/listing.md](store/listing.md).
+## Settings and the server dashboard
 
-## Settings live on the dashboard
-
-The toolbar gear, the options page and onboarding open `https://usepigeonbox.com/dashboard?ext=<extension ID>`. The dashboard talks to the extension through `externally_connectable` (release builds accept only usepigeonbox.com; packaging fails otherwise) and shows Local settings in Local mode and Cloud settings in Cloud mode. The bridge is `apps/extension/src/background/web-bridge.ts`: it never returns API keys or tokens, cannot change the Cloud API, switches to Cloud only with consent from a click, and asks for host permissions in its own `grant.html` window. Connecting Cloud is a PKCE handoff: the worker keeps the verifier, the dashboard runs sign-in and passes back the code, so a Cloud build needs no `chromiumapp.org` redirect, only its ID in the API's `ALLOWED_EXTENSION_IDS`. `settings.html?here=ai` is the AI setup page (model downloads, ChatGPT sign-in and provider access need an extension page); `settings.html?here` keeps the full in-extension page for development and offline use. Adding `externally_connectable` adds no permission warning.
+Without a server, the toolbar gear, the options page and onboarding open the Settings page inside the extension. A build made for a server opens that server's dashboard (`<server>/dashboard?ext=<extension ID>`) instead. The dashboard talks to the extension through `externally_connectable`, which the build fixes to that server's origin (plus loopback in source builds); release builds have no `externally_connectable`, and packaging fails otherwise. The bridge is `apps/extension/src/background/web-bridge.ts`: it never returns API keys or tokens, cannot change the server URL, switches to server mode only with consent from a click, and asks for host permissions in its own `grant.html` window. Linking the extension to the server is a PKCE handoff: the worker keeps the verifier, the dashboard runs sign-in and passes back the code, so the server needs the extension's ID in `ALLOWED_EXTENSION_IDS`. `settings.html?here=ai` is the AI setup page (model downloads, ChatGPT sign-in and provider access need an extension page); `settings.html?here` keeps the full in-extension page. Adding `externally_connectable` adds no permission warning.
 
 ## Local builds with the store ID
 
-An unpacked build gets an ID derived from its folder path, so it differs from the store item's. Cloud sign-in (`https://<id>.chromiumapp.org/` redirects, `ALLOWED_EXTENSION_IDS`) only accepts known IDs. To give `dist/` the store ID, copy the item's public key (Developer Dashboard → Package → View public key) into `apps/extension/.env.local` as `PIGEONBOX_EXTENSION_KEY=…` and rebuild; the build logs the resulting ID. Release builds never include the key, and packaging fails if a manifest has one. Chrome can't have the store copy and the unpacked copy with the same ID installed in one profile, so use a separate profile for development.
+An unpacked build gets an ID derived from its folder path, so it differs from the store item's. Server sign-in (`https://<id>.chromiumapp.org/` redirects, `ALLOWED_EXTENSION_IDS`) only accepts known IDs. To give `dist/` the store ID, copy the item's public key (Developer Dashboard → Package → View public key) into `apps/extension/.env.local` as `PIGEONBOX_EXTENSION_KEY=…` and rebuild; the build logs the resulting ID. Release builds never include the key, and packaging fails if a manifest has one. Chrome can't have the store copy and the unpacked copy with the same ID installed in one profile, so use a separate profile for development.
 
 ## After listing
 
-Add the store link to README's Install table and the Chrome Web Store badge, and point the Cloud site's `site-config.json` `installUrl` at the store. Do not add a badge before the listing exists.
+Add the store link to README's Install table and the Chrome Web Store badge. Do not add a badge before the listing exists.

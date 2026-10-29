@@ -1,5 +1,4 @@
 import type { WorkspaceContext } from '../workspace/context';
-import { trackProductEvent } from '../ui/analytics';
 import type { AskApproval, AskCompose, AskPigeonResponse, AskTurn, SourceRef } from '@pigeonbox/api-contract';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ContextCard } from '../ui/Primitives';
@@ -326,7 +325,7 @@ export function CloudAsk(props: {
   const calendarConnected = Boolean(accounts?.some((account) => account.features.includes('calendar_read')));
   const current = props.mailbox?.toLowerCase();
   const connected = (accounts ?? []).filter((account) => account.status !== 'disconnected');
-  /** The Gmail in this tab is signed in but not connected to PigeonBox Cloud, so Ask cannot search it. */
+  /** The Gmail in this tab is signed in but not connected to your PigeonBox server, so Ask cannot search it. */
   const unconnected = Boolean(current && accounts && !connected.some((account) => account.email.toLowerCase() === current));
   const consumed = useRef('');
   const inFlight = useRef(false);
@@ -380,7 +379,6 @@ export function CloudAsk(props: {
   const connectMailbox = async () => {
     if (!props.mailbox) return;
     setConnecting('Opening Google…');
-    trackProductEvent('google_connection_started', { surface: 'workspace', mode: 'cloud' });
     const result = await cloudCall<{ url: string }>('connectStart', { features: ['mail_read', 'drafts'], loginHint: props.mailbox, returnTo: 'extension' });
     if (!result.ok) return setConnecting(result.reason);
     setConnecting('');
@@ -390,7 +388,6 @@ export function CloudAsk(props: {
     const question = input.trim();
     if (!question || inFlight.current || loadedScope.current !== historyScope) return false;
     inFlight.current = true;
-    trackProductEvent('ask_pigeon_used', { surface: 'sidepanel', mode: 'cloud' });
     const id = nextId.current++;
     const chat = turnsRef.current.filter((turn) => turn.chatId === chatRef.current);
     const history = historyOf(chat);

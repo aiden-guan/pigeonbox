@@ -1,13 +1,13 @@
 /**
- * The only way extension pages (side panel, settings) change anything in
- * PigeonBox Cloud: `CLOUD_CALL` with a contract route from an allowlist.
+ * The only way extension pages (side panel, settings) change anything on the
+ * PigeonBox server: `CLOUD_CALL` with a contract route from an allowlist.
  * Approving, connecting Google and placing drafts all go through here.
  */
 import type { RouteName, RouteRequest } from '@pigeonbox/api-contract';
 import { CloudApiError, cloudErrorMessage, type PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
 import { forgetThreadIntel } from './thread-state';
 
-/** Contract routes extension pages may call. Never billing, account deletion, tokens or webhooks. */
+/** Contract routes extension pages may call. Never account deletion, tokens or webhooks. */
 export const PAGE_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>([
   'cloudOverview',
   'briefingGenerate',
@@ -64,7 +64,7 @@ export const PAGE_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>([
 
 /** One allowlisted contract call from an extension page. Errors come back as plain, user-facing text. */
 export async function pageCall(client: PigeonBoxCloudClient, route: unknown, body: unknown): Promise<{ ok: true; data: unknown } | { ok: false; code: string; reason: string }> {
-  if (typeof route !== 'string' || !PAGE_ROUTES.has(route as RouteName)) return { ok: false, code: 'forbidden', reason: 'That PigeonBox Pro action is not available here.' };
+  if (typeof route !== 'string' || !PAGE_ROUTES.has(route as RouteName)) return { ok: false, code: 'forbidden', reason: 'That PigeonBox server action is not available here.' };
   try {
     const data = await client.call(route as RouteName, body as RouteRequest<RouteName>);
     // Anything that changes a thread makes cached intelligence stale.

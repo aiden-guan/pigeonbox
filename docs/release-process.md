@@ -10,17 +10,17 @@ npm install                      # updates package-lock.json
 npm run check:versions
 ```
 
-## Unified extension package
+## Release package
 
-`npm run package` produces one ZIP with Local and optional Cloud modes. Public production endpoints come from `scripts/lib/release-config.mjs`, overriding shell and local Vite environment values. Fresh installs start in Local; Cloud consent, sign-in, subscription capabilities and Google authorization remain runtime gates. Real-time Pidgy checks remain off by default. `--cloud` is a compatibility alias for this same package.
+`npm run package` produces one ZIP that runs on this computer. There is no official hosted PigeonBox server, so a release build carries no server endpoints: `scripts/lib/release-config.mjs` blanks the `VITE_PIGEONBOX_CLOUD_*` values from the shell and local env files, and packaging fails if any of them appears in the output. People who run their own server build the extension from source; `npm run server:deploy` points that build at their server (see [self-hosting.md](self-hosting.md)). Real-time Pidgy checks remain off by default.
 
-## Version policy: Store, GitHub and Cloud agree
+## Version policy: GitHub and the Chrome Web Store agree
 
-Every version uploaded to the Chrome Web Store is also a tagged GitHub Release built from the same commit, so the store, the GitHub Release, the tag, `manifest.json`, the package versions and `CHANGELOG.md` never disagree:
+Publishing to the Chrome Web Store is optional; the tagged GitHub Release is the canonical download. When a version is uploaded to the store, it is the same ZIP as a tagged GitHub Release built from the same commit, so the store, the GitHub Release, the tag, `manifest.json`, the package versions and `CHANGELOG.md` never disagree:
 
 1. Tag the commit (`vX.Y.Z`). `release.yml` builds the ZIP, checks it, and creates the GitHub Release.
-2. If the repository variable `CWS_EXTENSION_ID` is set, the same workflow uploads and submits that ZIP. If it is not set, upload the ZIP from the GitHub Release by hand. Never upload a ZIP built anywhere else.
-3. Raise Cloud's `compatibility.minimumVersion` (remote client config) only to a version that the store has published, and only after its adoption is high enough (see Rollout).
+2. If the repository variable `CWS_EXTENSION_ID` is set, the same workflow uploads and submits that ZIP. If it is not set and you publish to the store, upload the ZIP from the GitHub Release by hand. Never upload a ZIP built anywhere else.
+3. If you run a server, raise its `compatibility.minimumVersion` (remote client config) only to a version the extensions using it already run (see Rollout).
 
 A version that never goes to the store (for example a source-only fix) still gets its `CHANGELOG.md` section, but needs no tag. Older local artifacts belong in the ignored `release/archive/`.
 
@@ -30,8 +30,8 @@ A version that never goes to the store (for example a source-only fix) still get
 
 - versions match (above), and the manifest version equals the package version;
 - the build is a release build: no source maps, experimental features off, no development rebuild URL, no `key` in the manifest;
-- the Cloud endpoints are the production ones in `scripts/lib/release-config.mjs`, are plain HTTPS origins on a PigeonBox production host (`*.pigeonbox.workers.dev` or `usepigeonbox.com`), and are compiled into the bundle;
-- `externally_connectable` allows only usepigeonbox.com, the CSP allows no remote or eval code, and no remote script is referenced;
+- no PigeonBox server endpoint is compiled in: none of the `VITE_PIGEONBOX_CLOUD_*` values from the shell or `apps/extension/.env*` files appears in the bundle, and neither do the local development server URLs;
+- the manifest has no `externally_connectable`, the CSP allows no remote or eval code, and no remote script is referenced;
 - every manifest permission and host pattern has a justification in [chrome-web-store.md](chrome-web-store.md#manifest-v3-audit);
 - no secret pattern, Supabase service-role JWT or local env value appears in any file;
 - no source, test, map or env file is in the ZIP.
@@ -61,7 +61,7 @@ The tag workflow also fails if the build leaves uncommitted generated files, and
 
 6. Store users get the update automatically after review. Users of the GitHub ZIP see it in Settings → Updates.
 
-Both CI and the tag workflow extract and load the canonical ZIP in Chromium to verify Local defaults, Cloud availability, consent and settings persistence before releasing it. Source development builds remain configurable.
+Both CI and the tag workflow extract and load the canonical ZIP in Chromium (`tests/browser/release.spec.ts`) to verify that it runs on this computer and that no website can message it. Source builds remain configurable.
 
 The in-extension update checker (unpacked installs only; the Chrome Web Store updates its own installs) lists GitHub releases, picks the highest non-draft, non-prerelease `vX.Y.Z` tag (other releases, like the launch film, are ignored) and looks for the matching `PigeonBox-vX.Y.Z.zip` asset. Keep that tag format and asset name unchanged. Checks are opt-in; sideloaded Chrome extensions still need to be reloaded by the user after downloading.
 
@@ -77,26 +77,22 @@ shasum -a 256 -c PigeonBox-v0.3.0.sha256
 
 Only a fresh release build from an isolated temporary staging directory, minus anything `isExcludedFromPackage` matches. Staging is removed after packaging; the ZIP and checksum go to `release/` (or `--out`). Packaging never changes `apps/extension/dist`, the working folder loaded in Chrome. See the checks in [chrome-web-store.md](chrome-web-store.md).
 
-## Rollout of a release that changes the Cloud protocol or client config
+## Rollout of a release that changes the server protocol or client config
 
-Users update over days, and some never do, so Cloud must serve the previous extension and the new one at the same time:
+Extensions update over days, and some never do, so a server must serve the previous extension and the new one at the same time. For anyone running a server:
 
-1. Deploy backward-compatible Cloud first (new routes are additive; old clients ignore unknown fields). Leave `CLIENT_CONFIG` and `CLIENT_MIN_EXTENSION_VERSION` unset.
-2. Smoke the **current** store version against it (sign-in, compose check, thread card, tracking).
-3. Build the new extension with `npm run package`, load the ZIP unpacked, and smoke it against production Cloud.
-4. Tag the release (see Version policy) and submit it to the store.
-5. After it is published, tune behavior through remote client config: one change at a time, watching Sentry, the `compose check` logs and support reports.
-6. Set `compatibility.recommendedVersion` to the new version once it is published.
-7. Raise `compatibility.minimumVersion` (and `CLIENT_MIN_EXTENSION_VERSION`) only when an old version is unsafe or nearly unused. Old clients then see "PigeonBox needs an update"; clients older than 0.6.0 instead get the 426 message they already understand.
+1. Deploy the backward-compatible server first (`npm run server:deploy`; new routes are additive and old clients ignore unknown fields). Leave `CLIENT_CONFIG` unset.
+2. Smoke the extension version people currently use against it (sign-in, compose check, thread card, tracking).
+3. Build the new extension from source against the server, load it, and smoke it.
+4. Tag the release (see Version policy).
+5. Tune behavior through remote client config (`CLIENT_CONFIG` in `server.env`): one change at a time, watching the logs, the `compose check` log lines and error tracking if you set it up.
+6. Set `compatibility.recommendedVersion` to the new version once the extensions using the server can update.
+7. Raise `compatibility.minimumVersion` only when an old version is unsafe or no longer used. Old clients then see "PigeonBox needs an update"; clients older than 0.6.0 instead get the 426 message they already understand.
 
-Emergency: `disabledFeatures` in remote client config switches a client feature off for every 0.6.0+ install within one config TTL; `CLOUD_ROLLOUT` (server) remains the switch for every version.
+Emergency: `disabledFeatures` in remote client config switches a client feature off for every 0.6.0+ install within one config TTL; `CLOUD_ROLLOUT` (server) remains the switch for every version. See [server/operations.md](server/operations.md#rollout-and-kill-switches).
 
-## Moving Cloud to first-party domains (not done yet)
+## Moving a server to a new domain
 
-The release endpoints are still the `workers.dev` hostnames. As of 2026-10-02, usepigeonbox.com is not a Cloudflare zone on the PigeonBox account (its DNS is at Spaceship), so Worker custom domains cannot be attached yet (pigeonbox-cloud `docs/deployment.md`). Moving needs, in order:
+A server can move from its `workers.dev` hostnames to custom domains (`API_URL` and `TRACKER_URL` in `server.env`). The generated Worker configuration keeps `workers_dev = true`, so the old hostnames keep serving; keep the old tracker hostname up permanently, because mail already sent keeps its original pixel and link URLs. List the old tracker origin in `VITE_PIGEONBOX_CLOUD_TRACKER_PREVIOUS_URLS` (in `apps/extension/.env.local`) so self-view suppression still recognizes those pixels.
 
-1. Make usepigeonbox.com a Cloudflare zone; attach `api.` and `t.` (or `track.`) as Worker custom domains while keeping `workers_dev = true`.
-2. Verify DNS, TLS, `/v1/health`, `/v1/version`, CORS for the dashboard origin, the PKCE handoff, and that an existing workers.dev `/open/…` pixel still returns the GIF. Add the new origins to `ALLOWED_WEB_ORIGINS`.
-3. Ship an extension whose release config uses the new origins and lists the old tracker in `VITE_PIGEONBOX_CLOUD_TRACKER_PREVIOUS_URLS`.
-
-Sessions: a Cloud session is bound to the API origin that issued it (`background/cloud/session.ts`), and tracked emails are keyed by `cloud:<API origin>` (`config.ts`). A domain change therefore needs, in that same extension release, a narrow migration: when the stored session's origin is a compiled-in previous production origin, refresh it once against the new origin (same Worker, same database), rebind it there, and keep resolving `cloud:<old origin>` tracking IDs as the same issuer. Tokens are never sent to an origin that is not compiled into the build, and if the refresh is refused the person signs in again rather than being silently kept on the old origin. The old `workers.dev` hostnames stay up until that release's adoption is near complete; the tracker hostname stays up permanently for mail already sent.
+A server session is bound to the API origin that issued it (`background/cloud/session.ts`), and tracked emails are keyed by `cloud:<API origin>` (`config.ts`). Moving the API origin therefore means signing in again, and tracked emails issued under the old origin are not carried over to the new one.

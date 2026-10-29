@@ -16,7 +16,7 @@ jobs:
   verify:
     name: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -28,7 +28,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Repository checks (namespace, private imports, secrets, env files)
+      - name: Repository checks (namespace, boundaries, secrets, env files)
         run: node scripts/check-repo.mjs
 
       - name: Versions
@@ -52,6 +52,15 @@ jobs:
       - name: Manifest V3 browser tests
         run: npm run test:browser
 
+      - name: Server dashboard browser tests
+        run: npm run test:server-browser
+
+      - name: Server Workers bundle
+        run: |
+          npm run assets -w @pigeonbox/api-worker
+          npx wrangler deploy --config workers/api/wrangler.toml --dry-run --outdir "$RUNNER_TEMP/api-bundle"
+          npx wrangler deploy --config workers/server-tracker/wrangler.toml --dry-run --outdir "$RUNNER_TEMP/tracker-bundle"
+
       - name: Package and validate release ZIP
         run: node scripts/package-extension.mjs --out "$RUNNER_TEMP/package"
 
@@ -68,6 +77,8 @@ jobs:
           path: |
             test-results/
             playwright-report/
+            tests/server/test-results/
+            tests/server/playwright-report/
           retention-days: 7
 
       - name: Upload package

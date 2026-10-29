@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { EmailAddressSchema, GmailIdSchema, IdSchema, InstantSchema, IsoSchema } from './common.js';
 
 /**
- * Tracked documents: a PDF stored privately by PigeonBox Cloud and shared as
+ * Tracked documents: a PDF stored privately by the PigeonBox server and shared as
  * per-recipient links. Analytics only report what the PigeonBox viewer
  * observed; `precision` says what kind of observation backs each number.
  */

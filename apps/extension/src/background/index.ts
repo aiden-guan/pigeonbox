@@ -3,7 +3,6 @@ import { readWorkspace, updateWorkspace, showWorkspace, installWorkspaceToolbar 
 import type { WorkspaceContext } from '../workspace/context';
 import { MailboxIdentities, visibleSummaryForOwner, withSelfAliases } from './mailbox-identity';
 import { tagAuthors, type MailboxIdentity } from '@pigeonbox/shared';
-import { analyticsEnabled, cloudEventsProvider, configureAnalytics, noteActiveDay, recordProductEvent, setAnalyticsEnabled } from '../ui/analytics';
 function isWorkerEvictionError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? '');
   return msg.includes('No SW') || msg.includes('No RPH') || msg.includes('Extension context invalidated');
@@ -98,13 +97,13 @@ import { handleCloudRequest } from './cloud/handlers';
 import { resolveSenderDocumentLink } from './cloud/document-preview';
 import { serveAskStream } from './cloud/ask-stream';
 import { cloudSection, dashboardSection, panelSection } from '../ui/cloud-features';
-import { handleWebMessage, type SettingsSync, type WebBridgeDeps } from './web-bridge';
+import { handleWebMessage, isDashboardOrigin, type SettingsSync, type WebBridgeDeps } from './web-bridge';
 import { NOTIFICATION_ALARM, pollNotifications } from './cloud/notifications';
 import { broadcastToGmailTabs, hardenExtensionStorage, isExtensionPageSender, isGmailContentScript, senderMaySend } from './messaging';
 import { readSnippets, writeSnippets } from './snippets';
 import { credentialSafePatch } from './settings-credentials';
 import { checkLatestRelease, chromeManagesUpdates, configureReleaseCheckAlarm, readReleaseUpdateStatus, RELEASE_CHECK_ALARM } from './release-updates';
-import { CLOUD_DASHBOARD_URL, DEV_BUILD, EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl, cloudTrackerUrls, trackerIssuer, usesHostedTracker } from '../config';
+import { DEV_BUILD, EXPERIMENTAL_FEATURES, cloudApiUrl, cloudTrackerUrl, cloudTrackerUrls, trackerIssuer, usesHostedTracker } from '../config';
 import { type AlertPlan, ConversationAlerts, gmailThreadHex, gmailThreadUrl, groupTrackingAlerts, trackingIdFromNotification, trackingNotificationId, TrackingNotificationHistory } from './tracking/notifications';
 
 // Install the storage boundary before any settings or credentials are read.
@@ -122,8 +121,10 @@ let settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
  * put the old values back.
  */
 let settingsChanges = 0;
-// Content-free product events go to PigeonBox Cloud only (docs/product-analytics.md); Cloud forwards them to PostHog.
-configureAnalytics(cloudEventsProvider({ baseUrl: () => cloudApiUrl(settings) }));
+/** Why server actions are refused when no PigeonBox server URL is configured. */
+const NO_SERVER = 'No PigeonBox server is configured. Add one in Settings → Advanced.';
+/** Storage keys earlier versions kept for product analytics, which PigeonBox no longer collects. */
+const LEGACY_ANALYTICS_KEYS = ['productAnalyticsEnabled', 'productEventCounts', 'productAnalyticsInstallId', 'productAnalyticsActiveDay'];
 let agent: AgentLoop | null = null;
 let indexRunner: IndexJobRunner | null = null;
 const notificationHistory = new TrackingNotificationHistory(chrome.storage.local);
@@ -158,17 +159,17 @@ async function loadSettings(): Promise<ExtensionSettings> {
 }
 
 /**
- * Settings a Gmail content script may see: no secrets, and the hosted tracker
- * in place of the self-hosted one whenever hosted tracking is in use (Pro, and
- * Free unless local-only). `hasPersonalApiToken` only says
- * whether the service worker can authenticate to that tracker.
+ * Settings a Gmail content script may see: no secrets, and the PigeonBox
+ * server's tracker in place of a standalone one whenever it is in use (server
+ * mode, and on this computer unless local-only). `hasPersonalApiToken` only
+ * says whether the service worker can authenticate to that tracker.
  */
 async function contentSettings(): Promise<PublicExtensionSettings> {
   const view = toPublicSettings(effectiveSettings(settings));
   if (!usesHostedTracker(settings)) return view;
   const tracker = cloudTrackerUrl(settings);
   const user = cloudApiUrl(settings) ? await cloudSession.currentUser(cloudApiUrl(settings)!) : null;
-  // Compose asks for tracking only when the account may use hosted tracking, so
+  // Compose asks for tracking only when the server offers this account tracking, so
   // an account without it sends at once instead of waiting on a refused allocation.
   const capabilities = (await cachedCloudState(settings).catch(() => null))?.capabilities;
   const entitled = capabilities ? capabilities.includes('cloud_tracking') : true;
@@ -176,7 +177,7 @@ async function contentSettings(): Promise<PublicExtensionSettings> {
   return {
     ...view,
     trackerBaseUrl: tracker ?? '',
-    // A self-hosted tracker used before stays recognized, so its old pixels in your own threads never count as opens.
+    // A standalone tracker used before stays recognized, so its old pixels in your own threads never count as opens.
     trackerUrls: [...cloudTrackerUrls(settings), ...(settings.trackerBaseUrl.trim() ? [settings.trackerBaseUrl.trim().replace(/\/$/, '')] : [])],
     hasPersonalApiToken: Boolean(tracker && user && entitled),
     composeTuning: { idleMs: compose.idleMs, cooldownMs: compose.cooldownMs, cacheMs: compose.cacheMs, revision },
@@ -197,7 +198,7 @@ function publishContentSettings(): Promise<void> {
 
 async function applyBundledTracker(): Promise<void> {
   if (settings.trackerBaseUrl?.trim() && settings.personalApiToken?.trim()) return;
-  // A bundled tracker is only for builds without the hosted one, or for local-only installs.
+  // A bundled tracker is only for builds without a PigeonBox server, or for local-only installs.
   if (usesHostedTracker(settings)) return;
   try {
     if (typeof chrome === 'undefined' || typeof chrome.runtime?.getURL !== 'function') return;
@@ -233,13 +234,13 @@ async function saveSettings(partial: Partial<ExtensionSettings>): Promise<Extens
   await publishContentSettings();
   rebuildAgent();
   if ('voiceProfile' in rest) void syncVoiceToCloud();
-  // Hosted and self-hosted trackers keep separate histories; load the new one now.
+  // The server tracker and a standalone tracker keep separate histories; load the new one now.
   if (usesHostedTracker(settings) !== previousHosted) void pollTracking().catch(() => undefined);
   return settings;
 }
 
 /**
- * Background drafts in PigeonBox Cloud should sound like the drafts here, so
+ * Background drafts on the PigeonBox server should sound like the drafts here, so
  * the voice profile follows the extension's. Only in Cloud mode with sync on;
  * failures are ignored and retried on the next save.
  */
@@ -554,8 +555,8 @@ async function runDiagnostics() {
   if (settings.runMode === 'cloud') {
     const cloud = await readCloudState(settings);
     aiStatus = cloud.status === 'ready' ? 'ready' : cloud.status === 'signed_out' || cloud.status === 'expired' ? 'not_signed_in' : 'error';
-    configStatus = `PigeonBox Pro: ${cloud.status.replace(/_/g, ' ')}`;
-    aiDetail = cloud.status === 'ready' ? null : 'Pro never falls back to another AI provider.';
+    configStatus = `PigeonBox server: ${cloud.status.replace(/_/g, ' ')}`;
+    aiDetail = cloud.status === 'ready' ? null : 'Server mode never falls back to another AI provider.';
   } else if (settings.aiMode === 'disabled') {
     aiStatus = 'disabled';
     configStatus = 'AI disabled';
@@ -693,7 +694,7 @@ async function runDiagnostics() {
     aiDestination: aiDataDestination(settings),
     ai: {
       provider: settings.runMode === 'cloud' ? 'pigeonbox-cloud' : settings.aiProvider,
-      model: settings.runMode === 'cloud' ? 'PigeonBox Pro' : settings.aiModel,
+      model: settings.runMode === 'cloud' ? 'PigeonBox server' : settings.aiModel,
       mode: settings.runMode === 'cloud' ? 'cloud' : settings.aiMode,
       status: aiStatus,
       configurationStatus: configStatus,
@@ -1110,7 +1111,6 @@ async function pollTrackingNow(): Promise<void> {
   // history keeps every replay, even after a restart clears session state, from
   // raising an alert again: re-creating a dismissed notification shows it anew.
   newEvents = await notificationHistory.claim(scope, settledEvents);
-  if (newEvents.some((event) => event.type === 'OPEN')) void recordProductEvent('first_open_received', { surface: 'gmail' });
   await navigationAttribution;
   await claimAttribution;
   const held = newEvents.filter((event) => !attribution.publishable(issuer, event.tracking_id, revisions.get(event.tracking_id) || 0));
@@ -1190,8 +1190,9 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'update' && details.previousVersion !== chrome.runtime.getManifest().version) {
     void refreshGmailAfterUpdate().catch(() => undefined);
   }
+  // Product analytics were removed; drop what earlier versions stored for them.
+  void chrome.storage.local.remove(LEGACY_ANALYTICS_KEYS).catch(() => undefined);
   if (details.reason === 'install') {
-    void recordProductEvent('extension_installed', {});
     const stored = await chrome.storage.local.get('onboardingComplete');
     if (!stored.onboardingComplete) {
       await chrome.tabs.create({ url: chrome.runtime.getURL('onboarding.html') });
@@ -1210,7 +1211,6 @@ chrome.runtime.onUpdateAvailable.addListener((details) => {
 
 chrome.runtime.onStartup.addListener(async () => {
   await loadSettings();
-  void noteActiveDay();
   void pollTracking().catch(() => undefined);
   const checkReleases = await releaseChecksWanted();
   configureReleaseCheckAlarm(checkReleases);
@@ -1229,7 +1229,6 @@ chrome.runtime.onStartup.addListener(async () => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   await loadSettings();
   if (alarm.name === 'tracking_poll') {
-    void noteActiveDay();
     await pollTracking();
     void applyPendingUpdateIfQuiet().catch(() => undefined);
   }
@@ -1381,7 +1380,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
 
-    if (message?.type === 'PRODUCT_EVENT') { void recordProductEvent(message.event, message.metadata); sendResponse({ ok: true }); return; }
     const cloudResponse = await handleCloudMessage(message, sender);
     if (cloudResponse !== undefined) {
       sendResponse(cloudResponse);
@@ -1669,7 +1667,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             ),
           );
           sendResponse({ ok: true, ...created });
-          void recordProductEvent('first_tracked_email_created', { surface: 'gmail' });
         } catch (e) {
           // Sending continues without tracking; the compose control shows it as unavailable.
           sendResponse({ error: e instanceof Error ? e.message : 'tracking_create_failed' });
@@ -2114,7 +2111,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           } catch (err) {
             lastErr = err;
             const errStr = err instanceof Error ? err.message : String(err ?? '');
-            // Retrying cannot fix a rejected token (already refreshed once), a lapsed plan or an unknown email.
+            // Retrying cannot fix a rejected token (already refreshed once), an account without tracking or an unknown email.
             if (errStr.includes('401') || errStr.includes('402') || errStr.includes('404')) {
               break;
             }
@@ -2321,19 +2318,20 @@ async function runInboxIndex(mode: Parameters<IndexJobRunner['run']>[0]['mode'],
   return cp;
 }
 
-/** Everything a PigeonBox page needs to render mode, capabilities and Cloud status. */
+/** Everything a PigeonBox page needs to render mode, capabilities and server status. */
 async function productState() {
   const cloud: CloudState = await readCloudState(settings);
   const capabilities = resolveCapabilities({ mode: settings.runMode, settings, cloud });
   return {
     runMode: settings.runMode,
     cloudAvailable: Boolean(cloudApiUrl(settings)),
+    dashboardAvailable: dashboardUrl() !== null,
     cloudConsentAt: settings.cloudConsentAt,
     cloud,
     capabilities: capabilities.list(),
     aiDestination: aiDataDestination(settings),
     experimental: EXPERIMENTAL_FEATURES,
-    // Host permissions Cloud mode needs; the page requests them with a user gesture before sign-in.
+    // Host permissions server mode needs; the page requests them with a user gesture before sign-in.
     cloudOrigins: [cloudApiUrl(settings), cloudTrackerUrl(settings)]
       .filter((url): url is string => Boolean(url))
       .map((url) => `${new URL(url).origin}/*`),
@@ -2341,20 +2339,40 @@ async function productState() {
 }
 
 /**
- * The PigeonBox dashboard, where Settings live, opened at a section such as
- * "approvals". It names this install's ID so the page can reach the worker
- * (unpacked builds have their own IDs). A loopback API serves its own copy.
+ * The dashboard on the configured PigeonBox server (`<server origin>/dashboard`),
+ * opened at a section such as "approvals". It names this install's ID so the
+ * page can reach the worker (unpacked builds have their own IDs). Null without
+ * a server.
  */
-function dashboardUrl(section = 'overview', extra: Record<string, string> = {}): string {
+function serverDashboardUrl(section: string, extra: Record<string, string> = {}): string | null {
   const base = cloudApiUrl(settings);
-  const api = base ? new URL(base) : null;
-  const dashboard = api && ['localhost', '127.0.0.1', '[::1]'].includes(api.hostname) ? `${api.origin}/dashboard` : CLOUD_DASHBOARD_URL;
+  if (!base) return null;
   const query = new URLSearchParams({ ext: chrome.runtime.id, ...extra });
-  return `${dashboard}?${query}#${dashboardSection(section)}`;
+  return `${new URL(base).origin}/dashboard?${query}#${section}`;
 }
 
+/**
+ * Where Settings open: the server's dashboard when that page can reach this
+ * worker (its origin is in the manifest's `externally_connectable`, which is
+ * fixed at build time), else null and Settings open inside the extension.
+ */
+function dashboardUrl(section = 'overview', extra: Record<string, string> = {}): string | null {
+  const base = cloudApiUrl(settings);
+  if (!base || !isDashboardOrigin(new URL(base).origin, DEV_BUILD)) return null;
+  return serverDashboardUrl(dashboardSection(section), extra);
+}
+
+/** Sections of the in-extension Settings page a dashboard section can land on. */
+const EXTENSION_SETTINGS_SECTIONS: ReadonlySet<string> = new Set(['ai', 'inbox', 'tracking', 'snippets', 'personalization', 'privacy', 'updates', 'advanced']);
+
+/** The Settings page inside the extension (no PigeonBox server, or one this build cannot reach). */
+function extensionSettingsUrl(section: string): string {
+  return chrome.runtime.getURL(`settings.html?here${EXTENSION_SETTINGS_SECTIONS.has(section) ? `#${section}` : ''}`);
+}
+
+/** Server pages (approvals, documents …) work on the dashboard even when it cannot reach this worker. */
 function cloudWebUrl(section = 'overview'): string | null {
-  return dashboardUrl(cloudSection(section));
+  return serverDashboardUrl(cloudSection(section));
 }
 
 const DASHBOARD_TAB_KEY = 'dashboardTab';
@@ -2367,6 +2385,10 @@ const SETTINGS_SYNC_KEY = 'accountSettingsSync';
  */
 async function openDashboard(section = 'overview', extra: Record<string, string> = {}): Promise<void> {
   const url = dashboardUrl(section, extra);
+  if (!url) {
+    await chrome.tabs.create({ url: extensionSettingsUrl(dashboardSection(section)) });
+    return;
+  }
   const tabId = (await chrome.storage.session.get(DASHBOARD_TAB_KEY))[DASHBOARD_TAB_KEY];
   if (typeof tabId === 'number') {
     try {
@@ -2386,14 +2408,14 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }).catch(() => undefined);
 });
 
-/** After any Cloud sign-in: account state, voice, content settings, the agent and tracking history. */
+/** After any server sign-in: account state, voice, content settings, the agent and tracking history. */
 async function afterCloudSignIn(): Promise<void> {
   await refreshCloudState(settings);
   await chrome.storage.local.remove(VOICE_SYNCED_KEY).catch(() => undefined);
   void syncVoiceToCloud();
   await publishContentSettings();
   rebuildAgent();
-  // Cloud is the record for hosted tracking: load its history right after sign-in.
+  // The server is the record for its tracker: load its history right after sign-in.
   void pollTracking().catch(() => undefined);
 }
 
@@ -2474,7 +2496,7 @@ async function cloudSyncClient() {
 }
 
 /**
- * PigeonBox Cloud messages (thread state, page calls, opening the web app).
+ * PigeonBox server messages (thread state, page calls, opening the dashboard).
  * Content scripts may only send CLOUD_THREAD_INTEL (read-only); the rest need
  * an extension page (enforced by `senderMaySend`). Returns undefined for any other message.
  */
@@ -2531,7 +2553,7 @@ chrome.notifications.onClicked.addListener((id) => {
 });
 
 /**
- * Run mode, Cloud account and billing messages. Returns undefined for any other
+ * Run mode and server account messages. Returns undefined for any other
  * message. Only extension pages reach here (see `senderMaySend`).
  */
 async function handleProductMessage(message: { type?: unknown; [key: string]: unknown }): Promise<unknown> {
@@ -2553,15 +2575,15 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       if (mode === 'local') {
         settings = migrateSettings({ ...settings, runMode: 'local' });
       } else if (mode === 'cloud') {
-        if (!cloudApiUrl(settings)) return { ok: false, reason: 'PigeonBox Pro is not available in this build.' };
-        if (message.consent !== true) return { ok: false, reason: 'Pro needs your agreement to send email content to PigeonBox Pro.' };
+        if (!cloudApiUrl(settings)) return { ok: false, reason: NO_SERVER };
+        if (message.consent !== true) return { ok: false, reason: 'Running on your PigeonBox server needs your agreement to send email content to it.' };
         settings = migrateSettings({ ...settings, runMode: 'cloud', cloudConsentAt: new Date().toISOString() });
       } else {
         return { ok: false, reason: 'Unknown mode.' };
       }
       settingsChanges += 1;
       await chrome.storage.local.set({ settings });
-      // A subscription may have started since the account state was cached. Only after saving:
+      // The server may have granted this account more since the state was cached. Only after saving:
       // other messages reload settings from storage while this waits on the network.
       if (mode === 'cloud') await refreshCloudState(settings).catch(() => undefined);
       await publishContentSettings();
@@ -2573,7 +2595,7 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
     case 'CLOUD_SIGN_IN': {
       forgetThreadIntel();
       const base = cloudApiUrl(settings);
-      if (!base) return { ok: false, reason: 'PigeonBox Pro is not available in this build.' };
+      if (!base) return { ok: false, reason: NO_SERVER };
       try {
         const user = await cloudSession.signIn(base);
         await afterCloudSignIn();
@@ -2599,23 +2621,12 @@ async function handleProductMessage(message: { type?: unknown; [key: string]: un
       return requestExtensionUpdate();
     case 'GET_DIAGNOSTICS_REPORT':
       return { ok: true, text: await diagnosticsReport() };
-    case 'CLOUD_BILLING': {
-      const client = getCloudClient(settings);
-      if (!client) return { ok: false, reason: 'PigeonBox Pro is not available in this build.' };
-      try {
-        const { url } = message.kind === 'portal' ? await client.billingPortal() : await client.billingCheckout();
-        await chrome.tabs.create({ url });
-        return { ok: true };
-      } catch (error) {
-        return { ok: false, reason: cloudErrorMessage(error).message };
-      }
-    }
     default:
       return undefined;
   }
 }
 
-// The dashboard on usepigeonbox.com edits settings and connects Cloud through here (see web-bridge.ts).
+// The dashboard on your PigeonBox server edits settings and links the server account through here (see web-bridge.ts).
 const webBridge: WebBridgeDeps = {
   extensionId: chrome.runtime.id,
   version: chrome.runtime.getManifest().version,
@@ -2640,7 +2651,7 @@ const webBridge: WebBridgeDeps = {
   },
   dashboardCode: async (input) => {
     const api = cloudApiUrl(settings);
-    if (!api) throw new Error('Pro is not available in this build.');
+    if (!api) throw new Error(NO_SERVER);
     return cloudSession.dashboardCode(api, input);
   },
   agentRules: async () => (await db.agent_rules.toArray()).map((rule) => rule.naturalLanguage),
@@ -2675,10 +2686,6 @@ const webBridge: WebBridgeDeps = {
       default:
         return null;
     }
-  },
-  analytics: {
-    get: async () => analyticsEnabled(await chrome.storage.local.get('productAnalyticsEnabled')),
-    set: setAnalyticsEnabled,
   },
   hasOrigins: (origins) => chrome.permissions.contains({ origins }).catch(() => false),
   noteDashboardTab: async (tabId) => {

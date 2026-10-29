@@ -178,7 +178,7 @@ async function readJson(request: Request): Promise<BodyResult> {
 
 /**
  * What the tracker needs from its host. The self-hosted worker below uses one
- * store and a personal token. PigeonBox Cloud reuses the same handlers with a
+ * store and a personal token. The PigeonBox server reuses the same handlers with a
  * tenant-scoped store per authenticated user, so protocol v3 behavior (self-view
  * claims, proxy suppression, click classification) is identical in both.
  */

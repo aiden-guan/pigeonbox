@@ -212,11 +212,14 @@ export function validateManifest(manifest, names, expectedVersion) {
   return problems;
 }
 
-/** Only the published dashboard may message a release build; loopback dashboards are for source builds. */
+/**
+ * A release build has no PigeonBox server, so no website may message it: only a
+ * source build made with a server URL lets that server's dashboard (and, in
+ * development, loopback) connect.
+ */
 export function validateReleaseManifest(manifest) {
   const connectable = manifest.externally_connectable?.matches ?? [];
-  const foreign = connectable.filter((match) => !/^https:\/\/(www\.)?usepigeonbox\.com\/\*$/.test(match));
-  return foreign.length ? [`externally_connectable allows pages other than usepigeonbox.com: ${foreign.join(', ')}`] : [];
+  return 'externally_connectable' in manifest ? [`a release must not set externally_connectable (it allows: ${connectable.join(', ') || 'nothing'})`] : [];
 }
 
 /**

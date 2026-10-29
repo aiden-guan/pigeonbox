@@ -2,7 +2,7 @@ import type { AskPigeonResponse } from '@pigeonbox/api-contract';
 
 /**
  * Ask Pigeon chat history, kept in this browser only (chrome.storage.local),
- * never on PigeonBox Cloud. The user picks how long chats are kept, up to
+ * never on the PigeonBox server. The user picks how long chats are kept, up to
  * seven days; "Off" keeps nothing and erases what was kept. Signing out of
  * PigeonBox erases it too.
  */
