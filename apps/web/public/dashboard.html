@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PigeonBox · Dashboard</title>
+    <meta name="description" content="The dashboard of your PigeonBox server: PigeonBox settings, connections, privacy, team and API access." />
+    <meta name="robots" content="noindex" />
+    <!-- Empty: same-origin API. A copy of this page hosted elsewhere names the API origin here. -->
+    <meta name="pigeonbox-api" content="" />
+    <meta name="theme-color" content="#f3f0e8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/control/pigeon-icon.png" />
+    <link rel="preload" href="/control/assets/pidgy.webp" as="image" type="image/webp" />
+    <link rel="stylesheet" href="/control/control.css?v=unsaved-tz-20261011-1" />
+    <script src="/control/theme.js?v=pull-chain-1"></script>
+  </head>
+  <body data-page="control" data-auth="pending">
+    <a class="skip-link" href="#view">Skip to content</a>
+    <div class="cp">
+      <aside class="cp-side" id="cp-side" aria-label="PigeonBox">
+        <div class="cp-brand">
+          <a class="brand" href="/dashboard" aria-label="PigeonBox dashboard"><span class="pidgy" data-state="idle" aria-hidden="true"></span><span class="wordmark">PigeonBox</span></a>
+          <span class="cp-badge"></span>
+          <button type="button" class="cp-lamp" id="cp-theme" aria-pressed="false" aria-label="Dark mode" title="Pull for dark mode">
+            <span class="cp-lamp-swing" aria-hidden="true">
+              <span class="cp-lamp-drop"><span class="cp-lamp-chain"></span><span class="cp-lamp-pull"></span></span>
+            </span>
+          </button>
+        </div>
+        <div class="cp-mode" id="cp-mode" hidden></div>
+        <nav class="cp-nav" id="cp-nav" aria-label="Sections"></nav>
+        <div class="cp-foot">
+          <a class="cp-status" id="cp-status" href="#connections" hidden>
+            <span class="pill" id="cp-status-mark">Checking routes</span>
+            <span class="cp-status-detail" id="cp-status-detail"></span>
+          </a>
+          <div class="cp-user" id="cp-user" hidden>
+            <span class="cp-avatar" id="cp-avatar" aria-hidden="true"></span>
+            <span class="cp-id"><span id="cp-email" class="cp-email"></span><span id="cp-host" class="cp-host"></span></span>
+            <button type="button" id="cp-signout" class="btn btn-quiet btn-small" hidden>Sign out</button>
+          </div>
+        </div>
+      </aside>
+      <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
+      <div class="cp-desk">
+        <header class="cp-top">
+          <button type="button" class="cp-menu" aria-expanded="false" aria-controls="cp-side" aria-label="Open sections"><span></span><span></span></button>
+          <a class="brand" href="/dashboard" aria-label="PigeonBox dashboard"><span class="pidgy" data-state="idle" aria-hidden="true"></span><span class="wordmark">PigeonBox</span></a>
+          <span class="cp-top-section" id="cp-top-section" aria-hidden="true"></span>
+          <a class="cp-top-count" id="cp-top-count" href="#approvals" hidden><span data-count="approvals"></span></a>
+        </header>
+        <main id="view" class="cp-main" tabindex="-1">
+          <div class="loading loading-page" role="status">
+            <span class="sr-only">Loading…</span>
+            <div class="loading-head" aria-hidden="true"><span class="skel"></span><span class="skel skel-title"></span><span class="skel skel-line"></span></div>
+            <span class="skel skel-block" aria-hidden="true"></span>
+          </div>
+        </main>
+      </div>
+    </div>
+    <p id="cp-announce" class="sr-only" aria-live="polite"></p>
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+    <script type="module" src="/control/main.js?v=unsaved-tz-20261011-1"></script>
+  </body>
+</html>

@@ -85,7 +85,7 @@ describe('CloudSessionManager', () => {
   });
 
   it('creates a dashboard code without copying tokens or rotating the extension session', async () => {
-    const input = { redirectUri: 'https://usepigeonbox.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) };
+    const input = { redirectUri: 'https://api.example.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) };
     const { manager, local } = setup(async (url, init) => {
       if (url.endsWith('/auth/token')) return json(session());
       expect(url).toBe(`${API}/v1/auth/link`);
@@ -102,7 +102,7 @@ describe('CloudSessionManager', () => {
   });
 
   it('refreshes an expired account once before creating a dashboard code', async () => {
-    const input = { redirectUri: 'https://usepigeonbox.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) };
+    const input = { redirectUri: 'https://api.example.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) };
     let links = 0;
     const { manager } = setup(async (url, init) => {
       if (url.endsWith('/auth/token')) return json(session());
@@ -119,7 +119,7 @@ describe('CloudSessionManager', () => {
   it('rejects a mismatched dashboard state without clearing the account', async () => {
     const { manager } = setup(async (url) => url.endsWith('/auth/token') ? json(session()) : json({ code: 'single-use-dashboard-code', state: 'wrong-state' }));
     await manager.signIn(API);
-    await expect(manager.dashboardCode(API, { redirectUri: 'https://usepigeonbox.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) })).rejects.toMatchObject({ code: 'invalid_response' });
+    await expect(manager.dashboardCode(API, { redirectUri: 'https://api.example.com/dashboard', codeChallenge: 'c'.repeat(43), state: 's'.repeat(24) })).rejects.toMatchObject({ code: 'invalid_response' });
     expect(await manager.currentUser(API)).toEqual(session().user);
   });
 

@@ -1,11 +1,10 @@
-import { openCloudWaitlist } from '../config';
+import { SELF_HOSTING_GUIDE_URL } from '../config';
 import { useAppearance } from '../ui/appearance';
 import { Pigeon } from '../ui/Pigeon';
 import { prefersReducedMotion } from '../ui/motion';
 import { Fragment, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { DEFAULT_SETTINGS, type ExtensionSettings, type ThreadCategory, type VoiceProfile } from '@pigeonbox/shared';
 import { useProductState } from '../ui/product-state';
-import { analyticsEnabled, setAnalyticsEnabled, trackProductEvent } from '../ui/analytics';
 import { InboxStage, type StagePhase } from './InboxStage';
 import { ThemeIntro, type Mode } from './ThemeIntro';
 import type { Focus } from './inbox';
@@ -35,7 +34,6 @@ export function OnboardingApp() {
   const [introLeaving, setIntroLeaving] = useState(false);
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const [path, setPath] = useState<Path>('local');
-  const [waitlisted, setWaitlisted] = useState(false);
   const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_SETTINGS);
   const [touchedAi, setTouchedAi] = useState(false);
   const [features, setFeatures] = useState<Record<Feature, boolean>>({
@@ -47,12 +45,6 @@ export function OnboardingApp() {
   const [hover, setHover] = useState<Feature | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-
-  const [shareUsage, setShareUsage] = useState(true);
-  useEffect(() => {
-    trackProductEvent('onboarding_started', { surface: 'onboarding' });
-    void chrome.storage?.local?.get('productAnalyticsEnabled').then((stored) => setShareUsage(analyticsEnabled(stored))).catch(() => undefined);
-  }, []);
 
   const steps: StepId[] = [
     'features',
@@ -99,20 +91,11 @@ export function OnboardingApp() {
 
   function choose(next: Path, event: MouseEvent<HTMLButtonElement>) {
     if (phase !== 'welcome') return;
-    if (next === 'cloud' && !product.state.cloudAvailable) {
-      openCloudWaitlist();
-      setWaitlisted(true);
-      return;
-    }
+    if (next === 'cloud' && !product.state.cloudAvailable) return;
     const rect = event.currentTarget.getBoundingClientRect();
     setOrigin(event.detail === 0 ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : { x: event.clientX, y: event.clientY });
     setPath(next);
-    if (next === 'local') {
-      trackProductEvent('local_selected', { surface: 'onboarding' });
-      if (product.state.runMode === 'cloud') void product.useLocal();
-    } else {
-      trackProductEvent('cloud_selected', { surface: 'onboarding' });
-    }
+    if (next === 'local' && product.state.runMode === 'cloud') void product.useLocal();
     setPhase('sorting');
     window.setTimeout(() => setPhase('setup'), prefersReducedMotion() ? 200 : SORT_MS);
   }
@@ -139,8 +122,7 @@ export function OnboardingApp() {
         : {};
       await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: skipped ? { voiceProfile: settings.voiceProfile } : { ...featurePatch(), ...ai } });
       await chrome.storage.local.set({ onboardingComplete: true });
-      trackProductEvent('onboarding_completed', { surface: 'onboarding', mode: product.state.runMode });
-      // Cloud setup (agreement, sign-in, subscription, Google) happens on the dashboard.
+      // Server setup (agreement, sign-in, Google) happens on the server's dashboard, or in Settings without one.
       if (path === 'cloud' && !skipped) await chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD', section: 'cloud', setup: 'cloud' });
       else await chrome.runtime.sendMessage({ type: 'OPEN_PIGEONBOX_WORKSPACE' });
       window.close();
@@ -171,16 +153,23 @@ export function OnboardingApp() {
             <div className="ob-welcome-pidgy"><Pigeon state="idle" size={56} /></div>
             <p className="ob-kicker ob-rise" style={{ '--i': 1 } as CSSProperties}>Welcome to PigeonBox</p>
             <Reveal as="h1" id="ob-welcome-title" className="ob-title ob-title-xl" text="Let’s quiet your inbox." delay={2} />
-            <p className="ob-sub ob-rise" style={{ '--i': 5 } as CSSProperties}>PigeonBox sorts, summarizes and drafts right inside Gmail. First, where should it run?</p>
-            <div className="ob-paths">
-              <PathCard index={6} icon={<LaptopIcon />} title="Free" detail="AI runs on this computer and works while Gmail is open." tag="Private" onClick={(event) => choose('local', event)} />
-              <PathCard index={7} icon={<CloudIcon />} title="Pro"
-                detail={product.state.cloudAvailable ? 'Keeps working while Gmail is closed. Briefings and prepared drafts.' : 'Always-on help while you’re away. Join the waitlist.'}
-                tag={product.state.cloudAvailable ? 'Always on' : 'Waitlist'} onClick={(event) => choose('cloud', event)} />
+            <p className="ob-sub ob-rise" style={{ '--i': 5 } as CSSProperties}>
+              {product.state.cloudAvailable
+                ? 'PigeonBox sorts, summarizes and drafts right inside Gmail. First, where should it run?'
+                : 'PigeonBox sorts, summarizes and drafts right inside Gmail, on this computer.'}
+            </p>
+            <div className="ob-paths" data-single={product.state.cloudAvailable ? undefined : true}>
+              <PathCard index={6} icon={<LaptopIcon />} title="On this computer" detail="AI runs on this computer and works while Gmail is open." tag="Private" onClick={(event) => choose('local', event)} />
+              {/* Only with a configured PigeonBox server (built in, or set in Settings → Advanced). */}
+              {product.state.cloudAvailable ? (
+                <PathCard index={7} icon={<CloudIcon />} title="Server" detail="Your PigeonBox server keeps working while Gmail is closed. Briefings and prepared drafts."
+                  tag="Always on" onClick={(event) => choose('cloud', event)} />
+              ) : null}
             </div>
-            {waitlisted ? <p className="ob-note ob-rise" role="status">Waitlist opened in a new tab. You can start on this computer meanwhile.</p> : null}
             <div className="ob-welcome-foot ob-rise" style={{ '--i': 8 } as CSSProperties}>
-              <span>Switch any time in Settings.</span>
+              {product.state.cloudAvailable ? <span>Switch any time in Settings.</span> : (
+                <a className="ob-link" href={SELF_HOSTING_GUIDE_URL} target="_blank" rel="noreferrer">Run your own server</a>
+              )}
               <button type="button" className="ob-link" disabled={busy} onClick={() => void finish(true)}>Skip setup</button>
             </div>
           </section>
@@ -199,7 +188,7 @@ export function OnboardingApp() {
 
           <Swap id={step} direction={direction}>
             {step === 'features' ? (
-              <StepFrame kicker={path === 'cloud' ? 'PigeonBox Pro' : 'On this computer'} title="What should Pidgy take off your plate?"
+              <StepFrame kicker={path === 'cloud' ? 'Your PigeonBox server' : 'On this computer'} title="What should Pidgy take off your plate?"
                 sub="Pick what you want. Each one takes seconds to set up, and you can change it later.">
                 <div className="ob-features" onMouseLeave={() => setHover(null)}>
                   {FEATURES.map((feature, index) => (
@@ -253,24 +242,21 @@ export function OnboardingApp() {
             ) : null}
 
             {step === 'tracking' ? (() => {
-              // Pro signs in on the dashboard; Free signs in right here, in one Google window.
+              // Server mode signs in during server setup; on this computer, sign in to the server's tracker right here.
               const signInHere = path === 'local' && product.state.cloudAvailable && !product.state.cloud.email;
               const signedIn = path === 'local' && Boolean(product.state.cloud.email);
               return (
                 <StepFrame kicker="Open tracking" title="Know when it lands." sub={product.has('cloud_tracking') || path === 'cloud'
-                  ? 'PigeonBox hosts your tracker. Reader attribution is approximate, and your own opens are hidden.'
+                  ? 'Your PigeonBox server records opens and clicks. Reader attribution is approximate, and your own opens are hidden.'
                   : signedIn
                     ? `Tracking is on for ${product.state.cloud.email}. Only subjects, addresses and open times are stored.`
                     : product.state.cloudAvailable
-                      ? 'PigeonBox hosts your tracker, so opens from any device count. Sign in with Google to turn it on; only subjects, addresses and open times are stored.'
-                      : 'Tracking needs a public tracker you own; opens can’t reach a tracker that runs only on this computer. Set it up from your dashboard.'}>
+                      ? 'Your PigeonBox server records opens from any device. Sign in to turn it on; only subjects, addresses and open times are stored.'
+                      : 'Tracking needs a public tracker you run; opens can’t reach a tracker that runs only on this computer. Add one in tracking settings.'}>
                   <TrackingDemo />
                   {signInHere ? (
-                    <Actions index={5} primary={product.busy ? 'Signing in…' : 'Sign in with Google'} disabled={product.busy}
-                      onPrimary={() => {
-                        trackProductEvent('hosted_tracking_signin', { surface: 'onboarding' });
-                        void product.signIn().then((reply) => { if (reply?.ok) go(stepIndex + 1); });
-                      }}
+                    <Actions index={5} primary={product.busy ? 'Signing in…' : 'Sign in to your server'} disabled={product.busy}
+                      onPrimary={() => { void product.signIn().then((reply) => { if (reply?.ok) go(stepIndex + 1); }); }}
                       secondary="Not now" onSecondary={() => go(stepIndex + 1)} />
                   ) : product.state.cloudAvailable || path === 'cloud' ? (
                     <Actions index={5} primary="Continue" onPrimary={() => go(stepIndex + 1)} />
@@ -285,7 +271,7 @@ export function OnboardingApp() {
 
             {step === 'done' ? (
               <StepFrame kicker="All set" title={settings.voiceProfile.name ? `You’re set, ${settings.voiceProfile.name}.` : 'You’re set.'}
-                sub={path === 'cloud' ? 'One more stop on your dashboard: sign in, subscribe and turn Cloud on, in that order. Then connect Gmail so Pidgy can work while Gmail is closed.' : 'Pidgy works inside Gmail. Click the toolbar Pidgy to open it, or press ⌘K / Ctrl+K for commands.'}>
+                sub={path === 'cloud' ? 'One more stop: sign in to your PigeonBox server and agree to send it your mail, then connect Gmail so Pidgy can work while Gmail is closed.' : 'Pidgy works inside Gmail. Click the toolbar Pidgy to open it, or press ⌘K / Ctrl+K for commands.'}>
                 <ul className="ob-summary">
                   {(enabled.length ? enabled : [{ id: 'sort' as Feature, title: 'Inbox rules', detail: '' }]).map((feature, index) => (
                     <li key={feature.id} className="ob-rise" style={{ '--i': 3 + index } as CSSProperties}>
@@ -294,12 +280,8 @@ export function OnboardingApp() {
                   ))}
                 </ul>
                 <div className="ob-done-pidgy ob-rise" style={{ '--i': 2 } as CSSProperties}><span className="ob-ring" /><Pigeon state={busy ? 'working' : error ? 'attention' : 'success'} size={44} /></div>
-                <Actions index={4 + enabled.length} primary={busy ? 'Saving…' : path === 'cloud' ? 'Continue Cloud setup' : 'Open Gmail'} disabled={busy} onPrimary={() => void finish()} />
+                <Actions index={4 + enabled.length} primary={busy ? 'Saving…' : path === 'cloud' ? 'Continue server setup' : 'Open Gmail'} disabled={busy} onPrimary={() => void finish()} />
                 {error ? <p className="ob-error" role="alert">{error}</p> : null}
-                <label className="ob-usage">
-                  <input type="checkbox" checked={shareUsage} onChange={(event) => { setShareUsage(event.target.checked); void setAnalyticsEnabled(event.target.checked); }} />
-                  <span>Share anonymous usage events, like “footer kept” or “first tracked email”, with a random install ID. Never mail, subjects, addresses or searches. Change it any time in Settings → Privacy &amp; data.</span>
-                </label>
               </StepFrame>
             ) : null}
           </Swap>

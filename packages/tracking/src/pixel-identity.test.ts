@@ -99,9 +99,9 @@ describe('sender fingerprints', () => {
   });
 });
 
-describe('hosted tracker hostname changes', () => {
-  const current = 'https://t.usepigeonbox.com';
-  const previous = 'https://pigeonbox-cloud-tracker.pigeonbox.workers.dev';
+describe('server tracker hostname changes', () => {
+  const current = 'https://t.pigeonbox.example';
+  const previous = 'https://pigeonbox-tracker.example.workers.dev';
 
   it('still recognizes pixels from an earlier hostname of the same tracker', () => {
     const urls = [current, previous];

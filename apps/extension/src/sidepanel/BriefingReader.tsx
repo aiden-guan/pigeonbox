@@ -1,5 +1,3 @@
-import { useEffect } from 'react';
-import { trackProductEvent } from '../ui/analytics';
 import type { Briefing } from '@pigeonbox/api-contract';
 import { SourceChips } from './SourceChips';
 import { openCloud } from '../ui/cloud-features';
@@ -12,9 +10,6 @@ export function BriefingReader({
   onBack: () => void;
   onOpenThread: (id: string, accountId?: string) => void;
 }) {
-  useEffect(() => {
-    trackProductEvent('first_briefing_viewed', { surface: 'sidepanel', mode: 'cloud' });
-  }, []);
   return (
     <article className="gi-cloud-reader">
       <button type="button" className="gi-text-btn" onClick={onBack}>
@@ -50,7 +45,7 @@ export function BriefingReader({
       ))}
       <p className="gi-muted">{briefing.coverageNote}</p>
       <button type="button" className="gi-btn gi-btn-ghost" onClick={() => openCloud('briefings')}>
-        Manage Cloud briefings ↗
+        Manage briefings on your server ↗
       </button>
     </article>
   );

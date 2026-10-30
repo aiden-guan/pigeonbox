@@ -75,7 +75,7 @@ export const EventPrepareRequestSchema = MailboxSelectorSchema.extend({
   start: InstantSchema,
   end: InstantSchema,
   timeZone: z.string().max(64).optional(),
-  attendees: z.array(EmailAddressSchema).max(50).default([]),
+  attendees: z.array(EmailAddressSchema).max(50).default(() => []),
   location: z.string().max(300).optional(),
   description: z.string().max(5_000).optional(),
   /** Sending invitations is an external side effect and always needs approval. */

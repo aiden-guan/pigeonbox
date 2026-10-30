@@ -9,7 +9,7 @@ export type PigeonBoxMode = z.infer<typeof PigeonBoxModeSchema>;
  * capabilities come from the server's entitlement check. UI code asks
  * `hasCapability(...)` rather than checking a mode or a plan name.
  *
- * A Cloud capability means PigeonBox Cloud can serve the feature for this
+ * A Cloud capability means the PigeonBox server can serve the feature for this
  * account right now: the plan includes it and the server has the
  * infrastructure for it configured. It does not mean the user connected
  * anything yet: `cloud_mail_sync` is granted before a Google account is
@@ -59,7 +59,7 @@ export const PigeonBoxCapabilitySchema = z.enum(KNOWN_CAPABILITIES);
 export type PigeonBoxCapability = z.infer<typeof PigeonBoxCapabilitySchema>;
 
 /**
- * Capabilities that exist only because PigeonBox Cloud keeps a server-side
+ * Capabilities that exist only because the PigeonBox server keeps a server-side
  * connection to the user's accounts. Local mode cannot provide these without a
  * continuously running server, which is what Cloud is for.
  */

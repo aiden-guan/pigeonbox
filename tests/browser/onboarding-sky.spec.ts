@@ -123,6 +123,6 @@ test('day and night artwork, text and continuation fit narrow and short windows'
   const animations = await page.locator('.ob-sky-art').evaluate(el => el.getAnimations({ subtree: true }).filter(a => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity).length);
   expect(animations).toBe(0);
   await page.getByRole('button', { name: 'That’s me' }).click();
-  await expect(page.getByRole('button', { name: /Free/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /On this computer/ })).toBeVisible();
   await expect(page.locator('.ob-sky-art')).toHaveCount(0);
 });

@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `npm run server:dev`. Gitignored. Development values only.
+DEV_AUTH_SECRET=replace-with-a-long-random-development-secret
+IP_HASH_SALT=replace-with-a-random-development-salt
+# Your unpacked extension's ID (chrome://extensions), so it may sign in to this server.
+ALLOWED_EXTENSION_IDS=

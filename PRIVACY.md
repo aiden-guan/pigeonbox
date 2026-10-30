@@ -1,10 +1,10 @@
 # PigeonBox Privacy Policy
 
-Effective October 15, 2026. Applies to the PigeonBox Chrome extension, including the version on the Chrome Web Store and builds from this repository.
+Effective October 29, 2026. Applies to the PigeonBox Chrome extension (builds from this repository, the GitHub release ZIP and any Chrome Web Store copy) and to the PigeonBox server in this repository when you run it yourself.
 
-PigeonBox reads the Gmail page you already have open so it can sort, summarize and search your mail, draft replies you review, and tell you when a tracked email was opened. Local does not use the Gmail API or request Google OAuth access. The same extension includes optional Cloud mode, which can connect Google with your explicit authorization. PigeonBox does not read your Google cookies.
+PigeonBox reads the Gmail page you already have open so it can sort, summarize and search your mail, draft replies you review, and tell you when a tracked email was opened. On this computer it does not use the Gmail API or request Google OAuth access. A PigeonBox server you run can connect Google with your explicit authorization. PigeonBox does not read your Google cookies.
 
-The short version: **by default your mail stays in your browser.** Email content leaves your computer only when you choose a service that needs it, and only to that service.
+The short version: **there is no PigeonBox-operated service.** No one behind PigeonBox receives your email, settings or usage. By default your mail stays in your browser. Email content leaves your computer only when you choose a service that needs it, and only to that service, which you set up yourself.
 
 ## What PigeonBox handles
 
@@ -15,7 +15,7 @@ The short version: **by default your mail stays in your browser.** Email content
 | Settings, API keys and tracker tokens you enter | Running the features you turn on | In your browser (`chrome.storage.local`), readable only by the extension's own pages and background worker |
 | Tracked-email records (see Tracking) | Showing opens and clicks | On the tracker you choose, and a copy in your browser |
 
-Anonymous usage events are on by default and can be turned off in Settings → Privacy & data (see Usage events). They record feature events, never message content, addresses, prompts or provider keys. PigeonBox has no advertising.
+PigeonBox has no usage analytics and no advertising.
 
 ## When data leaves your computer
 
@@ -23,52 +23,34 @@ Only in these cases, each of which you turn on yourself:
 
 - **AI on this computer** (downloaded model, Chrome's built-in Gemini Nano, or Ollama on `localhost`): email content is processed on your computer and sent nowhere. Downloading a model fetches its files from Hugging Face, which sees your IP address. No email content is sent.
 - **Your own AI provider (bring your own key)**: the email content needed for the task you asked for is sent to the endpoint you entered, under your account with that provider and its terms.
-- **Open and click tracking** (on Free, after you sign in to a PigeonBox account; or with a tracker you host): see Tracking.
-- **"Sent with PigeonBox" footer** (Free plan): new emails you write start with a one-line footer linking to usepigeonbox.com. It is ordinary text in your draft; delete it before sending to leave it out. Pro removes it. The footer link is never rewritten for tracking, so a recipient clicking it is not reported to you.
-- **PigeonBox Cloud** (when available, and only after you explicitly choose it in Settings): email content needed for a request is sent over TLS to the PigeonBox Cloud API, processed by its AI provider, and returned. Cloud does not log email content. It stores account details, subscription status, usage counts and encrypted derived intelligence including summaries, commitments and prepared drafts. Retaining encrypted message excerpts for Fast Recall requires a separate opt-in and retention setting. Payments are handled by Stripe.
-- **Real-time Pidgy checks** (Cloud only, off by default): after you opt in, a relevant changed clause of at most 700 characters may be checked against trusted Brain and calendar context. Raw unsent clauses are ephemeral: they are not saved as memory, logged or placed in durable jobs. Accepted context statements may create a temporary query embedding through the existing Cloud AI provider; neither the clause nor its vector is stored. Retrieval can use individual self/person/topic facts, current mail summaries, commitments, user notes, interaction history, and fresh calendar metadata. Fast Recall excerpts participate only when enabled. One small model judgment receives selected evidence only; notices use verified source sentences or structured calendar facts. Ordinary prose does not trigger a check.
-- **Cloud client settings** (Cloud mode only): PigeonBox asks PigeonBox Cloud for its current client settings, such as how long to wait after typing and which extension versions it supports. The request carries no account, email or settings data. Local mode never makes it.
+- **Open and click tracking**: see Tracking.
+- **Your PigeonBox server** (only if you, or someone you trust, runs one, and only after you explicitly choose it in Settings): email content needed for a request is sent over TLS to that server (Cloudflare Workers in the operator's Cloudflare account), processed by the AI provider configured on it, and returned. The server does not log email content. It stores your account (the email address you sign in with), usage counts for its limits, and, if you connect Google, mail metadata and encrypted derived data such as summaries, commitments and prepared drafts, in the operator's Supabase project. Retaining encrypted message excerpts for Fast Recall requires a separate opt-in and retention setting. Connecting Google lets the server read your mail through the Gmail API and, with the permissions you grant, create drafts, organize mail, use your calendar, or send messages you approved. Whoever operates the server can access what it stores.
+- **Real-time Pidgy checks** (server mode only, off by default): after you opt in, a relevant changed clause of at most 700 characters may be checked against context your server already holds and your calendar. Raw unsent clauses are ephemeral: they are not saved as memory, logged or placed in durable jobs. Accepted context statements may create a temporary query embedding through the server's AI provider; neither the clause nor its vector is stored. One small model judgment receives selected evidence only. Ordinary prose does not trigger a check.
+- **Server client settings** (server mode only): PigeonBox asks your server for its current client settings, such as how long to wait after typing and which extension versions it supports. The request carries no account, email or settings data. Local mode never makes it.
 - **Update checks** (off by default): PigeonBox asks GitHub for the latest release. No email or settings data is sent; GitHub sees your IP address. Copies installed from the Chrome Web Store are updated by Chrome instead.
-
-## Usage events
-
-Unlike the cases above, this is on by default; the last onboarding step and Settings → Privacy & data say so and let you turn it off. To learn which features help people (for example, how many installs track a first email, or how often the Free footer is kept), the extension sends short feature events to the PigeonBox Cloud API, which forwards them to our analytics provider, PostHog. Each event contains only:
-
-- the event name from a fixed list (such as `extension_installed`, `extension_active` once a day, `first_tracked_email_created`, `first_open_received`, `footer_sent`, `footer_removed`, `snippet_used`, `upgrade_clicked`),
-- a few fixed labels (where it happened, such as `gmail` or `settings`; `local` or `cloud` mode; success or failure),
-- the extension version,
-- a random install ID created by the extension. It is not linked to your Google or PigeonBox account.
-
-Usage events never include email content, subjects, senders or recipients, names, searches or Chat questions, generated text, document names, links, Gmail or tracking IDs, or your account. PigeonBox does not forward your IP address to PostHog. Turning usage events off stops them and deletes the install ID and local counters; turning them back on starts a new ID.
-
-If you have a PigeonBox account, the server also records account milestones: signup, first use of hosted tracking each day, checkout started or completed, plan changes and cancellations. These use a keyed hash of your account ID, never your email address, and are not linked to the install ID. Payment amounts come from Stripe. The website counts page views, install clicks and dashboard sign-ins without cookies, using a visitor hash that changes every day, and honors Global Privacy Control and Do Not Track. The full list is in [docs/product-analytics.md](docs/product-analytics.md).
 
 **Copy diagnostics** (Settings → Advanced) puts a short troubleshooting summary on your clipboard: version numbers, mode, connection states and recent error codes. It contains no email content, addresses or IDs, is kept only for the current browser session, and is never sent anywhere unless you paste it yourself.
 
 PigeonBox never switches between these on its own. If a service you chose is unavailable, the request fails with a message. Nothing is sent to a different provider.
 
-## Cloud waitlist
-
-The website offers an optional [Cloud waitlist](https://usepigeonbox.com/waitlist). Opening it does not enable Cloud or authorize Gmail access. Submitting the form sends only your email address, signup source (website or extension), and signup time to the PigeonBox backend. The normalized email is stored once in Supabase, accessible only to the backend and project administrators, for Cloud launch access. We send no automatic email. Rate limiting uses a salted hash of your IP address, not the raw address. Signups are retained until launch access is handled or you request removal through the contact below.
-
 ## Tracking
 
-Tracking is optional and separate from AI. When you send a tracked email, PigeonBox adds a tracking image and, if you enable it, rewrites links. By default the PigeonBox-hosted tracker records opens and clicks for your signed-in PigeonBox account, on Free and Pro. Turn on **Local-only** in Settings → Tracking to use no PigeonBox servers; tracking then uses a tracker you host (such as your own Convex or Cloudflare deployment) or stays off. Whichever tracker you use stores, for each tracked email: subject, sender, recipients, Gmail IDs, and sent time. For each open or click it stores: time, user agent, a salted hash of the IP address, a classification (for example "likely a mail proxy"), and for clicks, the link destination. The tracker never receives message bodies.
+Tracking is optional and separate from AI. When you send a tracked email, PigeonBox adds a tracking image and, if you enable it, rewrites links. The tracker is always one you run: your PigeonBox server's tracker, or a standalone tracker in your own Convex or Cloudflare account. When a server is configured, its tracker is used unless you turn on **Local-only** in tracking settings; tracking then uses a standalone tracker you set up, or stays off. Whichever tracker you use stores, for each tracked email: subject, sender, recipients, Gmail IDs, and sent time. For each open or click it stores: time, user agent, a salted hash of the IP address, a classification (for example "likely a mail proxy"), and for clicks, the link destination. The tracker never receives message bodies.
 
 Tracking IDs are random and reveal nothing about your mailbox. An open is a signal that an image loaded, not proof the message was read.
 
 ## What PigeonBox does not do
 
-- It does not sell or transfer your data to third parties, except to the providers you choose above, to run the feature you asked for, and the content-free usage events described above, which PostHog processes for PigeonBox.
+- It does not sell or transfer your data to third parties, except to the providers you choose above, to run the feature you asked for.
 - It does not use or transfer your data for purposes unrelated to PigeonBox's single purpose: inbox intelligence and open tracking for Gmail.
 - It does not use or transfer your data to determine creditworthiness or for lending.
-- It does not send email for you. Drafts open in Gmail for you to review and send yourself.
+- It does not send email on its own. In the extension, drafts open in Gmail for you to review and send yourself; a PigeonBox server sends only a message you approved in its approval queue.
 
 PigeonBox's use of the data it handles complies with the [Chrome Web Store User Data Policy](https://developer.chrome.com/docs/webstore/program-policies/user-data-faq), including the Limited Use requirements.
 
 ## Keeping and deleting data
 
-Data in your browser stays until you remove it. **Settings → Privacy & data → Clear local mail index** deletes the mail index, and uninstalling PigeonBox removes everything it stored in Chrome. Tracking records on a tracker you host live in your own deployment, and you delete them there. A PigeonBox Cloud account can be deleted from its account page, which removes the account and the tracking records and usage history kept for it.
+Data in your browser stays until you remove it. **Settings → Privacy & data → Clear local mail index** deletes the mail index, and uninstalling PigeonBox removes everything it stored in Chrome. Tracking records on a standalone tracker live in your own deployment, and you delete them there. An account on a PigeonBox server can be deleted from that server's dashboard, which removes the account and everything the server stored for it; the server's operator can also delete it directly.
 
 ## Children
 
@@ -82,4 +64,4 @@ Changes to this policy are published in this file, and the history is visible in
 
 Questions: open an issue at [github.com/aiden-guan/pigeonbox/issues](https://github.com/aiden-guan/pigeonbox/issues). Security reports: see [SECURITY.md](SECURITY.md).
 
-Technical detail on every data flow is in [docs/privacy-model.md](docs/privacy-model.md) and [docs/tracking.md](docs/tracking.md).
+Technical detail on every data flow is in [docs/privacy-model.md](docs/privacy-model.md) and [docs/tracking.md](docs/tracking.md). Running a server: [docs/self-hosting.md](docs/self-hosting.md).

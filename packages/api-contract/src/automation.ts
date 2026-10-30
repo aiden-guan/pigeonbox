@@ -37,7 +37,7 @@ export type ActionKind = z.infer<typeof ActionKindSchema>;
 
 export const ActionSpecSchema = z.object({
   kind: ActionKindSchema,
-  params: z.record(z.string().max(40), z.union([z.string().max(500), z.number(), z.boolean()])).default({}),
+  params: z.record(z.string().max(40), z.union([z.string().max(500), z.number(), z.boolean()])).default(() => ({})),
 });
 export type ActionSpec = z.infer<typeof ActionSpecSchema>;
 
@@ -50,17 +50,17 @@ const Addresses = z.array(z.string().min(1).max(320)).max(100);
  */
 export const FilterSpecSchema = z.object({
   /** Email addresses or domains (`@example.com` or `example.com`). */
-  from: z.object({ include: Addresses, exclude: Addresses }).default({ include: [], exclude: [] }),
-  to: z.object({ include: Addresses, exclude: Addresses }).default({ include: [], exclude: [] }),
-  states: z.array(ThreadStateSchema).max(10).default([]),
-  labels: z.object({ include: z.array(z.string().max(100)).max(20), exclude: z.array(z.string().max(100)).max(20) }).default({ include: [], exclude: [] }),
-  subjectAny: z.array(z.string().min(1).max(100)).max(20).default([]),
-  keywordsAny: z.array(z.string().min(1).max(100)).max(20).default([]),
+  from: z.object({ include: Addresses, exclude: Addresses }).default(() => ({ include: [], exclude: [] })),
+  to: z.object({ include: Addresses, exclude: Addresses }).default(() => ({ include: [], exclude: [] })),
+  states: z.array(ThreadStateSchema).max(10).default(() => []),
+  labels: z.object({ include: z.array(z.string().max(100)).max(20), exclude: z.array(z.string().max(100)).max(20) }).default(() => ({ include: [], exclude: [] })),
+  subjectAny: z.array(z.string().min(1).max(100)).max(20).default(() => []),
+  keywordsAny: z.array(z.string().min(1).max(100)).max(20).default(() => []),
   direction: z.enum(['inbound', 'outbound', 'any']).default('any'),
   deadlineWithinDays: z.number().int().min(0).max(365).nullable().default(null),
   /** Outbound threads with no reply for this many business days. */
   noReplyForBusinessDays: z.number().int().min(1).max(60).nullable().default(null),
-  relationship: z.array(RelationshipImportanceSchema).max(5).default([]),
+  relationship: z.array(RelationshipImportanceSchema).max(5).default(() => []),
   engagement: z.enum(['opened', 'clicked', 'no_engagement']).nullable().default(null),
   /** The user opened mail from this sender before (e.g. "newsletters I actually read"). */
   readByUser: z.boolean().nullable().default(null),
@@ -127,7 +127,7 @@ export const ViewSaveRequestSchema = z.object({
   name: z.string().min(1).max(120),
   prompt: z.string().max(500),
   filter: FilterSpecSchema,
-  actions: z.array(ActionSpecSchema).max(8).default([]),
+  actions: z.array(ActionSpecSchema).max(8).default(() => []),
   /** New rules with mailbox-changing actions always start in shadow mode, whatever is requested. */
   mode: ViewModeSchema.default('view'),
   enabled: z.boolean().default(true),
@@ -212,7 +212,7 @@ export const AutomationSchema = z.object({
   trigger: z.object({
     kind: TriggerKindSchema,
     /** e.g. { businessDays: 4 } for no_reply_by, { minutesBefore: 30 } for calendar_approaching. */
-    params: z.record(z.string().max(40), z.union([z.string().max(200), z.number(), z.boolean()])).default({}),
+    params: z.record(z.string().max(40), z.union([z.string().max(200), z.number(), z.boolean()])).default(() => ({})),
   }),
   conditions: FilterSpecSchema,
   context: z.array(z.enum(['thread', 'history', 'calendar', 'contacts', 'documents', 'web'])).max(6),
@@ -251,7 +251,7 @@ export const AutomationSaveRequestSchema = z.object({
   prompt: z.string().max(1_000),
   trigger: AutomationSchema.shape.trigger,
   conditions: FilterSpecSchema,
-  context: AutomationSchema.shape.context.default(['thread']),
+  context: AutomationSchema.shape.context.default(() => ['thread' as const]),
   actions: AutomationSchema.shape.actions,
   autonomy: AutonomySchema.default('suggest'),
   schedule: AutomationSchema.shape.schedule.default(null),

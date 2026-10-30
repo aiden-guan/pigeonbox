@@ -31,7 +31,7 @@ PIGEONBOX_BROWSER_EXTENSION_PATH=/tmp/pigeonbox-readme-extension npx playwright 
 npm run verify     # repo checks, versions, typecheck, lint, tests, build, release ZIP validation
 ```
 
-`verify` runs without any Cloud backend, Supabase, Stripe, Convex or AI key. Local-mode independence from Cloud is covered by `packages/core/src/core.test.ts` and `apps/extension/src/background/ai/provider-router.test.ts`; settings migration by `packages/shared/src/settings-migration.test.ts`.
+`verify` runs without a deployed server, Supabase, Cloudflare, Convex or AI key; server tests run against an in-process WASM Postgres (PGlite). Local-mode independence from the server is covered by `packages/core/src/core.test.ts` and `apps/extension/src/background/ai/provider-router.test.ts`; settings migration by `packages/shared/src/settings-migration.test.ts`.
 
 ## Live Gmail
 
@@ -49,7 +49,7 @@ This presentation pass did not sign in to Gmail, so the flows below are **not** 
 
 ## Honest degradation
 
-- Local categories are local state. Cloud mail organization has separate Google permissions and approval flows; validate those against the deployed service.
+- Local categories are local state. Server-side mail organization has separate Google permissions and approval flows; validate those against your deployed server.
 - Ask Pigeon and summaries use full message text only after a thread has been opened. Row snippets are previews.
 - Archive is confirmed by Gmail’s notice, leaving the thread, or the thread disappearing from the inbox list. A click alone is not success.
 - ChatGPT web sign-in is experimental and excluded from release builds.
@@ -66,9 +66,9 @@ curl -s http://127.0.0.1:8787/health
 
 Expect `{"ok":true,"store":"memory"}`. The Bearer token is `PERSONAL_API_TOKEN` in `workers/tracker/.dev.vars`.
 
-## Local and Cloud (manual)
+## Local and server mode (manual)
 
-1. Fresh profile, source build: onboarding offers **On this computer** and **Advanced**; PigeonBox Cloud is listed only when the build has a Cloud URL.
+1. Fresh profile, source build: onboarding offers **On this computer** and **Advanced**; **Your PigeonBox server** is listed only when a server is configured.
 2. Existing 0.1.x profile upgraded to 0.2.0: settings, AI choice, tracker URL/token and index are unchanged, and **How should PigeonBox run?** shows On this computer.
 3. If the tracker stops reporting after the upgrade, Settings → Email tracking → Save to re-grant the now-optional host permission.
-4. Cloud (with a local `pigeonbox-cloud` in mock mode): choose Cloud, agree, sign in; a summary shows "Analyzing with PigeonBox Cloud…". Stop the Cloud API: summaries fail with "PigeonBox Cloud is unavailable. Nothing was sent to another provider." and categories keep working. **Run on this computer instead** restores Local without losing the Local AI choice.
+4. Server mode (with `npm run server:dev` in mock mode; see [server/development.md](server/development.md)): choose **Your PigeonBox server**, agree, sign in; summaries come from the mock provider. Stop the server: summaries fail with "Your PigeonBox server is unavailable. Nothing was sent to another provider." and categories keep working. Switching back to **On this computer** restores Local without losing the Local AI choice.

@@ -9,7 +9,7 @@ import { pageCall } from './page-calls';
 import { forgetComposeCheckPreference, handleComposeCheck } from './compose-check';
 import { cloudSection } from '../../ui/cloud-features';
 import { diagnostics, durationBucket } from '../diagnostics';
-import { CLOUD_WAITLIST_URL, cloudApiUrl } from '../../config';
+import { cloudApiUrl } from '../../config';
 import { composeDocument } from './compose-documents';
 
 type Deps = {
@@ -28,7 +28,7 @@ const emailPattern = /^[^\s@<>]+@[^\s@<>]+$/;
 const CONTEXT_ROUTES = new Set(['memoryForget', 'memoryUpdate', 'memoryPurge', 'preferencesUpdate', 'connectionUpdate']);
 const gmailId = /^[A-Za-z0-9_-]{1,64}$/;
 
-/** Cloud routing is isolated from the worker lifecycle. Content callers receive read-only derived context. */
+/** Server routing is isolated from the worker lifecycle. Content callers receive read-only derived context. */
 export async function handleCloudRequest(
   message: Record<string, unknown>,
   sender: chrome.runtime.MessageSender,
@@ -50,7 +50,7 @@ export async function handleCloudRequest(
     ].includes(String(message.type)) &&
     !senderMaySend(sender, message.type)
   )
-    return { ok: false, code: 'forbidden', reason: 'This caller cannot access PigeonBox Pro.' };
+    return { ok: false, code: 'forbidden', reason: 'This caller cannot reach your PigeonBox server.' };
   if (message.type === 'CLOUD_THREAD_INTEL') {
     if (!cloudThreadStateAvailable(await deps.readState(), deps.settings().runMode))
       return { ok: true, available: false, threads: {}, capabilities: [] };
@@ -90,10 +90,10 @@ export async function handleCloudRequest(
       typeof message.mailbox === 'string' && emailPattern.test(message.mailbox) ? message.mailbox : undefined;
     try {
       const intel = (await threadIntel(client, [message.threadId], mailbox))[message.threadId];
-      if (!intel) return { ok: false, reason: 'Pro has not synced this thread yet.' };
+      if (!intel) return { ok: false, reason: 'Your PigeonBox server has not synced this thread yet.' };
       const connections = await client.call('connections');
       const account = connections.accounts.find((item) => item.id === intel.accountId);
-      if (!account) return { ok: false, reason: 'Connect this mailbox to Pro.' };
+      if (!account) return { ok: false, reason: 'Connect this mailbox to your PigeonBox server.' };
       if (message.kind === 'relationship' && state.capabilities.includes('cloud_relationships')) {
         const owners = new Set(connections.accounts.map((item) => item.email.toLowerCase()));
         const other = intel.participants.find((person) => !owners.has(person.email.toLowerCase()));
@@ -107,7 +107,7 @@ export async function handleCloudRequest(
         if (!account.features.includes('calendar_read'))
           return {
             ok: false,
-            reason: 'Calendar is not connected. Add calendar access in Pro Connections.',
+            reason: 'Calendar is not connected. Add calendar access in Connections on your PigeonBox server.',
             needsConnection: true,
           };
         const prefs = await client.call('preferences');
@@ -123,7 +123,7 @@ export async function handleCloudRequest(
           }),
         };
       }
-      return { ok: false, reason: 'This context is not granted for your Pro account.' };
+      return { ok: false, reason: 'Your PigeonBox server does not offer this for your account.' };
     } catch (error) {
       return { ok: false, reason: cloudErrorMessage(error).message };
     }
@@ -148,16 +148,16 @@ export async function handleCloudRequest(
   if (['CLOUD_COMPOSE_DOCUMENT', 'CLOUD_COMPOSE_DOCUMENT_SENT', 'CLOUD_DOCUMENT_ACTIVITY'].includes(String(message.type))) {
     if (message.type === 'CLOUD_COMPOSE_DOCUMENT_SENT') {
       const scope = await deps.documentReceiptScope?.();
-      if (!scope) return { ok: false, reason: 'Sign in to PigeonBox Pro to link this PDF.' };
+      if (!scope) return { ok: false, reason: 'Sign in to your PigeonBox server to link this PDF.' };
       const client = await deps.client();
-      if (!client) return { ok: false, reason: 'Sign in to PigeonBox Pro to link this PDF.' };
+      if (!client) return { ok: false, reason: 'Sign in to your PigeonBox server to link this PDF.' };
       return composeDocument(message, client, cloudApiUrl(deps.settings()) ?? '', scope);
     }
     const state = await deps.readState();
     if (deps.settings().runMode !== 'cloud' || state.status !== 'ready' || !state.capabilities.includes('cloud_documents'))
-      return { ok: false, reason: 'Turn on PigeonBox Pro to track PDFs.' };
+      return { ok: false, reason: 'Run PigeonBox on your server to track PDFs.' };
     const client = await deps.client();
-    if (!client) return { ok: false, reason: 'Sign in to PigeonBox Pro to track PDFs.' };
+    if (!client) return { ok: false, reason: 'Sign in to your PigeonBox server to track PDFs.' };
     if (message.type !== 'CLOUD_DOCUMENT_ACTIVITY') return composeDocument(message, client, cloudApiUrl(deps.settings()) ?? '');
     if (!state.capabilities.includes('cloud_tracking') || typeof message.threadId !== 'string' || !gmailId.test(message.threadId))
       return { ok: false, reason: 'PDF activity is unavailable for this conversation.' };
@@ -171,12 +171,13 @@ export async function handleCloudRequest(
   if (!isExtensionPageSender(sender))
     return { ok: false, code: 'forbidden', reason: 'This request is only accepted from PigeonBox pages.' };
   if (message.type === 'CLOUD_OPEN') {
-    const url = deps.webUrl(cloudSection(message.section)) ?? CLOUD_WAITLIST_URL;
+    const url = deps.webUrl(cloudSection(message.section));
+    if (!url) return { ok: false, code: 'not_configured', reason: 'No PigeonBox server is configured. Add one in Settings → Advanced.' };
     await chrome.tabs.create({ url });
     return { ok: true };
   }
   const client = await deps.client();
-  if (!client) return { ok: false, code: 'not_configured', reason: 'Upgrade to Pro and sign in to use this.' };
+  if (!client) return { ok: false, code: 'not_configured', reason: 'Sign in to your PigeonBox server to use this.' };
   if (message.type === 'CLOUD_CALL') {
     if (message.route === 'preferencesUpdate') forgetComposeCheckPreference();
     const result = await pageCall(client, message.route, message.body);
@@ -185,7 +186,7 @@ export async function handleCloudRequest(
     return result;
   }
   if (!(await deps.readState()).capabilities.includes('cloud_documents'))
-    return { ok: false, reason: 'Tracked documents are not available for this Pro connection.' };
+    return { ok: false, reason: 'Your PigeonBox server does not offer tracked documents for this account.' };
   if (message.type === 'CLOUD_DOCUMENT_UPLOAD') {
     if (
       typeof message.id !== 'string' ||
@@ -214,7 +215,7 @@ export async function handleCloudRequest(
       url.hash ||
       !/^\/d\/[A-Za-z0-9_-]{16,200}$/.test(url.pathname)
     )
-      return { ok: false, reason: 'Choose a link created by this Pro connection.' };
+      return { ok: false, reason: 'Choose a link created by your PigeonBox server.' };
     const stored = await chrome.storage.session.get('documentComposeTarget');
     const target = stored.documentComposeTarget as { tabId?: number; composeId?: string } | undefined;
     if (typeof target?.tabId !== 'number' || !target.composeId)

@@ -40,7 +40,7 @@ export function serveAskStream(port: chrome.runtime.Port, client: () => Promise<
       let cloud: PigeonBoxCloudClient | null = null;
       try {
         cloud = await client();
-        if (!cloud) return post({ type: 'failed', code: 'not_configured', reason: 'Upgrade to Pro and sign in to use this.' });
+        if (!cloud) return post({ type: 'failed', code: 'not_configured', reason: 'Sign in to your PigeonBox server to use this.' });
         let terminal = false;
         await cloud.stream(
           'askPigeonStream',

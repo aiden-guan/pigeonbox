@@ -174,7 +174,7 @@ function memoryStore(): TrackerStore {
 
 /**
  * An in-memory store over its own state. `wrangler dev` uses one shared
- * instance; PigeonBox Cloud's development mode keeps one per account.
+ * instance; the PigeonBox server's development mode keeps one per account.
  */
 export function createMemoryStore(state: MemoryState): TrackerStore {
   return {

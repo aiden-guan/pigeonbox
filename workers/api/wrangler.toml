@@ -1,0 +1,25 @@
+# Local development only: `npm run server:dev` serves the API and the dashboard
+# on http://127.0.0.1:8788 with mock AI, development sign-in and an in-memory
+# store. Secrets for development go in workers/api/.dev.vars (see the example).
+#
+# Production configuration is generated from your server.env by
+# `npm run server:deploy` (into .local/wrangler/, gitignored). See docs/self-hosting.md.
+name = "pigeonbox-api-dev"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# The dashboard (apps/web). API routes always reach the Worker.
+[assets]
+directory = "../../apps/web/public"
+run_worker_first = ["/v1/*", "/d/*", "/u/*", "/internal/*", "/.well-known/*"]
+html_handling = "auto-trailing-slash"
+not_found_handling = "404-page"
+
+[vars]
+ENVIRONMENT = "development"
+AUTH_PROVIDER = "dev"
+CLOUD_AI_PROVIDER = "mock"
+PUBLIC_APP_URL = "http://127.0.0.1:8788"
+API_BASE_URL = "http://127.0.0.1:8788"
+ALLOWED_WEB_ORIGINS = "http://127.0.0.1:8788"

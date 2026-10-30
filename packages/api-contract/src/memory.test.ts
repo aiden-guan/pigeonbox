@@ -10,7 +10,7 @@ describe('memory wire contracts', () => {
     expect(MemoryPurgeRequestSchema.safeParse({ confirm: 'yes' }).success).toBe(false);
     expect(MemoryPurgeRequestSchema.safeParse({ confirm: 'forget all memories' }).success).toBe(true);
   });
-  it('keeps controls authenticated and available without a subscription, with backwards-compatible preference defaults', () => {
+  it('keeps controls authenticated and available without AI capabilities, with backwards-compatible preference defaults', () => {
     for (const route of [ROUTES.memoryList, ROUTES.memoryGet, ROUTES.memoryForget, ROUTES.memoryUpdate, ROUTES.memoryPurge, ROUTES.memorySubjects]) {
       expect(route.auth).toBe('user');
       expect(route.method).toBe('POST');

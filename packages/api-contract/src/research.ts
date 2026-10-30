@@ -59,7 +59,7 @@ export const AskActionSchema = z.object({
  */
 export const AskComposeSchema = z.object({
   to: z.array(z.object({ email: z.string().max(320), name: z.string().max(200).optional() })).max(10),
-  cc: z.array(z.object({ email: z.string().max(320), name: z.string().max(200).optional() })).max(10).default([]),
+  cc: z.array(z.object({ email: z.string().max(320), name: z.string().max(200).optional() })).max(10).default(() => []),
   subject: z.string().max(300),
   body: z.string().max(8_000),
 });
@@ -71,7 +71,7 @@ export const AskApprovalStepSchema = z.object({
   /** Threads this step touches, when it touches threads. */
   count: z.number().int().nonnegative().optional(),
   /** A few of them, by subject, so the user can tell they are the right ones. */
-  examples: z.array(z.string().max(200)).max(5).default([]),
+  examples: z.array(z.string().max(200)).max(5).default(() => []),
   /** Hard to take back (trash, deleting a label, unsubscribing). Shown with a warning. */
   destructive: z.boolean().default(false),
 });
@@ -106,9 +106,9 @@ export const AskPigeonResponseSchema = z.object({
   /** Drafts prepared when the question asked for them ("draft follow-ups for…"). */
   drafts: z.array(DraftSchema).max(10),
   /** New emails to open in Gmail's composer. Older servers omit it. */
-  compose: z.array(AskComposeSchema).max(3).default([]),
+  compose: z.array(AskComposeSchema).max(3).default(() => []),
   /** Questions the user might ask next, written as they would type them. */
-  followUps: z.array(z.string().max(200)).max(3).default([]),
+  followUps: z.array(z.string().max(200)).max(3).default(() => []),
   /** Mailbox changes waiting for the user's permission (clients that sent the `approval` feature). */
   approval: AskApprovalSchema.optional(),
   /** Bounded tool outcomes for the next turn. No raw received email bodies. */

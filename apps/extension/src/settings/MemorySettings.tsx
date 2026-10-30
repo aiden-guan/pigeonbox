@@ -100,7 +100,7 @@ export function MemorySettings() {
   return (
     <div className="space-y-3" aria-busy={busy}>
       <p className="gi-muted text-xs">
-        Useful facts from your communication, encrypted in Cloud. Saved memories support drafts and can be wrong. Original email stays in Gmail.
+        Useful facts from your communication, kept encrypted on your PigeonBox server. Saved memories support drafts and can be wrong. Original email stays in Gmail.
       </p>
       {prefs ? (
         <fieldset disabled={busy} className="space-y-3">

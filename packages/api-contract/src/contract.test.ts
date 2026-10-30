@@ -69,7 +69,7 @@ describe('api contract', () => {
   });
 
   it('keeps unknown capabilities on the wire but drops them when typed', () => {
-    const parsed = CapabilitiesResponseSchema.parse({ plan: 'cloud', capabilities: ['cloud_ai', 'teleport'] });
+    const parsed = CapabilitiesResponseSchema.parse({ capabilities: ['cloud_ai', 'teleport'] });
     expect(knownCapabilities(parsed.capabilities)).toEqual(['cloud_ai']);
     expect(KNOWN_CAPABILITIES).toContain('cloud_mcp');
   });

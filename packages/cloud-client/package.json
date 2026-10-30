@@ -2,7 +2,7 @@
   "name": "@pigeonbox/cloud-client",
   "version": "0.8.4",
   "private": true,
-  "description": "HTTP client for the PigeonBox Cloud API, plus a Cloud-backed AIProvider.",
+  "description": "HTTP client for a self-hosted PigeonBox server API, plus a server-backed AIProvider.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

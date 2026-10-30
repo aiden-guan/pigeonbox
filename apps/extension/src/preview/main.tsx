@@ -50,18 +50,18 @@ const demoSettings = {...DEFAULT_SETTINGS, aiMode:"disabled", trackerBaseUrl:"",
 const demoSession = new Map<string, unknown>();
 if (previewParams.has('theme')) demoSession.set('pigeonboxAppearance', previewParams.get('theme'));
 function demoWrite(items:Record<string,unknown>, area:string) { const changes:Record<string,unknown>={};Object.entries(items).forEach(([key,value])=>{changes[key]={oldValue:demoSession.get(key),newValue:value};demoSession.set(key,value);});listeners.forEach(fn=>fn(changes,area)); if ('pigeonboxAppearance' in items) messages.forEach(fn=>fn({type:'WORKSPACE_APPEARANCE_CHANGED',appearance:items.pigeonboxAppearance})); }
-// Product state for the run-mode UI. `#cloud` pretends this build has a Cloud URL.
-const demoProduct = { runMode:"local", cloudAvailable: location.search.includes("cloud"), cloudConsentAt:null as string|null,
-  cloud:{status: location.search.includes("cloud") ? "signed_out" : "not_configured", email:null as string|null, plan:null as string|null, capabilities:[] as string[]},
+// Product state for the run-mode UI. `?cloud` pretends a PigeonBox server is configured.
+const demoProduct = { runMode:"local", cloudAvailable: location.search.includes("cloud"), dashboardAvailable:false, cloudConsentAt:null as string|null,
+  cloud:{status: location.search.includes("cloud") ? "signed_out" : "not_configured", email:null as string|null, capabilities:[] as string[]},
   capabilities:["ask_inbox"], aiDestination:"none", experimental:true, cloudOrigins:[] as string[] };
 function productReply(message:{type:string;mode?:string}): unknown {
   if (message.type==="SET_RUN_MODE") { demoProduct.runMode = message.mode ?? "local"; demoProduct.cloudConsentAt = message.mode==="cloud" ? new Date().toISOString() : demoProduct.cloudConsentAt; demoProduct.aiDestination = message.mode==="cloud" ? "pigeonbox_cloud" : "none"; }
-  if (message.type==="CLOUD_SIGN_IN") demoProduct.cloud = { status:"ready", email:"ada@example.com", plan:"cloud", capabilities:["cloud_ai","cloud_tracking"] };
-  if (message.type==="CLOUD_SIGN_OUT") demoProduct.cloud = { status:"signed_out", email:null, plan:null, capabilities:[] };
+  if (message.type==="CLOUD_SIGN_IN") demoProduct.cloud = { status:"ready", email:"ada@example.com", capabilities:["cloud_ai","cloud_tracking"] };
+  if (message.type==="CLOUD_SIGN_OUT") demoProduct.cloud = { status:"signed_out", email:null, capabilities:[] };
   demoProduct.capabilities = demoProduct.runMode==="cloud" ? [...demoProduct.cloud.capabilities, "ask_inbox"] : ["ask_inbox"];
   return message.type==="GET_PRODUCT_STATE" ? demoProduct : { ok:true, state:{...demoProduct} };
 }
-const PRODUCT_MESSAGES = new Set(["GET_PRODUCT_STATE","SET_RUN_MODE","CLOUD_SIGN_IN","CLOUD_SIGN_OUT","CLOUD_REFRESH","CLOUD_BILLING","EXTENSION_UPDATE"]);
+const PRODUCT_MESSAGES = new Set(["GET_PRODUCT_STATE","SET_RUN_MODE","CLOUD_SIGN_IN","CLOUD_SIGN_OUT","CLOUD_REFRESH","EXTENSION_UPDATE"]);
 // This shim lives only on this standalone preview URL.
 Object.defineProperty(window, "chrome", { configurable:true, value: {
   runtime: { connect:()=>demoAskPort(), getURL:(p:string)=>p==='workspace.html' ? '/src/preview/index.html?surface=workspace' : `/${p}`, onMessage:{addListener:(fn:(message:{type:string;appearance?:unknown})=>void)=>messages.add(fn),removeListener:(fn:(message:{type:string;appearance?:unknown})=>void)=>messages.delete(fn)}, openOptionsPage:()=>{location.hash="settings";location.reload();},

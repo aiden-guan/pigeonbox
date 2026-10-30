@@ -189,6 +189,7 @@
 .ob-rise { animation: ob-rise .75s var(--ob-ease-out) backwards; animation-delay: calc(var(--base, 0ms) + var(--i, 0) * 55ms); }
 
 .ob-paths { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 26px; }
+.ob-paths[data-single] { grid-template-columns: 1fr; }
 .ob-path {
   position: relative; display: grid; gap: 4px; align-content: start; min-height: 172px; padding: 18px; overflow: hidden; text-align: left; cursor: pointer;
   /* Inset from the card, with a strong border, so each option reads as its own target. */
@@ -210,7 +211,6 @@
   .ob-path:hover .ob-path-go { opacity: 1; translate: 0 0; }
 }
 .ob-welcome-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--pb-border); font-size: 12.5px; color: var(--pb-fg-muted); }
-.ob-note { margin: 12px 0 0; font-size: 13px; color: var(--pb-success); }
 .ob-link { padding: 4px 2px; border: 0; background: none; color: var(--pb-fg-secondary); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: underline; text-decoration-color: var(--pb-border-strong); text-underline-offset: 3px; transition: color .15s ease; }
 .ob-link:hover { color: var(--pb-fg); }
 .ob-link:disabled { opacity: .5; }
@@ -343,8 +343,6 @@
 .ob-step { position: relative; }
 .ob-ring { position: absolute; inset: 4px; border: 2px solid var(--pb-accent); border-radius: 50%; opacity: 0; animation: ob-ring 1.6s var(--ob-ease-out) .5s 2; }
 .ob-error { margin: 10px 0 0; font-size: 13px; color: var(--pb-error); }
-.ob-usage { display: flex; gap: 8px; align-items: flex-start; margin: 14px 0 0; font-size: 12px; line-height: 1.45; color: var(--pb-fg-secondary); cursor: pointer; }
-.ob-usage input { margin-top: 2px; flex: none; accent-color: var(--pb-accent, currentColor); }
 
 /* ---------- Narrow windows: board behind, panel as a sheet ---------- */
 @media (max-width: 1039px) {

@@ -1,27 +1,33 @@
 /**
- * The PigeonBox dashboard (usepigeonbox.com/dashboard) is where people change
- * settings. It reaches this worker through `externally_connectable`, so only
- * the origins listed in the manifest can send these messages at all, and the
- * worker checks the sender's origin again here.
+ * The PigeonBox dashboard (`<your PigeonBox server>/dashboard`) is where people
+ * change settings when a server is configured. It reaches this worker through
+ * `externally_connectable`, so only the origins the manifest lists (the server
+ * this build was made with, plus loopback in source builds) can send these
+ * messages at all, and the worker checks the sender's origin again here.
  *
  * What the page can and cannot do:
  * - It reads settings without secrets: API keys and tracker tokens come back
  *   as "set / not set" only. It may replace or clear them.
- * - It cannot change the Cloud API, the settings version or consent records
- *   directly; Cloud mode needs an explicit `consent: true` from a click.
- * - It never sees Cloud tokens. Linking this browser to Cloud uses PKCE: the
- *   worker keeps the verifier and the page only carries the code.
+ * - It cannot change the server URL, the settings version or consent records
+ *   directly; server mode needs an explicit `consent: true` from a click.
+ * - It never sees server tokens. Linking this browser to the server uses PKCE:
+ *   the worker keeps the verifier and the page only carries the code.
  * - Host permissions are never granted from here. The worker opens its own
  *   small page where the person clicks Allow.
  */
 import { createPkcePair, randomUrlToken } from '@pigeonbox/cloud-client';
 import { getProviderRequiredOrigin, toPublicSettings, type ExtensionSettings } from '@pigeonbox/shared';
 import { trackerPermissionOrigin } from '@pigeonbox/tracking';
+import { BUILD_CLOUD_API_URL } from '../config';
 
-/** Origins the published dashboard runs on. Development builds also accept loopback (see the manifest transform). */
-export const DASHBOARD_ORIGINS: readonly string[] = ['https://usepigeonbox.com', 'https://www.usepigeonbox.com'];
+/**
+ * Origins whose dashboard may reach this worker: the PigeonBox server this build
+ * was made with (see the manifest transform in vite.config.ts). Empty without
+ * one. Source builds also accept loopback.
+ */
+export const DASHBOARD_ORIGINS: readonly string[] = BUILD_CLOUD_API_URL ? [new URL(BUILD_CLOUD_API_URL).origin] : [];
 
-/** Settings the dashboard may change. Run mode, consent, the Cloud API and the version have their own paths or none. */
+/** Settings the dashboard may change. Run mode, consent, the server URL and the version have their own paths or none. */
 const EDITABLE: ReadonlySet<keyof ExtensionSettings> = new Set<keyof ExtensionSettings>([
   'localOnly',
   'trackingEnabled',
@@ -82,8 +88,6 @@ export type WebBridgeDeps = {
   agentRules: () => Promise<string[]>;
   saveAgentRules: (lines: string[]) => Promise<void>;
   action: (name: string) => Promise<unknown>;
-  /** Content-free usage events (on by default; off stops sending and clears the install ID and counters). */
-  analytics: { get: () => Promise<boolean>; set: (enabled: boolean) => Promise<void> };
   hasOrigins: (origins: string[]) => Promise<boolean>;
   /** The tab showing the dashboard, so Settings reuses it; null when the page goes away. */
   noteDashboardTab: (tabId: number | null) => Promise<void>;
@@ -117,12 +121,16 @@ function isLoopback(origin: string): boolean {
   }
 }
 
-/** Whether `sender` is the PigeonBox dashboard. The Cloud API's own copy of the dashboard counts too. */
+/** Whether a dashboard on `origin` can reach this worker at all: the manifest lists only these. */
+export function isDashboardOrigin(origin: string, allowLoopback: boolean): boolean {
+  return DASHBOARD_ORIGINS.includes(origin) || (allowLoopback && isLoopback(origin));
+}
+
+/** Whether `sender` is the PigeonBox dashboard: the configured server's copy counts too. */
 export function isDashboardSender(sender: Sender, deps: Pick<WebBridgeDeps, 'allowLoopback' | 'apiBaseUrl'>): boolean {
   const origin = senderOrigin(sender);
   if (!origin) return false;
-  if (DASHBOARD_ORIGINS.includes(origin)) return true;
-  if (deps.allowLoopback && isLoopback(origin)) return true;
+  if (isDashboardOrigin(origin, deps.allowLoopback)) return true;
   const api = deps.apiBaseUrl();
   return Boolean(api && new URL(api).origin === origin);
 }
@@ -185,7 +193,6 @@ export async function handleWebMessage(message: unknown, sender: Sender, deps: W
         ok: true,
         settings: dashboardSettings(settings),
         rules: await deps.agentRules().catch(() => []),
-        analytics: await deps.analytics.get().catch(() => false),
         missingOrigins: origins.length && !(await deps.hasOrigins(origins)) ? origins : [],
         product: await deps.productState(),
       };
@@ -212,9 +219,6 @@ export async function handleWebMessage(message: unknown, sender: Sender, deps: W
       await deps.settingsSync.set(value);
       return { ok: true, settingsSync: value };
     }
-    case 'SET_ANALYTICS':
-      await deps.analytics.set(msg.enabled === true);
-      return { ok: true, analytics: msg.enabled === true };
     case 'GRANT': {
       const origins = Array.isArray(msg.origins) ? msg.origins.filter((origin): origin is string => typeof origin === 'string' && ORIGIN_PATTERN.test(origin)).slice(0, 4) : [];
       if (!origins.length) return { ok: false, reason: 'Nothing to allow.' };
@@ -247,7 +251,7 @@ export async function handleWebMessage(message: unknown, sender: Sender, deps: W
     }
     case 'LINK_BEGIN': {
       const apiBaseUrl = deps.apiBaseUrl();
-      if (!apiBaseUrl) return { ok: false, code: 'not_configured', reason: 'This version of PigeonBox does not include Pro. Update PigeonBox to use Pro.' };
+      if (!apiBaseUrl) return { ok: false, code: 'not_configured', reason: 'No PigeonBox server is configured. Add one in Settings → Advanced.' };
       const origin = senderOrigin(sender);
       let redirectUri: URL;
       try {
@@ -272,7 +276,7 @@ export async function handleWebMessage(message: unknown, sender: Sender, deps: W
         return { ok: false, reason: 'Connecting PigeonBox could not be verified. Start again.' };
       }
       await deps.session.remove(LINK_KEY);
-      if (deps.apiBaseUrl() !== pending.apiBaseUrl) return { ok: false, reason: 'PigeonBox changed Pro servers while connecting. Start again.' };
+      if (deps.apiBaseUrl() !== pending.apiBaseUrl) return { ok: false, reason: 'The PigeonBox server changed while connecting. Start again.' };
       try {
         const user = await deps.exchangeLinkedCode(pending.apiBaseUrl, { code: msg.code.slice(0, 2000), codeVerifier: pending.verifier, redirectUri: pending.redirectUri });
         await deps.afterSignIn();

@@ -8,7 +8,7 @@ import { MAX_CHECKS_PER_MINUTE, PREFERENCE_TTL_MS, forgetComposeCheckPreference,
 
 const id = 'a'.repeat(32);
 const gmail = { id, origin: 'https://mail.google.com', tab: { id: 10 } };
-const ready: CloudState = { status: 'ready', email: 'owner@fixture.test', plan: 'cloud', capabilities: ['cloud_mail_sync'] };
+const ready: CloudState = { status: 'ready', email: 'owner@fixture.test', capabilities: ['cloud_mail_sync'] };
 const check = { claim: "I'm free tomorrow at 3", subject: 'Coffee', recipientEmails: ['alex@fixture.test'], threadId: 'thread-f:1780000000000000001', mailbox: 'owner@fixture.test', hint: 'availability' };
 const notice = {
   status: 'notice',

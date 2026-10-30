@@ -1,0 +1,18 @@
+{
+  "name": "@pigeonbox/api-worker",
+  "version": "0.8.4",
+  "private": true,
+  "type": "module",
+  "description": "PigeonBox server API Worker: /v1 API and the dashboard (apps/web)",
+  "scripts": {
+    "assets": "node ../../scripts/server/copy-viewer-assets.mjs",
+    "dev": "npm run assets && wrangler dev --port 8788"
+  },
+  "dependencies": {
+    "@pigeonbox/server": "*"
+  },
+  "devDependencies": {
+    "pdfjs-dist": "6.3.289"
+  },
+  "license": "MIT"
+}

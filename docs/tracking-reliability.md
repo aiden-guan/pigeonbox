@@ -10,27 +10,30 @@ metadata and live drafts remain intact. Both current and legacy Gmail request
 layouts have regression coverage against the installed SDK code. A changed SDK
 boundary fails the build for review instead of silently dropping this safeguard.
 
-Hosted tracking uses durable request acceptance, idempotent event processing and
-database aggregation over complete event history. Activity polling uses a
+Tracking on a PigeonBox server uses durable request acceptance, idempotent event
+processing and database aggregation over complete event history. Activity polling uses a
 persistent account-scoped cursor, advances after successful handling, and takes
 a baseline on first use. Waiting shows pending send-receipt synchronization and
 offers a retry. Existing receipts continue syncing when new tracking is disabled.
 
 The 200-event timeline is a recent window; lifetime totals are separate.
-Self-hosted older trackers without the cursor endpoint retain the legacy recent
+Older standalone trackers without the cursor endpoint retain the legacy recent
 snapshot fallback. No history completeness is implied by that fallback.
 
-Self-hosted Supabase operators must apply
-`20261016084347_tracking_reliable_stats_and_cursor.sql` before deploying the new
-tracker. New service-role-only RPCs are `recompute_tracking_stats` and
+Operators of the standalone Cloudflare Worker + Supabase tracker must apply
+`workers/tracker/supabase/migrations/20261016084347_tracking_reliable_stats_and_cursor.sql`
+before deploying the new tracker. A PigeonBox server gets the equivalent
+migration from `npm run server:deploy`. New service-role-only RPCs are `recompute_tracking_stats` and
 `tracking_event_page`. The ingestion-order trigger serializes sequence allocation
 until transaction commit. Keep database service credentials on the server.
 
 The Worker accepts an optional `TRACKING_EVENTS` queue producer binding and
 exports a queue consumer. Provision and bind a source queue with a dead-letter
 queue before enabling it; configure bounded retries and inspect backlog/age and
-dead-letter arrivals. Without that binding, self-hosted ingestion writes
-synchronously and does not gain hosted queue durability. The source migration
+dead-letter arrivals. Without that binding, ingestion writes synchronously and
+does not gain queue durability. On a PigeonBox server, `TRACKER_QUEUE=true` in
+`server.env` makes `npm run server:deploy` create and bind the queue and its
+dead-letter queue. The source migration
 does not alter a user's Convex deployment; that backend retains its own release
 and verification requirements.
 

@@ -1,9 +1,7 @@
-export const CLOUD_WAITLIST_URL = 'https://usepigeonbox.com/waitlist?source=extension';
-/** The Cloud dashboard on the website; loopback API overrides use their own copy. */
-export const CLOUD_DASHBOARD_URL = 'https://usepigeonbox.com/dashboard';
-export function openCloudWaitlist() { void chrome.tabs.create({ url: CLOUD_WAITLIST_URL }); }
-
 import { normalizeBaseUrl } from '@pigeonbox/cloud-client';
+
+/** How to run your own PigeonBox server. Linked where server features would appear when none is configured. */
+export const SELF_HOSTING_GUIDE_URL = 'https://github.com/aiden-guan/pigeonbox/blob/main/docs/self-hosting.md';
 
 /** Public build-time configuration. No secrets may be read here. */
 export const BUILD_CLOUD_API_URL = normalizeBaseUrl(import.meta.env.VITE_PIGEONBOX_CLOUD_API_URL ?? '') ?? '';
@@ -29,17 +27,21 @@ export const EXPERIMENTAL_FEATURES = import.meta.env.VITE_PIGEONBOX_EXPERIMENTAL
  */
 export const DEV_REBUILD_URL = import.meta.env.VITE_PIGEONBOX_DEV_REBUILD_URL ?? '';
 
-/** Source (non-release) build: the dashboard bridge also accepts loopback dashboards. */
+/** Source (non-release) build: the dashboard bridge also accepts dashboards on loopback. */
 export const DEV_BUILD = import.meta.env.VITE_PIGEONBOX_RELEASE !== '1';
 
-/** The Cloud API this install talks to: a developer override, else the build's URL. */
+/**
+ * The PigeonBox server this install talks to: the "PigeonBox server URL" in
+ * Settings → Advanced, else the URL this build was made with. Null: no server,
+ * and PigeonBox runs on this computer only.
+ */
 export function cloudApiUrl(settings: { cloudApiUrl: string }): string | null {
   return normalizeBaseUrl(settings.cloudApiUrl || '') ?? (BUILD_CLOUD_API_URL || null);
 }
 
 /**
- * The hosted tracker for Cloud mode. A developer API override on loopback
- * implies the matching local tracker port convention (API 8788, tracker 8789).
+ * The PigeonBox server's tracker. A server URL on loopback implies the matching
+ * local tracker port convention (API 8788, tracker 8789).
  */
 export function cloudTrackerUrl(settings: { cloudApiUrl: string }): string | null {
   const override = normalizeBaseUrl(settings.cloudApiUrl || '');
@@ -54,9 +56,9 @@ export function cloudTrackerUrl(settings: { cloudApiUrl: string }): string | nul
 }
 
 /**
- * Every hosted-tracker URL whose pixels belong to this Cloud install: the
- * current tracker, then its earlier hostnames. Sent mail keeps its original
- * pixel URL forever, so a hostname change must not stop self-view suppression.
+ * Every server-tracker URL whose pixels belong to this install: the current
+ * tracker, then its earlier hostnames. Sent mail keeps its original pixel URL
+ * forever, so a hostname change must not stop self-view suppression.
  */
 export function cloudTrackerUrls(settings: { cloudApiUrl: string }): string[] {
   const current = cloudTrackerUrl(settings);
@@ -65,9 +67,10 @@ export function cloudTrackerUrls(settings: { cloudApiUrl: string }): string[] {
 }
 
 /**
- * Whether tracking uses the PigeonBox-hosted tracker: always in Pro, and in Free
- * unless the person turned on local-only or this build has no PigeonBox service
- * (source builds); then their self-hosted tracker, if any, is used.
+ * Whether tracking uses your PigeonBox server's tracker: always when PigeonBox
+ * runs on the server, and on this computer too unless the person turned on
+ * local-only or no server is configured; then their own standalone tracker, if
+ * any, is used.
  */
 export function usesHostedTracker(settings: { runMode: string; localOnly?: boolean; cloudApiUrl: string }): boolean {
   if (settings.runMode === 'cloud') return true;
@@ -75,8 +78,9 @@ export function usesHostedTracker(settings: { runMode: string; localOnly?: boole
 }
 
 /**
- * Identifies the tracker that issued a tracking ID. Cloud is keyed by its API,
- * so moving the hosted tracker to a new hostname keeps existing IDs routable.
+ * Identifies the tracker that issued a tracking ID. The server tracker is keyed
+ * by the server's API, so moving that tracker to a new hostname keeps existing
+ * IDs routable.
  */
 export function trackerIssuer(settings: { runMode: string; localOnly?: boolean; cloudApiUrl: string; trackerBaseUrl: string }): string | null {
   if (usesHostedTracker(settings)) {

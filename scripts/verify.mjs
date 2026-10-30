@@ -5,7 +5,8 @@
  *   npm run verify
  *   npm run verify -- --skip-package   (faster; skips the release build and ZIP check)
  *
- * Needs no Cloud backend, Supabase, Stripe, Convex or AI key.
+ * Needs no deployed server, Supabase, Cloudflare, Convex or AI key: server tests run
+ * against an in-process WASM Postgres.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -50,7 +51,7 @@ if (!existsSync(join(root, 'node_modules', 'typescript'))) {
 
 step('dependencies match the lockfile', 'npm', ['ls', '--workspaces', '--include-workspace-root', '--depth=0', '--silent']);
 step('versions are consistent', process.execPath, ['scripts/check-versions.mjs']);
-step('no old package namespace, private imports, secrets or tracked env files', process.execPath, ['scripts/check-repo.mjs']);
+step('no old package namespace, boundary violations, secrets or tracked env files', process.execPath, ['scripts/check-repo.mjs']);
 step('typecheck', 'npm', ['run', 'typecheck', '--silent']);
 step('lint', 'npm', ['run', 'lint', '--silent']);
 step('tests', 'npm', ['test', '--silent']);

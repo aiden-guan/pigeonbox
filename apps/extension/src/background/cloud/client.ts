@@ -1,8 +1,8 @@
 /**
- * The service worker's PigeonBox Cloud connection: one signed-in session, a
+ * The service worker's PigeonBox server connection: one signed-in session, a
  * `PigeonBoxCloudClient` for the configured API, and the cached account state
- * (plan, capabilities). Account state never carries mailbox data; which
- * features may use Cloud is decided by the callers and `@pigeonbox/core`.
+ * (capabilities). Account state never carries mailbox data; which
+ * features may use the server is decided by the callers and `@pigeonbox/core`.
  */
 import { clientCompatibility, type ClientConfig } from '@pigeonbox/api-contract';
 import { CloudApiError, type PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
@@ -57,7 +57,7 @@ export function clientConfig(settings: ExtensionSettings): Promise<ClientConfig>
   return remoteConfig.current(remoteConfigApi(settings));
 }
 
-/** A Cloud client for the configured API, or null when this build has no Cloud URL. */
+/** A client for the configured PigeonBox server, or null when no server URL is configured. */
 export function getCloudClient(settings: ExtensionSettings): PigeonBoxCloudClient | null {
   const base = cloudApiUrl(settings);
   return base ? cloudSession.client(base) : null;
@@ -92,7 +92,7 @@ export async function refreshCloudState(settings: ExtensionSettings, options: { 
     const update = updateNotice(extensionVersion(), config);
     if (update?.required) {
       // Known too old: no request that would only be refused, and no retry loop.
-      state = { status: 'update_required', email: user.email, plan: null, capabilities: [], update };
+      state = { status: 'update_required', email: user.email, capabilities: [], update };
     } else {
       try {
         const started = Date.now();
@@ -103,7 +103,6 @@ export async function refreshCloudState(settings: ExtensionSettings, options: { 
           // `not_entitled` still carries any capabilities the server granted.
           status: caps.capabilities.includes('cloud_ai') ? 'ready' : 'not_entitled',
           email: user.email,
-          plan: caps.plan,
           capabilities: caps.capabilities,
           ...(update ? { update } : {}),
           ...(config.notice ? { notice: config.notice.code } : {}),
@@ -115,14 +114,12 @@ export async function refreshCloudState(settings: ExtensionSettings, options: { 
           ? {
               status: 'update_required',
               email: user.email,
-              plan: null,
               capabilities: [],
               update: { required: true, installed: extensionVersion(), minimum: (error as CloudApiError).minimumVersion ?? config.compatibility.minimumVersion, recommended: config.compatibility.recommendedVersion },
             }
           : {
               status: code === 'signed_out' ? 'expired' : code === 'entitlement_required' ? 'not_entitled' : 'unreachable',
               email: user.email,
-              plan: null,
               capabilities: [],
               ...(config.notice ? { notice: config.notice.code } : {}),
             };

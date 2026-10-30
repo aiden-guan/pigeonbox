@@ -19,4 +19,11 @@ module.exports = {
     'react-hooks/rules-of-hooks': 'error',
     'react-hooks/exhaustive-deps': 'warn',
   },
+  overrides: [
+    {
+      // The server discards destructured fields with a leading underscore (`{ secret: _secret, ...rest }`).
+      files: ['packages/server/**/*.ts', 'workers/api/**/*.ts', 'workers/server-tracker/**/*.ts'],
+      rules: { '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true }] },
+    },
+  ],
 };

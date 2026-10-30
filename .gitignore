@@ -33,3 +33,9 @@ __pycache__/
 
 playwright-report/
 test-results/
+
+# Self-hosted server: your settings and generated pdf.js viewer assets
+server.env
+apps/web/public/viewer/pdfjs/
+supabase/.temp/
+supabase/.branches/

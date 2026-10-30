@@ -121,7 +121,7 @@ export type CloudUsage = z.infer<typeof UsageSchema>;
 function aiResponse<T extends z.ZodTypeAny>(result: T) {
   return z.object({
     result,
-    usage: UsageSchema.default({}),
+    usage: UsageSchema.default(() => ({})),
     model: z.string().max(200).optional(),
     requestId: z.string().max(128).optional(),
   });

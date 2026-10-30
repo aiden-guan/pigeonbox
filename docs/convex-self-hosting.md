@@ -1,6 +1,6 @@
 # Recommended: self-host email tracking on Convex
 
-Convex is the default public tracker for the guided source install. It provides the HTTPS tracking endpoint and durable database in one service. Your tracker runs in your Convex account; PigeonBox does not host a shared tracker.
+Convex is the default public tracker for the guided source install. It provides the HTTPS tracking endpoint and durable database in one service. Your tracker runs in your Convex account; PigeonBox does not host a shared tracker. This is a standalone single-user tracker; if you run a [PigeonBox server](self-hosting.md), it has its own tracker and you do not need this one.
 
 ## Set it up
 
@@ -52,10 +52,10 @@ Clear the tracker URL and token in Settings and save to disconnect. To delete da
 | `.local/convex-tracker.env` | `PERSONAL_API_TOKEN` | Private local file used to set the production secret |
 | `apps/extension/public/tracker-config.json` | Tracker URL and token | Ignored machine-local config copied into the local extension build; excluded from release builds |
 
-Convex configuration is separate from, and never merged into, PigeonBox Cloud configuration.
+Convex configuration is separate from, and never merged into, PigeonBox server configuration (`server.env`).
 
 ## Chrome extension CORS
 
 The tracker answers token-free `OPTIONS /api/*` preflights from valid `chrome-extension://` origins. API responses, including authentication and validation errors, allow that same extension origin. Other browser origins are not allowed. Actual API requests still require the personal bearer token; cookies are not used. Unpacked extension IDs can change, so the tracker validates the Chrome extension origin format rather than hardcoding one installation.
 
-If Chrome reports a preflight response without `Access-Control-Allow-Origin`, update the existing tracker deployment with this repository's `convex/` code. A folder rename or extension rebuild alone does not update the hosted tracker.
+If Chrome reports a preflight response without `Access-Control-Allow-Origin`, update the existing tracker deployment with this repository's `convex/` code. A folder rename or extension rebuild alone does not update the deployed tracker.
