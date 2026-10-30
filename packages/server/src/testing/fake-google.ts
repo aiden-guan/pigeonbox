@@ -84,7 +84,7 @@ type HistoryRecord = {
   labelsRemoved?: Array<{ message: { id: string; threadId: string }; labelIds: string[] }>;
 };
 
-type CalendarEventRecord = { id: string; calendarId: string; summary: string; start: string; end: string; attendees: string[]; organizer: string; transparency?: string; status: string; sendUpdates?: string };
+type CalendarEventRecord = { id: string; calendarId: string; summary: string; start: string; end: string; attendees: string[]; organizer: string; transparency?: string; status: string; sendUpdates?: string; description?: string; location?: string; meet?: string };
 
 type FakeAccount = {
   sub: string;
@@ -634,7 +634,7 @@ export class FakeGoogle {
       if (!read) return googleError(403, 'insufficientPermissions');
       const event = account.events.find((item) => item.id === decodeURIComponent(single[2]!));
       if (!event) return googleError(404, 'notFound');
-      return json({ id: event.id, summary: event.summary, start: { dateTime: event.start }, end: { dateTime: event.end }, attendees: event.attendees.map((email) => ({ email, self: email === account.email })), organizer: { email: event.organizer }, status: event.status, etag: `"${event.id}"` });
+      return json({ id: event.id, summary: event.summary, start: { dateTime: event.start }, end: { dateTime: event.end }, attendees: event.attendees.map((email) => ({ email, self: email === account.email })), organizer: { email: event.organizer }, status: event.status, etag: `"${event.id}"`, ...(event.meet ? { hangoutLink: event.meet } : {}) });
     }
     if (single && method === 'DELETE') {
       if (!write) return googleError(403, 'insufficientPermissions');
@@ -645,7 +645,7 @@ export class FakeGoogle {
     }
     if (events && method === 'POST') {
       if (!write) return googleError(403, 'insufficientPermissions');
-      const event = body as { summary: string; start: { dateTime: string }; end: { dateTime: string }; attendees?: Array<{ email: string }> };
+      const event = body as { summary: string; description?: string; location?: string; start: { dateTime: string }; end: { dateTime: string }; attendees?: Array<{ email: string }>; conferenceData?: { createRequest?: { requestId?: string } } };
       const record = this.addEvent(account.email, {
         summary: event.summary,
         start: new Date(event.start.dateTime),
@@ -653,6 +653,10 @@ export class FakeGoogle {
         attendees: event.attendees?.map((attendee) => attendee.email),
       });
       record.sendUpdates = url.searchParams.get('sendUpdates') ?? 'none';
+      record.description = event.description;
+      record.location = event.location;
+      // Google ignores conferenceData unless the request opts in with conferenceDataVersion=1.
+      if (event.conferenceData?.createRequest && url.searchParams.get('conferenceDataVersion') === '1') record.meet = `https://meet.test/${record.id}`;
       return json({ id: record.id, htmlLink: `https://calendar.test/${record.id}`, status: 'confirmed', summary: record.summary, start: { dateTime: record.start }, end: { dateTime: record.end } });
     }
     return googleError(404, 'notFound');

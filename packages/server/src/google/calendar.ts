@@ -32,6 +32,8 @@ export type NewCalendarEvent = {
   end: { dateTime: string; timeZone: string };
   attendees?: Array<{ email: string }>;
   transparency?: 'opaque' | 'transparent';
+  /** Ask Google to attach a new Meet link. */
+  conferenceData?: { createRequest: { requestId: string; conferenceSolutionKey: { type: 'hangoutsMeet' } } };
 };
 
 export class CalendarClient {
@@ -160,7 +162,10 @@ export class CalendarClient {
 
   /** `sendUpdates: 'all'` emails invitations (Tier 3); `'none'` only writes the user's calendar (Tier 2). */
   insertEvent(event: NewCalendarEvent, sendUpdates: 'all' | 'none', calendarId = 'primary') {
-    return this.request<CalendarEvent>('POST', `/calendars/${encodeURIComponent(calendarId)}/events`, { query: { sendUpdates }, body: event });
+    return this.request<CalendarEvent>('POST', `/calendars/${encodeURIComponent(calendarId)}/events`, {
+      query: { sendUpdates, conferenceDataVersion: event.conferenceData ? '1' : undefined },
+      body: event,
+    });
   }
 
   /** Remove an event PigeonBox created (undo). Already-deleted events are fine. */

@@ -56,8 +56,8 @@ async function scheduleReminder(ctx: ExecutorContext, remindAt: Date, reason: st
   return ctx.deps.db.asUser(ctx.userId, async (tx) => {
     const row = await one<{ id: string }>(
       tx,
-      `insert into public.reminders (user_id, mail_account_id, thread_id, remind_at, reason, source) values ($1::uuid, $2::uuid, $3::uuid, $4::timestamptz, $5, 'rule') returning id`,
-      [ctx.userId, ctx.account.id, ctx.target.threadRowId, remindAt, reason.slice(0, 300)],
+      `insert into public.reminders (user_id, mail_account_id, thread_id, remind_at, reason, source) values ($1::uuid, $2::uuid, $3::uuid, $4::timestamptz, $5, $6) returning id`,
+      [ctx.userId, ctx.account.id, ctx.target.threadRowId, remindAt, reason.slice(0, 300), ctx.params.source === 'manual' ? 'manual' : 'rule'],
     );
     await enqueue(tx, {
       kind: 'reminder.fire',
@@ -180,7 +180,7 @@ const EXECUTORS: Record<ActionKind, Executor> = {
   snooze: async (ctx) => {
     const until = await remindTime(ctx);
     const result = await modifyLabels(ctx, [], ['INBOX'], 'Snoozed');
-    const reminderId = await scheduleReminder(ctx, until, 'Snoozed thread is back', true);
+    const reminderId = await scheduleReminder(ctx, until, typeof ctx.params.reason === 'string' && ctx.params.reason ? ctx.params.reason : 'Snoozed thread is back', true);
     return { summary: `Snoozed until ${until.toISOString().slice(0, 16).replace('T', ' ')} UTC`, reversible: true, undo: { ...result.undo, reminderId } };
   },
   remind: async (ctx) => {
@@ -204,20 +204,25 @@ const EXECUTORS: Record<ActionKind, Executor> = {
     requireFeature(ctx.account, 'calendar_write');
     const preparedId = String(ctx.params.preparedEventId ?? '');
     const event = await ctx.deps.db.asUser(ctx.userId, (tx) =>
-      one<{ id: string; title: string; start_at: Date; end_at: Date; time_zone: string; attendees: string[]; location: string | null; notify_attendees: boolean; status: string }>(
+      one<{ id: string; title: string; start_at: Date; end_at: Date; time_zone: string; attendees: string[]; location: string | null; notify_attendees: boolean; status: string; description_key_id: string | null; description_iv: string | null; description_ciphertext: string | null }>(
         tx,
-        `select id, title, start_at, end_at, time_zone, attendees, location, notify_attendees, status from public.prepared_events where id = $1::uuid`,
+        `select id, title, start_at, end_at, time_zone, attendees, location, notify_attendees, status, description_key_id, description_iv, description_ciphertext from public.prepared_events where id = $1::uuid`,
         [preparedId],
       ),
     );
     if (!event) throw new ApiError('not_found', 'That prepared event does not exist.');
+    const description = event.description_key_id && event.description_iv && event.description_ciphertext
+      ? await ctx.deps.box.open({ keyId: event.description_key_id, iv: event.description_iv, ciphertext: event.description_ciphertext }, { purpose: 'note', userId: ctx.userId, recordId: `event:${event.id}` })
+      : undefined;
     const created = await calendarFor(ctx.deps, ctx.account).insertEvent(
       {
         summary: event.title,
+        description,
         location: event.location ?? undefined,
         start: { dateTime: new Date(event.start_at).toISOString(), timeZone: event.time_zone },
         end: { dateTime: new Date(event.end_at).toISOString(), timeZone: event.time_zone },
         attendees: event.attendees.map((email) => ({ email })),
+        ...(ctx.params.googleMeet === true ? { conferenceData: { createRequest: { requestId: event.id, conferenceSolutionKey: { type: 'hangoutsMeet' as const } } } } : {}),
       },
       event.notify_attendees ? 'all' : 'none',
     );

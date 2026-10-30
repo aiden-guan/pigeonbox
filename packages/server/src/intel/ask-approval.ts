@@ -1,10 +1,11 @@
 import type { AskApproval } from '@pigeonbox/api-contract';
 import type { IntelDeps } from './context.js';
+import { eventSteps, reminderSteps, type EventPlan, type ReminderPlan } from './ask-actions.js';
 import { APPROVAL_TTL_MS, describeStep, type MailChangePlan } from './mail-changes.js';
 
 /**
  * Permission for Chat's changes, the way Claude asks before running a
- * command. A tool that would change the mailbox does not run: it plans the
+ * command. A tool that would change the mailbox or calendar does not run: it plans the
  * change and the server seals that plan into the approval token (encrypted,
  * bound to the user, expiring). The client shows the steps with Allow and
  * Deny; Allow sends the token back and exactly the sealed plan is carried
@@ -13,7 +14,7 @@ import { APPROVAL_TTL_MS, describeStep, type MailChangePlan } from './mail-chang
  */
 
 export type UnsubscribePlan = { kind: 'unsubscribe'; title: string; senders: Array<{ accountId: string; email: string }>; archive: boolean };
-export type ApprovalPlan = MailChangePlan | UnsubscribePlan;
+export type ApprovalPlan = MailChangePlan | UnsubscribePlan | EventPlan | ReminderPlan;
 
 type Sealed = { v: 2; expiresAt: string; plan: ApprovalPlan };
 
@@ -22,6 +23,8 @@ const decode = (value: string) => new TextDecoder().decode(Uint8Array.from(atob(
 
 export function approvalSteps(plan: ApprovalPlan): AskApproval['steps'] {
   if (plan.kind === 'mail_changes') return plan.steps.map(describeStep);
+  if (plan.kind === 'calendar_event') return eventSteps(plan);
+  if (plan.kind === 'reminder') return reminderSteps(plan);
   const senders = plan.senders.map((sender) => sender.email);
   const groups = Array.from({ length: Math.ceil(senders.length / 5) }, (_, index) => senders.slice(index * 5, index * 5 + 5));
   return [

@@ -109,12 +109,16 @@ export function deliveryTime(prefs: Preferences, now: Date): Date {
 
 export async function notify(
   tx: SqlExecutor,
-  input: { userId: string; kind: CloudNotification['kind']; title: string; body: string; accountId?: string | null; threadId?: string | null; refId?: string | null; dedupeKey: string },
+  input: {
+    userId: string; kind: CloudNotification['kind']; title: string; body: string; accountId?: string | null; threadId?: string | null; refId?: string | null; dedupeKey: string;
+    /** The person picked this exact time (a reminder they set): no toggle or quiet hours applies. */
+    chosenTime?: boolean;
+  },
   now: Date = new Date(),
 ): Promise<void> {
-  const toggle = PREFERENCE_TOGGLE[input.kind];
+  const toggle = input.chosenTime ? undefined : PREFERENCE_TOGGLE[input.kind];
   let deliverAt: Date | null = null;
-  if (toggle || QUIET_HOURS_KINDS.has(input.kind)) {
+  if (!input.chosenTime && (toggle || QUIET_HOURS_KINDS.has(input.kind))) {
     const prefs = await loadPreferences(tx, input.userId);
     // Switched off in Preferences: the work still happens and shows on the dashboard, without an alert.
     if (toggle && !prefs.notifications[toggle]) return;
