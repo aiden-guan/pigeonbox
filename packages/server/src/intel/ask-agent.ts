@@ -31,6 +31,7 @@ import { listSubscriptions, matchSenders, unsubscribe, type Subscription } from 
 import { boundThread, readThread, replyRecipients, threadPeople } from './thread-reader.js';
 import { reviewAskAction, type AskEffect } from './ask-action.js';
 import { consumeApproval, sealApproval, type ApprovalPlan, type UnsubscribePlan } from './ask-approval.js';
+import { createChatEvent, createChatReminder, eventConflicts, formatMoment, parseLocalTime, validWindow, type EventPlan, type ReminderPlan } from './ask-actions.js';
 import { AskWebPolicy } from './ask-web-policy.js';
 import { applyMailChanges, CHANGE_OPS, ChangePlanError, planMailChanges, type ChangeStepInput } from './mail-changes.js';
 
@@ -1437,9 +1438,140 @@ const changeMailTool: AgentTool = {
 /** Thread references one change step may list. */
 const MAX_CHANGE_REFS = 500;
 
+/** The calendar an event goes on: named, the current inbox's, or the first connected one. */
+function calendarAccountFor(ctx: ToolContext, args: Record<string, unknown>): AccountRow | string {
+  const calendars = ctx.accounts.filter((account) => account.features.includes('calendar_read'));
+  if (!calendars.length) return 'Google Calendar is not connected to this PigeonBox server. The user can connect it in the server’s dashboard: Connected accounts, Add permissions, Add calendar events.';
+  const named = text(args, 'account', 320).toLowerCase();
+  if (named) return calendars.find((account) => account.email.toLowerCase() === named) ?? `${named} has no connected calendar. Connected: ${calendars.map((account) => account.email).join(', ')}.`;
+  return calendars.find((account) => account.id === ctx.activeAccount?.id) ?? calendars[0]!;
+}
+
+const createEventTool: AgentTool = {
+  effect: 'change_calendar',
+  spec: {
+    name: 'create_event',
+    description:
+      "Propose an event on the user's Google Calendar: a meeting, call, hold or personal block. Nothing is created yet: the user sees the event (and any overlap with their calendar) with Allow and Deny, and it is created only if they allow it. " +
+      'Use the user\'s local time. Attendees must be addresses you saw in tool results (find_contacts, search_mail), never guessed. Set invite true when the user wants to meet with or invite those people (Google emails them an invitation once allowed); false for a hold only the user sees.',
+    parameters: obj(
+      {
+        title: str('Event title as it should appear on the calendar, e.g. "Aiden / Martin"'),
+        start: str('Start in the user\'s local time, e.g. 2026-10-22T12:30'),
+        end: str('End in local time; or give duration_minutes'),
+        duration_minutes: int('Length when end is not given (default: the user\'s usual meeting length)', 5, 720),
+        attendees: { type: 'array', items: str('Email address'), description: 'People to add as guests' },
+        invite: { type: 'boolean', description: 'Email invitations to the attendees (default false)' },
+        google_meet: { type: 'boolean', description: 'Attach a Google Meet link' },
+        location: str('Optional place or address'),
+        description: str('Optional notes for the event'),
+        thread: str('Optional source label of the email this event comes from'),
+        account: str('Optional: which connected Google account\'s calendar'),
+      },
+      ['title', 'start'],
+    ),
+  },
+  async run() {
+    return { error: 'Adding events needs the user\'s approval, which this app cannot show. Tell them the details so they can add it themselves.', actionTaken: false };
+  },
+  async propose(ctx, args) {
+    const account = calendarAccountFor(ctx, args);
+    if (typeof account === 'string') return { result: { error: account, actionTaken: false } };
+    if (!account.features.includes('calendar_write')) {
+      return { result: { error: `PigeonBox is not allowed to add events to ${account.email}'s calendar yet. The user can allow it in the PigeonBox dashboard: Connected accounts, Add permissions, Add calendar events. Then ask again.`, actionTaken: false } };
+    }
+    const summary = text(args, 'title', 300);
+    if (!summary) return { result: { error: 'title is required', actionTaken: false } };
+    const start = parseLocalTime(text(args, 'start', 40), ctx.timeZone);
+    if (!start) return { result: { error: 'start must be a local time like 2026-10-22T12:30', actionTaken: false } };
+    const endText = text(args, 'end', 40);
+    const end = endText ? parseLocalTime(endText, ctx.timeZone) : new Date(start.getTime() + count(args, 'duration_minutes', ctx.prefs.calendar.defaultDurationMinutes, 720) * 60_000);
+    if (!end) return { result: { error: 'end must be a local time like 2026-10-22T13:00', actionTaken: false } };
+    const problem = validWindow(ctx.deps.now(), start, end);
+    if (problem) return { result: { error: problem, actionTaken: false } };
+    const owners = new Set(ctx.accounts.map((owner) => owner.email.toLowerCase()));
+    const wanted = (Array.isArray(args.attendees) ? args.attendees : []).slice(0, 25);
+    const invalid = wanted.filter((value) => !recipient(value)).map((value) => String(value).slice(0, 100));
+    if (invalid.length) return { result: { error: 'Attendees must be email addresses. Look them up first (find_contacts, search_mail).', invalid, actionTaken: false } };
+    const attendees = [...new Set(wanted.map((value) => recipient(value)!.email))].filter((email) => !owners.has(email)).slice(0, 20);
+    const reference = text(args, 'thread', 80);
+    const thread = reference ? resolveThread(ctx, reference) : null;
+    const plan: EventPlan = {
+      kind: 'calendar_event',
+      title: `Schedule “${summary}”`.slice(0, 200),
+      accountId: account.id,
+      accountEmail: account.email,
+      summary,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      timeZone: ctx.timeZone,
+      attendees,
+      invite: args.invite === true && attendees.length > 0,
+      googleMeet: args.google_meet === true,
+      location: text(args, 'location', 300) || null,
+      description: text(args, 'description', 2_000) || null,
+      conflicts: await eventConflicts(ctx.deps, account, start, end, ctx.timeZone),
+      gmailThreadId: thread && thread.accounts.some((owner) => owner.id === account.id) ? thread.gmailThreadId : null,
+    };
+    return { plan };
+  },
+};
+
+const remindTool: AgentTool = {
+  effect: 'change_calendar',
+  spec: {
+    name: 'remind_me',
+    description:
+      'Propose a reminder: at the time, PigeonBox notifies the user (optionally about an email). With snooze, the email is archived now and comes back to the inbox at that time. Nothing is scheduled until the user allows it.',
+    parameters: obj(
+      {
+        at: str('When, in the user\'s local time, e.g. 2026-10-26T09:00'),
+        note: str('What to remind them of, in a few words'),
+        thread: str('Optional source label of the email it is about'),
+        snooze: { type: 'boolean', description: 'Archive the email now and return it to the inbox at that time (needs thread)' },
+      },
+      ['at'],
+    ),
+  },
+  async run() {
+    return { error: 'Reminders need the user\'s approval, which this app cannot show.', actionTaken: false };
+  },
+  async propose(ctx, args) {
+    const at = parseLocalTime(text(args, 'at', 40), ctx.timeZone);
+    if (!at) return { result: { error: 'at must be a local time like 2026-10-26T09:00', actionTaken: false } };
+    const problem = validWindow(ctx.deps.now(), at);
+    if (problem) return { result: { error: problem, actionTaken: false } };
+    const reference = text(args, 'thread', 80);
+    const thread = reference ? resolveThread(ctx, reference) : null;
+    if (reference && !thread) return { result: { error: `${reference} is not an email from this conversation. Find it first.`, actionTaken: false } };
+    const snooze = args.snooze === true;
+    if (snooze && !thread) return { result: { error: 'Snoozing needs the email: pass its source label as thread.', actionTaken: false } };
+    const inboxes = mailAccounts(ctx);
+    const account = thread?.accounts.length === 1 ? thread.accounts[0]! : ctx.activeAccount ?? inboxes[0];
+    if (!account) return { result: { error: 'No Gmail account is connected to this PigeonBox server.', actionTaken: false } };
+    if (snooze && !account.features.includes('organize')) {
+      return { result: { error: `PigeonBox is not allowed to organize ${account.email} yet, so it can't snooze. The user can allow it in the PigeonBox dashboard: Connected accounts, Add permissions, Organize mail. A plain reminder works without it.`, actionTaken: false } };
+    }
+    const subject = thread ? ctx.session.byLabel.get(ctx.session.labelFor(`thread:${thread.gmailThreadId}`) ?? '')?.title ?? null : null;
+    const note = text(args, 'note', 300);
+    const plan: ReminderPlan = {
+      kind: 'reminder',
+      title: (snooze ? `Snooze until ${formatMoment(at, ctx.timeZone)}` : `Remind you ${formatMoment(at, ctx.timeZone)}`).slice(0, 200),
+      accountId: account.id,
+      at: at.toISOString(),
+      timeZone: ctx.timeZone,
+      note: note || subject || 'Reminder',
+      snooze,
+      gmailThreadId: thread?.gmailThreadId ?? null,
+      subject,
+    };
+    return { plan };
+  },
+};
+
 function toolsFor(ctx: Pick<ToolContext, 'webAllowed' | 'composeAllowed' | 'approvalAllowed' | 'accounts' | 'readOnly'>): AgentTool[] {
   const tools = [searchMail, readThreadTool, listThreadsTool, labelsTool, searchIndex, findContacts, contactBrief, recallMemory, waitingOn, commitments, calendarEvents, freeTime, deadlines, tracking, sequencesTool, notes, subscriptionsTool, unsubscribeTool, draftReply];
-  if (ctx.approvalAllowed) tools.push(changeMailTool);
+  if (ctx.approvalAllowed) tools.push(changeMailTool, createEventTool, remindTool);
   if (ctx.composeAllowed) tools.push(composeEmail);
   if (ctx.webAllowed) tools.push(web, readWebpage);
   return ctx.readOnly ? tools.filter((tool) => !tool.effect) : tools;
@@ -1454,7 +1586,7 @@ function toolsFor(ctx: Pick<ToolContext, 'webAllowed' | 'composeAllowed' | 'appr
  * (with the tool definitions) across everyone's questions. Who the user is goes
  * in `userContext`; the current time goes in the question.
  */
-const SYSTEM_PROMPT = `You are Pigeon, the AI assistant inside PigeonBox, working for the user named below. You have live access to their Gmail and, when connected, Google Calendar, PigeonBox's records about their mail (follow-ups, commitments, contacts and relationship briefs, what PigeonBox remembers, deadlines, open and click tracking with reply status, outreach sequences, notes), the public web when web tools are listed, the ability to open new emails in Gmail's composer, and, when change_mail is listed, the ability to organize their Gmail (labels, archiving, read state, stars, Trash) once they allow it, all through tools.
+const SYSTEM_PROMPT = `You are Pigeon, the AI assistant inside PigeonBox, working for the user named below. You have live access to their Gmail and, when connected, Google Calendar, PigeonBox's records about their mail (follow-ups, commitments, contacts and relationship briefs, what PigeonBox remembers, deadlines, open and click tracking with reply status, outreach sequences, notes), the public web when web tools are listed, the ability to open new emails in Gmail's composer, and, when change_mail is listed, the ability to organize their Gmail (labels, archiving, read state, stars, Trash) once they allow it, and, when create_event and remind_me are listed, the ability to add events to their Google Calendar and set reminders or snooze emails once they allow it, all through tools.
 
 When the user asks for something you can do with your tools, carry it through within their requested scope. Look up factual gaps yourself. When a needed choice belongs to the user, ask for that choice before taking an action.
 
@@ -1496,6 +1628,12 @@ Organizing mail (when change_mail is listed)
 - If change_mail reports problems, fix them and call it again in the same turn. If the inbox can't be organized yet, say how to allow it.
 - After the user allows changes, you receive what was carried out: report it briefly, with counts.
 
+Calendar and reminders (when create_event and remind_me are listed)
+- To schedule, book, block or add something to their calendar, call create_event; never tell the user you can't add events when it is listed. Work out the time from the conversation and the current time; if no time was given, use find_free_time and offer a few slots, or propose the one slot they described ("tomorrow afternoon"). Check calendar_events first when moving or avoiding something.
+- A meeting with someone: find their address (find_contacts, search_mail) and set attendees with invite true. If no address turns up, propose the event without attendees and say whose address is missing. A hold, focus block or personal event has no attendees.
+- "Remind me", "snooze", "bring this back on Monday": remind_me, with the email's source label when it is about one. Snooze only when they asked to snooze or hide it until then.
+- Like change_mail, these only propose: the user sees the details (including any overlap with their calendar) with Allow and Deny. Don't ask "should I add it?" in text; ask only when a real choice is open (which time, which person). If a tool says a permission is missing, tell the user exactly how to allow it.
+
 Mailing lists
 - When the user asks to unsubscribe from, stop getting, or get off the list of senders, newsletters or stores, call unsubscribe once with all of them. It costs nothing and, in apps that ask first, waits for the user to allow it; don't search their websites. For a vague request ("all the shopping emails", "the junk from last week"), call list_subscriptions first and unsubscribe from the senders that clearly fit.
 - Only unsubscribe from senders the user asked about or clearly described. If a name matches several senders and it isn't clear they meant all of them, list the candidates and ask.
@@ -1505,7 +1643,7 @@ How to answer
 - Be specific: names, dates (e.g. "Tue, Sep 30"), amounts, what was asked or agreed. Keep it tight: no preamble, no restating the question, no closing offer of more help. Aim for under 120 words unless the user asks for more.
 - After compose_email, say in a sentence who it's addressed to and where the address came from; the email itself is shown separately, so don't repeat it.
 - Cite every fact that came from a tool by putting its source label in square brackets right after it, like [S2] or [S2][S5]. Only use labels that appeared in tool results. No citations for general knowledge.
-- You never send email; the user sends what you compose. Say so if asked to send, and compose it for them. Their mailbox changes only through change_mail and unsubscribe, and only what they allow. Without change_mail listed, say you can't change their mailbox from this app.
+- You never send email; the user sends what you compose. Say so if asked to send, and compose it for them. Their mailbox and calendar change only through change_mail, unsubscribe, create_event and remind_me, and only what they allow. Without these listed, say you can't make that change from this app.
 - If something you found is ambiguous (e.g. two people called Allen), say which you mean or list both.
 - When useful, end with one last line: "Next: " and up to three short follow-up questions or requests separated by " | ", written the way the user would type them. Make each one's intent and scope clear from the conversation. If you asked for a choice, offer actual choices only when known, or omit the line. Do not offer a vague action that silently widens the scope, or repeat the same unresolved request as its own next step.
 
@@ -1606,6 +1744,10 @@ function describe(call: ToolCall, session: AskSession): string {
       return `Checking threads: ${value('query')}`;
     case 'change_mail':
       return value('title') ? `Preparing: ${value('title')}` : 'Preparing the changes';
+    case 'create_event':
+      return value('title') ? `Preparing the event: ${value('title')}` : 'Preparing the event';
+    case 'remind_me':
+      return args.snooze === true ? 'Preparing the snooze' : 'Preparing the reminder';
     case 'unsubscribe': {
       const senders = Array.isArray(args.senders) ? args.senders.filter((item): item is string => typeof item === 'string') : [];
       return senders.length === 1 ? `Preparing to unsubscribe from ${senders[0]!.slice(0, 80)}` : `Preparing to unsubscribe from ${senders.length} senders`;
@@ -1967,11 +2109,23 @@ export function splitFollowUps(text: string): { answer: string; followUps: strin
 }
 
 /** Repeated after the question: models follow rules better when they are also the last thing they read. */
-const reminder = (compose: boolean, changes: boolean) => `Reminders: direct answer first, then short bullets; cite sources like [S2]; preserve the conversation's scope and ask for unresolved user choices before acting; ${compose ? 'to write a requested new email, call compose_email; ' : ''}${changes ? 'to change their mailbox, propose every step in one change_mail call; ' : ''}when useful and unambiguous, end with the Next: line.`;
+const reminder = (compose: boolean, changes: boolean) => `Reminders: direct answer first, then short bullets; cite sources like [S2]; preserve the conversation's scope and ask for unresolved user choices before acting; ${compose ? 'to write a requested new email, call compose_email; ' : ''}${changes ? 'to change their mailbox, propose every step in one change_mail call; to add a calendar event or reminder, call create_event or remind_me; ' : ''}when useful and unambiguous, end with the Next: line.`;
 
 /** Carry out an approved plan. Returns what happened, for the model and the next turn's context. */
-async function carryOut(ctx: ToolContext, plan: ApprovalPlan): Promise<unknown> {
+async function carryOut(ctx: ToolContext, plan: ApprovalPlan, approvalId: string): Promise<unknown> {
   try {
+    if (plan.kind === 'calendar_event') {
+      if (!ctx.accounts.some((account) => account.id === plan.accountId && account.features.includes('calendar_write'))) return { error: `${plan.accountEmail} can no longer add calendar events, so nothing was created.` };
+      const done = await createChatEvent(ctx.deps, ctx.userId, plan, approvalId, ctx.requestId);
+      if (!done.created) return { error: done.problem };
+      const source = ctx.session.cite({ id: `event:${done.eventId ?? approvalId}`.slice(0, 128), kind: 'calendar_event', title: plan.summary, accountId: plan.accountId, at: plan.start, ...(done.link ? { url: done.link } : {}) }, 'calendar');
+      return { created: plan.summary, source, when: formatMoment(new Date(plan.start), plan.timeZone), calendar: plan.accountEmail, ...(done.invited.length ? { invitationsSentTo: done.invited } : plan.attendees.length ? { guestsNotEmailed: plan.attendees } : {}), ...(done.meetLink ? { googleMeet: done.meetLink } : plan.googleMeet ? { googleMeet: 'requested; open the event to see the link' } : {}), ...(done.undoable ? {} : { note: 'Invitations went out, so it cannot be undone from PigeonBox.' }) };
+    }
+    if (plan.kind === 'reminder') {
+      if (!ctx.accounts.some((account) => account.id === plan.accountId)) return { error: 'That inbox is no longer connected, so no reminder was set.' };
+      const done = await createChatReminder(ctx.deps, ctx.userId, plan, approvalId);
+      return done.done ? { reminderAt: done.at, about: plan.subject ?? plan.note, ...(done.snoozed ? { snoozed: 'archived now; it returns to the inbox at that time' } : {}) } : { error: done.problem };
+    }
     if (plan.kind === 'mail_changes') {
       const account = ctx.accounts.find((candidate) => candidate.id === plan.accountId);
       if (!account) return { error: `${plan.accountEmail} is no longer connected, so nothing changed.` };
@@ -2069,16 +2223,16 @@ export async function askPigeon(
       const text = opened.reason === 'expired' ? 'That request for permission expired, so nothing changed. Ask again and I\'ll check your mailbox fresh.' : 'I couldn\'t verify that request for permission, so nothing changed. Ask again.';
       return respond(text, session, { complete: true, note: '' }, input.requestId);
     }
-    const tool = opened.plan.kind === 'mail_changes' ? 'change_mail' : 'unsubscribe';
+    const tool = { mail_changes: 'change_mail', unsubscribe: 'unsubscribe', calendar_event: 'create_event', reminder: 'remind_me' }[opened.plan.kind];
     if (!input.decision.allow) {
       session.outcomes.push({ tool, result: JSON.stringify({ status: 'declined by the user; nothing changed', title: opened.plan.title }) });
       deps.log('info', 'chat changes declined', { requestId: input.requestId, userId, operation: tool });
       return respond('Okay, I didn\'t change anything.', session, { complete: true, note: '' }, input.requestId);
     }
-    if (input.onEvent) emit({ type: 'status', text: opened.plan.kind === 'mail_changes' ? `Making the changes: ${opened.plan.title}`.slice(0, 300) : 'Unsubscribing' });
-    const done = await carryOut(ctx, opened.plan);
+    if (input.onEvent) emit({ type: 'status', text: opened.plan.kind === 'unsubscribe' ? 'Unsubscribing' : opened.plan.kind === 'calendar_event' ? 'Adding it to your calendar' : opened.plan.kind === 'reminder' ? 'Setting the reminder' : `Making the changes: ${opened.plan.title}`.slice(0, 300) });
+    const done = await carryOut(ctx, opened.plan, opened.id);
     session.outcomes.push({ tool, result: JSON.stringify({ status: 'allowed by the user and carried out', title: opened.plan.title, done }).slice(0, 4_000) });
-    decided = `[The user allowed "${opened.plan.title}". PigeonBox carried it out: ${JSON.stringify(done, lean).slice(0, 6_000)}]\nTell the user in a sentence or two what changed, with counts, and anything that failed. If their earlier request still has parts left, continue with them (another mailbox change needs a new proposal). Never propose again what was just done.`;
+    decided = `[The user allowed "${opened.plan.title}". PigeonBox carried it out: ${JSON.stringify(done, lean).slice(0, 6_000)}]\nTell the user in a sentence or two what changed, with counts, and anything that failed. If their earlier request still has parts left, continue with them (another change needs a new proposal). Never propose again what was just done.`;
   }
 
   // The host settles usage and unused prefetches after delivering the answer.

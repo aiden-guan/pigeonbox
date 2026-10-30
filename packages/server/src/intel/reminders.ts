@@ -12,13 +12,15 @@ export async function runReminder(deps: IntelDeps, job: JobRecord): Promise<void
   if (!job.userId || !reminderId) throw new SkipJob('missing_ids');
   const userId = job.userId;
   const reminder = await deps.db.asUser(userId, (tx) =>
-    one<{ id: string; status: string; reason: string; mail_account_id: string | null; subject: string | null; gmail_thread_id: string | null }>(
+    one<{ id: string; status: string; reason: string; source: string; mail_account_id: string | null; subject: string | null; gmail_thread_id: string | null }>(
       tx,
-      `select r.id, r.status, r.reason, r.mail_account_id, t.subject, t.gmail_thread_id from public.reminders r left join public.threads t on t.id = r.thread_id where r.id = $1::uuid`,
+      `select r.id, r.status, r.reason, r.source, r.mail_account_id, t.subject, t.gmail_thread_id from public.reminders r left join public.threads t on t.id = r.thread_id where r.id = $1::uuid`,
       [reminderId],
     ),
   );
   if (!reminder || reminder.status !== 'pending') throw new SkipJob('not_pending');
+  // A snoozed thread that was never synced has no threads row; the job carries its Gmail ID.
+  reminder.gmail_thread_id ??= typeof job.payload.gmailThreadId === 'string' && job.payload.gmailThreadId ? job.payload.gmailThreadId : null;
   if (job.payload.restoreInbox && reminder.mail_account_id && reminder.gmail_thread_id) {
     const account = await deps.db.asUser(userId, (tx) => loadAccount(tx, reminder.mail_account_id!));
     if (account?.status === 'active' && account.features.includes('organize')) {
@@ -40,6 +42,7 @@ export async function runReminder(deps: IntelDeps, job: JobRecord): Promise<void
       threadId: reminder.gmail_thread_id,
       refId: reminderId,
       dedupeKey: `reminder:${reminderId}`,
+      chosenTime: reminder.source === 'manual',
     });
     if (job.payload.restoreInbox) {
       await recordAudit(tx, {

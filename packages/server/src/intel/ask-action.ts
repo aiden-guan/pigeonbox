@@ -3,7 +3,7 @@ import type { ChatMessage } from '../ai/backends.js';
 import type { IntelDeps } from './context.js';
 import { runStructured } from './ai.js';
 
-export type AskEffect = 'prepare_email' | 'change_mail';
+export type AskEffect = 'prepare_email' | 'change_mail' | 'change_calendar';
 
 const Decision = z.object({
   allowed: z.boolean(),
