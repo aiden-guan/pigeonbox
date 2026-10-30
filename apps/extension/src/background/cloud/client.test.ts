@@ -16,7 +16,7 @@ vi.mock('./session', () => ({
         async capabilities() {
           session.capabilityCalls += 1;
           if (session.capabilitiesError) throw session.capabilitiesError;
-          return { plan: 'free', capabilities: base.includes('api-a') ? ['cloud_ai'] : [] };
+          return { capabilities: base.includes('api-a') ? ['cloud_ai'] : [] };
         },
         async clientConfig() {
           if (!session.config) throw new Error('offline');

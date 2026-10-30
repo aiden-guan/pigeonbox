@@ -5,8 +5,8 @@
  *   npm run setup -- --tracking --open         also offer the recommended Convex tracker
  *   npm run setup:tracker -- --open            offer the tracker after setup
  *
- * Base setup needs no PigeonBox account, Cloud backend, Supabase, Stripe,
- * Convex, Cloudflare account or AI key. --tracking offers Convex setup.
+ * Base setup needs no account, server, Supabase, Convex, Cloudflare account
+ * or AI key. --tracking offers Convex setup.
  */
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -136,7 +136,8 @@ const trackerCard = [
   '  Or during first install: npm run setup -- --tracking --open',
   '  Setup requires your approval before creating or updating a Convex deployment.',
   '',
-  'Alternative: Cloudflare Worker + Supabase — docs/self-hosting.md',
+  'Alternatives: your own PigeonBox server (includes tracking) — docs/self-hosting.md',
+  '              single-user Cloudflare Worker + Supabase tracker — docs/tracker-cloudflare.md',
   '',
   'Personal API token for your own tracker (keep private):',
   `  ${token}`,
@@ -188,8 +189,10 @@ Develop:   npm run dev   (then Reload on chrome://extensions)
            (macOS: npm run dev:reload:install keeps that helper running in the background)
 Check:     npm run verify
 Tracking:  recommended Convex setup: npm run setup:tracker -- --open (asks before cloud changes)
-           Cloudflare Worker + Supabase: docs/self-hosting.md
+           Cloudflare Worker + Supabase: docs/tracker-cloudflare.md
            Local development only: npm run tracker at 127.0.0.1:8787 (memory by default)
+Server:    your own PigeonBox server for AI, tracking and always-on Gmail:
+           cp server.env.example server.env, fill it in, then npm run server:deploy (docs/self-hosting.md)
 `);
 
 if (setupTracking) {

@@ -1,6 +1,6 @@
 # Local setup
 
-PigeonBox's on-device AI and inbox features need only Node.js 24.15+ and Chrome (or Edge/Brave) 116+. They do **not** need a PigeonBox account, PigeonBox Cloud, Supabase, Stripe, Convex, a Cloudflare account, Docker, or an AI key. Recipient tracking is separate and optional. The guided install offers to set up a public Convex tracker in your own account; tracking recipient opens cannot use a localhost server.
+PigeonBox's on-device AI and inbox features need only Node.js 24.15+ and Chrome (or Edge/Brave) 116+. They do **not** need a PigeonBox server, Supabase, Convex, a Cloudflare account, Docker, or an AI key. Recipient tracking is separate and optional. The guided install offers to set up a public Convex tracker in your own account; tracking recipient opens cannot use a localhost server.
 
 ## First run
 
@@ -58,7 +58,7 @@ npm run lint
 npm run verify       # everything CI runs, including the release ZIP check
 ```
 
-`npm run dev` never starts Convex, a tracker, or any Cloud service.
+`npm run dev` never starts Convex, a tracker, or a PigeonBox server.
 
 Use `apps/extension/dist` as the single working extension folder in Chrome. `npm run build`, `npm run dev`, and the reload helper all update this folder. `npm run package` builds in temporary staging and writes a ZIP to `release/`; it does not replace your working build. After rebuilding, reload PigeonBox in `chrome://extensions` and refresh Gmail to replace its running content script.
 
@@ -72,7 +72,7 @@ To record opens when a recipient's mail client loads the tracking pixel, PigeonB
 
 After Convex setup, the extension's local Settings page is prefilled. Click **Save**, approve Chrome's request to access the tracker, and confirm the status says **Tracker healthy**. The tracker stores tracking records and open/click events, including subject/sender/recipient metadata; it does not store message bodies or drafts.
 
-If you prefer [Cloudflare Worker + Supabase](self-hosting.md), follow that deployment guide, then enter the public URL and personal API token in **Settings → Email tracking**. Supabase alone is not the HTTP tracker.
+If you prefer a standalone [Cloudflare Worker + Supabase](tracker-cloudflare.md) tracker, follow that deployment guide, then enter the public URL and personal API token in **Settings → Email tracking**. Supabase alone is not the HTTP tracker.
 
 ## Local tracker development
 
@@ -82,9 +82,11 @@ npm run tracker
 
 This starts a server at `http://127.0.0.1:8787` (memory storage by default). A recipient's device cannot reach your computer's `127.0.0.1`, so use it only to test the tracker locally, not for recipient opens. See [tracking.md](tracking.md) and [tracking-debug.md](tracking-debug.md).
 
-## Optional: developing against PigeonBox Cloud
+## Optional: your own PigeonBox server
 
-Cloud is not needed for anything above. If you have access to the private `pigeonbox-cloud` repository and run it locally with the mock AI provider, set **Settings → Advanced → PigeonBox Cloud API URL** to `http://127.0.0.1:8788`, save, then choose **PigeonBox Cloud** under **Settings → PigeonBox**.
+Nothing above needs a server. A PigeonBox server adds server AI, per-account tracking and always-on Gmail (background sync, prepared drafts, briefings); you deploy it to your own Cloudflare and Supabase accounts with `npm run server:deploy`. See [self-hosting.md](self-hosting.md). If you run a server, its tracker replaces the standalone tracker above.
+
+To develop against a local server with mock AI, run `npm run server:dev`, set **Settings → Advanced → PigeonBox server URL** to `http://127.0.0.1:8788`, save, then choose **Your PigeonBox server** under **How should PigeonBox run?**. Details: [server/development.md](server/development.md).
 
 ## Troubleshooting
 

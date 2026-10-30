@@ -1,6 +1,6 @@
 # Unified PigeonBox workspace
 
-Implementation and verification record for the October 2, 2026 refactor. Both repositories retain their ownership boundary: the public repository owns Gmail, the extension and Local execution; the private repository owns hosted services, account administration and billing. These changes are working-tree changes. Production deployment and Chrome Web Store publication are separate release steps.
+Implementation and verification record for the October 2, 2026 refactor. At the time the server lived in a separate private repository ("Private repository" below) next to this one ("Public repository"). That code now lives here (`packages/server`, `workers/api`, `workers/server-tracker`, `apps/web`), and the billing and plans it mentions have since been removed; the server is self-hosted. Paths in the private column are now paths in this repository.
 
 ## 1. Architecture
 
@@ -8,7 +8,7 @@ Implementation and verification record for the October 2, 2026 refactor. Both re
 
 Top-level navigation is Home, Inbox and Ask. Home shows actionable work and the current Gmail conversation. Inbox uses one category selector. Ask inherits the current conversation and supports existing mailbox retrieval when the capability is present. Prepared replies, commitments, follow-ups and tracking appear in context. Approvals, activity, memory, connections and other existing features remain discoverable through command search and Settings. UI gating uses capabilities rather than plan names.
 
-The hosted web application starts with account overview, billing, connected accounts, privacy, workspace/team, API/MCP and audit controls. Its advanced workflow controls remain under progressive disclosure. Daily prepared work and conversation actions live in the Gmail workspace.
+The server dashboard starts with account overview, connected accounts, privacy, workspace/team, API/MCP and audit controls. Its advanced workflow controls remain under progressive disclosure. Daily prepared work and conversation actions live in the Gmail workspace.
 
 ## 2. Changed files by subsystem
 
@@ -21,7 +21,7 @@ Paths below are relative to the respective repository; directories identify rela
 | Settled tracking | `packages/tracking/src/{attribution,lifecycle,index}`, `content/tracking/{message-self-view,dom-self-view}`, `background/tracking/{tracked-mail,notifications}`, background navigation/claim/poll routing, `workers/tracker/src/{index,helpers}`, `convex/{http,openRequest,tracking}` | `packages/server/src/tracker-supabase.test.ts`, synchronized tracker/tracking vendors |
 | Tasks and contextual Ask | `packages/api-contract/src/{tasks,research,routes,index}`, `background/cloud/page-calls`, `workspace/{Tasks,thread-question}`, `sidepanel/CloudAsk`, account-bound local Ask routing | `packages/server/src/intel/{tasks,research}`, `packages/server/src/routes/features`, `intel/workspace.test.ts` |
 | Integrated feature UI and design | `content/thread/{ThreadPanel,CloudCompanion}`, `sidepanel/{CloudView,CloudHome,CloudDrafts,DraftReview,DraftsView,WaitingView}`, `settings`, `onboarding`, shared `ui` primitives/tokens/motion/appearance/continuity, preview entry points and styles | Account site hierarchy and semantic product tokens |
-| Gmail lifecycle, compatibility and cleanup | `packages/gmail/src/DomFallbackAdapter`, content wiring, message allowlists, deleted `src/popup/*` and old content command palette, dev reload/package scripts, architecture/local setup/store/dispatch docs | Hash-checked `vendor/PUBLIC_SOURCE.json` and generated vendor files |
+| Gmail lifecycle, compatibility and cleanup | `packages/gmail/src/DomFallbackAdapter`, content wiring, message allowlists, deleted `src/popup/*` and old content command palette, dev reload/package scripts, architecture/local setup/store/dispatch docs | Hash-checked vendored copies of the public packages (no longer needed now that both live in one repository) |
 | Verification | Identity/perspective/agent/attribution/notification/Gmail/workspace/component tests, browser fixtures and workspace/tracking/design tests | Hosted owner/task/source-isolation tests, tracker regressions, updated account-site browser tests |
 
 ## 3. Tracking race fix
@@ -65,7 +65,7 @@ The workspace shell opens without waiting for inference, tracking or hosted sync
 - Consolidated Home into actionable work, reduced Inbox category buttons to one selector, and made command search the secondary feature entry point.
 - Grouped settings and privacy/execution copy, removed duplicate configuration/reset controls, and shortened onboarding around Local versus Cloud execution.
 
-Local inference, BYOK, tracking, Ask, follow-ups, prepared drafts, approvals, memory, authentication, billing, sync and capability gates remain. Saved tasks use the existing encrypted hosted task table: suggestions require explicit Save, completion/reopening is explicit, and source email/account and due dates remain attached.
+Local inference, BYOK, tracking, Ask, follow-ups, prepared drafts, approvals, memory, authentication, sync and capability gates remain. Saved tasks use the existing encrypted hosted task table: suggestions require explicit Save, completion/reopening is explicit, and source email/account and due dates remain attached.
 
 Motion communicates expansion/collapse, navigation/context, preparation, completion and focus. It is short and interruptible, honors reduced motion/transparency, and uses Pidgy as a small state indicator. Semantic themes, compact widths and focus behavior have browser coverage.
 
@@ -86,14 +86,14 @@ Results are recorded against these working trees and synthetic fixtures, not liv
 | Public `npm run verify` | Passed: repository/version/dependency checks, typecheck, lint, 76 test files / 692 tests, all builds, release ZIP validation |
 | Public `npm run test:browser` | Passed: all 34 Chromium tests, including held self-view reconciliation, immediate recipient notification, native docking, context/source-linked tasks, motion/interruption, reduced motion, compact themes and idle performance |
 | Public `npm run package` | Passed: `release/PigeonBox-v0.4.0.zip`, 56 files / 8.4 MB; MV3, no popup, shared workspace and optional side-panel entries, no browser-test fixture in the ZIP |
-| Private `npm run acceptance`: vendor/secrets/typecheck/server/contract checks | Passed: 31 test files / 282 tests; hash-checked vendors match the edited public source |
+| Private `npm run acceptance`: vendor, secret, typecheck, server and contract checks | Passed: 31 test files / 282 tests; hash-checked vendors match the edited public source |
 | Private `npm run acceptance`: browser and bundles | Passed: 10 account-site Chromium tests and production-config dry-run bundles for both API and tracker Workers |
 
 Release ZIP SHA-256: `b80bea73c6b49e3a5120e2d17230427841f72e92a697f238e99c553a7ad0ed32`.
 
 The Gmail content script receives appearance as sanitized presentation metadata over the allowlisted worker bridge. It does not gain access to trusted storage. This has a dedicated regression test. Renderer-level motion tests observe real Chrome animations, including the isolated content-script world; they do not assume a short animation is still running after a test protocol round-trip.
 
-No production deploy, migration, live billing change, push or Web Store publication was performed.
+No deploy, migration, push or Web Store publication was performed.
 
 ## 9. Practical limits
 
@@ -111,7 +111,7 @@ Fixture tests validate extension/runtime and hosted behavior, but cannot replace
 4. Use two signed-in Gmail accounts and a send-as alias. Open owner-sent and recipient-sent threads; delay identity/AI responses and navigate away/back. Confirm neutral loading, second-person summaries and no stale account/job results.
 5. Track a genuinely sent email. Reload it repeatedly, expand/collapse its messages and quoted messages, and interrupt tracker connectivity. Watch count, opened animation, activity and notifications. Have an actual recipient open immediately afterward; verify the settled open and notification appear once.
 6. In Local mode, verify Ask/current-thread summary, draft insertion, inbox categories, follow-ups, tracking and source navigation. Test the selected real Local/BYOK provider.
-7. In Cloud mode, verify capabilities, connection/sync, Home/prepared replies, approvals/placeholders, follow-ups, memory, current-thread and mailbox Ask. Disconnect or remove capabilities and verify clear, accurate states without implicit provider fallback.
+7. In server mode, verify capabilities, connection/sync, Home/prepared replies, approvals/placeholders, follow-ups, memory, current-thread and mailbox Ask. Disconnect or remove capabilities and verify clear, accurate states without implicit provider fallback.
 8. Save a suggested commitment/follow-up as a task, create one manually, complete/reopen it and navigate to its email source. Verify suggestions remain suggestions until explicitly saved.
-9. Verify the hosted account site: billing, connected accounts, privacy/retention, team, API/MCP and audit plus advanced workflow controls. Test sign-out/expiry and narrow layouts.
-10. Complete Chrome Web Store permission/privacy/listing review and coordinated client/server release verification before publishing. Existing test-mode billing remains test-mode unless explicitly authorized.
+9. Verify the server dashboard: connected accounts, privacy/retention, team, API/MCP and audit plus advanced workflow controls. Test sign-out/expiry and narrow layouts.
+10. If publishing to the Chrome Web Store, complete its permission/privacy/listing review and coordinated client/server release verification first.

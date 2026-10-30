@@ -48,7 +48,7 @@ export function ThreadPanel(props: {
   onDraft: () => void;
   onRemind: () => void;
   onRetrySummary?: () => void;
-  /** What PigeonBox Cloud knows about this thread, in Cloud mode with Google connected. */
+  /** What the PigeonBox server knows about this thread, in Cloud mode with Google connected. */
   cloud?: ThreadIntel | null;
   cloudCapabilities?: string[];
   mailbox?: string;

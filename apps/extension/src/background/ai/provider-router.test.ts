@@ -51,7 +51,7 @@ describe('resolveAIProvider', () => {
     expect(resolveAIProvider(settings, deps({ experimental: true }))?.name).toBe('chatgpt');
   });
 
-  it('Cloud mode uses PigeonBox Cloud, not the saved BYOK provider', async () => {
+  it('server mode uses the PigeonBox server, not the saved BYOK provider', async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify({ result: { oneLine: 'Lunch Friday', keyPoints: [], decisions: [], unansweredQuestions: [], commitments: [], dates: [], actionItems: [] } }), { status: 200 }),
     );
@@ -65,36 +65,36 @@ describe('resolveAIProvider', () => {
     expect(d.completeOnDevice).not.toHaveBeenCalled();
   });
 
-  it('Cloud outage fails clearly and never falls back to another provider', async () => {
+  it('a server outage fails clearly and never falls back to another provider', async () => {
     const fetchMock = vi.fn(async () => {
       throw new TypeError('Failed to fetch');
     });
     const client = new PigeonBoxCloudClient({ baseUrl: 'https://api.example.com', fetch: fetchMock as unknown as typeof fetch, tokens: { get: async () => 't', refresh: async () => null } });
     const d = deps({ cloudClient: () => client });
     const ai = resolveAIProvider(cloudSettings, d)!;
-    await expect(ai.summarizeThread(summaryInput)).rejects.toThrow('PigeonBox Cloud is unavailable. Nothing was sent to another provider.');
+    await expect(ai.summarizeThread(summaryInput)).rejects.toThrow('Your PigeonBox server is unavailable. Nothing was sent to another provider.');
     expect(d.completeOnDevice).not.toHaveBeenCalled();
     expect(d.completeChatGpt).not.toHaveBeenCalled();
     // Only the Cloud endpoint was contacted.
     for (const call of fetchMock.mock.calls as unknown[][]) expect(String(call[0])).toContain('api.example.com');
   });
 
-  it('Cloud mode in a build without Cloud reports it instead of using Local providers', async () => {
+  it('server mode without a configured server reports it instead of using Local providers', async () => {
     const d = deps({ cloudClient: () => null });
     const ai = resolveAIProvider(cloudSettings, d)!;
     await expect(ai.draftReply({ subject: 's', messages: summaryInput.messages, voice: DEFAULT_SETTINGS.voiceProfile, kind: 'reply' })).rejects.toThrow(
-      /not available in this build/,
+      /No PigeonBox server is configured/,
     );
   });
 
-  it('expired subscription surfaces as a subscription message', async () => {
+  it('a capability the server does not grant surfaces as such, never as a subscription', async () => {
     const client = new PigeonBoxCloudClient({
       baseUrl: 'https://api.example.com',
       fetch: (async () => new Response(JSON.stringify({ error: { code: 'entitlement_required', message: 'x', retryable: false } }), { status: 402 })) as unknown as typeof fetch,
       tokens: { get: async () => 't', refresh: async () => null },
     });
     const ai = resolveAIProvider(cloudSettings, deps({ cloudClient: () => client }))!;
-    await expect(ai.rewriteText({ text: 'hello', mode: 'improve' })).rejects.toThrow(/subscription is not active/);
+    await expect(ai.rewriteText({ text: 'hello', mode: 'improve' })).rejects.toThrow(/does not offer this for your account/);
   });
 });
 

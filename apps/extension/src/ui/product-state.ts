@@ -1,11 +1,13 @@
-import { trackProductEvent } from './analytics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CloudState, PigeonBoxCapability, PigeonBoxMode } from '@pigeonbox/core';
 
-/** What the background worker reports about mode, Cloud and capabilities. */
+/** What the background worker reports about mode, the PigeonBox server and capabilities. */
 export type ProductState = {
   runMode: PigeonBoxMode;
+  /** A PigeonBox server URL is configured (built in, or set in Settings → Advanced). */
   cloudAvailable: boolean;
+  /** That server's dashboard can reach this build, so Settings and server setup open there. */
+  dashboardAvailable: boolean;
   cloudConsentAt: string | null;
   cloud: CloudState;
   capabilities: PigeonBoxCapability[];
@@ -17,8 +19,9 @@ export type ProductState = {
 export const INITIAL_PRODUCT_STATE: ProductState = {
   runMode: 'local',
   cloudAvailable: false,
+  dashboardAvailable: false,
   cloudConsentAt: null,
-  cloud: { status: 'not_configured', email: null, plan: null, capabilities: [] },
+  cloud: { status: 'not_configured', email: null, capabilities: [] },
   capabilities: ['ask_inbox'],
   aiDestination: 'none',
   experimental: false,
@@ -42,8 +45,8 @@ export function sendProductMessage(message: Record<string, unknown>): Promise<Re
 }
 
 /**
- * Mode, Cloud status and capabilities for extension pages. Components check
- * `has('cloud_tracking')` etc. instead of branching on mode or plan.
+ * Mode, server status and capabilities for extension pages. Components check
+ * `has('cloud_tracking')` etc. instead of branching on mode.
  */
 export function useProductState() {
   const [state, setState] = useState<ProductState>(INITIAL_PRODUCT_STATE);
@@ -86,29 +89,25 @@ export function useProductState() {
     error,
     refresh,
     has: (capability: PigeonBoxCapability) => state.capabilities.includes(capability),
-    useLocal: () => { trackProductEvent('local_selected'); return run({ type: 'SET_RUN_MODE', mode: 'local' }); },
-    useCloud: (consent: boolean) => { if (consent) trackProductEvent('cloud_selected'); return run({ type: 'SET_RUN_MODE', mode: 'cloud', consent }); },
+    useLocal: () => run({ type: 'SET_RUN_MODE', mode: 'local' }),
+    useCloud: (consent: boolean) => run({ type: 'SET_RUN_MODE', mode: 'cloud', consent }),
     /** Call from a click handler: Chrome only shows permission prompts during a user gesture. */
     signIn: async () => {
-      trackProductEvent('cloud_signin_started');
       if (typeof chrome !== 'undefined' && chrome.permissions?.request) {
         const granted = await chrome.permissions
           .request({ permissions: ['identity'], origins: state.cloudOrigins })
           .catch(() => false);
         if (!granted) {
-          setError('PigeonBox needs permission to open the sign-in window and reach PigeonBox Pro.');
+          setError('PigeonBox needs permission to open the sign-in window and reach your PigeonBox server.');
           return undefined;
         }
       }
-      const reply = await run({ type: 'CLOUD_SIGN_IN' });
-      if (reply?.ok) trackProductEvent('cloud_signin_completed', { outcome: 'success' });
-      return reply;
+      return run({ type: 'CLOUD_SIGN_IN' });
     },
     signOut: () => run({ type: 'CLOUD_SIGN_OUT' }),
     recheck: () => run({ type: 'CLOUD_REFRESH' }),
     /** Store copies restart into a ready update; otherwise the store or releases page opens. */
     updateExtension: () => run({ type: 'EXTENSION_UPDATE' }),
-    billing: (kind: 'checkout' | 'portal') => run({ type: 'CLOUD_BILLING', kind }),
   };
 }
 

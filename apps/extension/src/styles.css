@@ -646,7 +646,7 @@ a:focus-visible {
 .gi-draft-foot { display:flex; align-items:center; justify-content:space-between; gap:var(--pb-space-2); padding:var(--pb-space-2) var(--pb-space-3) var(--pb-space-3); font-size:var(--pb-size-meta); line-height:1.5; }
 .gi-draft-foot .gi-btn { flex:none; padding:var(--pb-space-2) var(--pb-space-3); font-size:var(--pb-size-label); }
 
-/* PigeonBox Cloud in the side panel */
+/* PigeonBox server features in the side panel */
 .gi-approvals { display:grid; gap:var(--pb-space-3); margin:0; padding:0; list-style:none; }
 .gi-approval { padding:var(--pb-space-3) var(--pb-space-3); border-radius: var(--pb-radius); background: var(--gi-surface); box-shadow: none; }
 .gi-approval-head { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--pb-space-2); font-size:var(--pb-size-secondary); line-height:1.4; }

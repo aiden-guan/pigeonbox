@@ -127,7 +127,7 @@ describe('PigeonBoxCloudClient', () => {
       const auth = (init!.headers as Record<string, string>).Authorization;
       seen.push(auth);
       if (auth === 'Bearer old') return json({ error: { code: 'invalid_token', message: 'expired', retryable: false } }, 401);
-      return json({ user: { id: 'u1', email: 'a@example.com' }, plan: 'cloud', subscription: { status: 'active', currentPeriodEnd: null, cancelAtPeriodEnd: false } });
+      return json({ user: { id: 'u1', email: 'a@example.com' } });
     });
     const refresh = vi.fn(async () => 'new');
     const client = new PigeonBoxCloudClient({
@@ -154,13 +154,13 @@ describe('PigeonBoxCloudClient', () => {
     const client = new PigeonBoxCloudClient({
       baseUrl: 'https://api.example.com',
       fetch: (async () =>
-        json({ error: { code: 'entitlement_required', message: 'Subscribe', retryable: false, requestId: 'req_9' } }, 402)) as unknown as typeof fetch,
+        json({ error: { code: 'entitlement_required', message: 'Not enabled for this account', retryable: false, requestId: 'req_9' } }, 402)) as unknown as typeof fetch,
       tokens: { get: async () => 't', refresh: async () => null },
     });
     const error = await client.entitlements().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(CloudApiError);
     expect(error).toMatchObject({ code: 'entitlement_required', status: 402, requestId: 'req_9', retryable: false });
-    expect(cloudErrorMessage(error).action).toBe('subscribe');
+    expect(cloudErrorMessage(error)).toEqual({ message: expect.stringContaining('does not offer this for your account'), action: 'switch_to_local' });
   });
 
   it('treats a non-JSON 5xx as a retryable internal error', async () => {

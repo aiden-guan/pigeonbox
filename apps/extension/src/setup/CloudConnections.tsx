@@ -1,12 +1,11 @@
 /**
- * Google connection for PigeonBox Cloud's always-on features. Connecting
- * happens on Google's consent screen in a new tab; credentials stay with
- * PigeonBox Cloud and never reach the extension.
+ * Google connection for the PigeonBox server's always-on features. Connecting
+ * happens on Google's consent screen in a new tab; credentials stay on your
+ * PigeonBox server and never reach the extension.
  */
 import type { MailAccount } from '@pigeonbox/api-contract';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cloudCall } from '../sidepanel/cloud-api';
-import { trackProductEvent } from '../ui/analytics';
 
 const FEATURES: Array<[string, string, string]> = [
   ['mail_read', 'Read and sync mail', 'Required. Keeps triage, follow-ups and drafts current while Gmail is closed.'],
@@ -39,13 +38,6 @@ export function CloudConnections() {
     loading.current = false;
     if (!result.ok) { setError(result.reason); return; }
     setError(''); setAccounts(result.data.accounts); setConfigured(result.data.googleConfigured);
-    if (result.data.accounts.length && chrome.storage?.session) {
-      const pending = await chrome.storage.session.get('googleConnectionPending');
-      if (pending.googleConnectionPending) {
-        trackProductEvent('google_connection_completed', { surface: 'settings', mode: 'cloud', outcome: 'success' });
-        await chrome.storage.session.remove('googleConnectionPending');
-      }
-    }
   }, []);
   useEffect(() => {
     void load();
@@ -55,13 +47,11 @@ export function CloudConnections() {
   }, [load]);
 
   async function connect() {
-    trackProductEvent('google_connection_started', { surface: 'settings', mode: 'cloud' });
     setBusy(true);
     setError('');
     const result = await cloudCall<{ url: string }>('connectStart', { features: picked, returnTo: 'extension' });
     setBusy(false);
     if (!result.ok) return setError(result.reason);
-    if (chrome.storage?.session) await chrome.storage.session.set({ googleConnectionPending: true });
     await chrome.tabs.create({ url: result.data.url });
   }
 
@@ -82,7 +72,7 @@ export function CloudConnections() {
       ) : (
         <>
           <p className="mt-1 text-xs gi-muted">
-            Connect a Google account and PigeonBox Pro keeps your inbox triaged and drafts prepared even while Gmail is closed. It asks before anything is sent. Credentials stay with PigeonBox Pro, never in this extension.
+            Connect a Google account and your PigeonBox server keeps your inbox triaged and drafts prepared even while Gmail is closed. It asks before anything is sent. Credentials stay on your server, never in this extension.
           </p>
           {configured ? (
             <>
@@ -108,14 +98,14 @@ export function CloudConnections() {
               </div>
             </>
           ) : (
-            <p className="mt-2 text-xs gi-muted">Google connections are not available on this PigeonBox Pro server yet.</p>
+            <p className="mt-2 text-xs gi-muted">Google connections are not set up on your PigeonBox server yet.</p>
           )}
         </>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" className="gi-text-btn" onClick={() => void load()}>Refresh status</button>
         <button type="button" className="gi-btn gi-btn-ghost" onClick={() => chrome.runtime.sendMessage({ type: 'CLOUD_OPEN', section: 'connections' })}>
-          Manage in PigeonBox Pro ↗
+          Manage on your server ↗
         </button>
       </div>
     </div>

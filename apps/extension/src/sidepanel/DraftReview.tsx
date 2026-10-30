@@ -1,7 +1,6 @@
 import { useTransfer } from '../ui/continuity';
 import type { CloudDraft, ThreadIntel } from '@pigeonbox/api-contract';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { trackProductEvent } from '../ui/analytics';
 import { Orb } from '../ui/Orb';
 import { callCloud } from './cloud-api';
 import { ago, draftKindLabel, draftStateLabel, openPlaceholders, personLabel, placementLine } from './cloud-presenters';
@@ -115,7 +114,6 @@ export function DraftReview(props: { target: ReviewTarget; onBack: () => void; o
     if (result.data.draft) adopt(result.data.draft, true);
     setPlacedText(body.trim());
     setCheckpoint(null);
-    trackProductEvent('prepared_draft_used', { surface: 'sidepanel', mode: 'cloud' });
     setNotice(inGmail ? 'Gmail draft updated. Nothing was sent.' : 'Added to your Gmail Drafts. Nothing was sent.');
     props.onChanged();
   }

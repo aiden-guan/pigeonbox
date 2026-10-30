@@ -1,6 +1,5 @@
-import { trackProductEvent } from '../../ui/analytics';
 /**
- * PigeonBox Cloud in the thread card, shaped by what this email is about:
+ * The PigeonBox server in the thread card, shaped by what this email is about:
  *
  *   scheduling  "Scheduling · times from your calendar"; the prepared reply already has them
  *   waiting     "Waiting 4 days · opened 2×"; Follow up
@@ -15,7 +14,7 @@ import { trackProductEvent } from '../../ui/analytics';
  * Everything is rendered as text.
  */
 import type { CloudDraft, SourceRef, ThreadIntel } from '@pigeonbox/api-contract';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { CalendarConnectHint, FirstContactNote } from './CloudContext';
 import { VARIANT_CHOICE_KEY, rememberVariantChoice } from '../compose/variant-choice';
 
@@ -134,7 +133,6 @@ export function CloudCompanion(props: {
   const draft = liveDraft(intel);
   const [variantIndex, setVariantIndex] = useState(0);
   const [expanded, setExpanded] = useState(false);
-  useEffect(() => { if (props.intel.draft) trackProductEvent('first_prepared_draft_seen', { surface: 'gmail', mode: 'cloud' }); }, [props.intel.draft]);
   const intent = companionIntent(intel);
   const offerable = draft && (draft.status === 'ready' || draft.status === 'stale') ? draft : null;
   const variant = offerable?.variants[Math.min(variantIndex, offerable.variants.length - 1)] ?? null;
@@ -214,7 +212,7 @@ export function CloudCompanion(props: {
           <DraftBody body={variant.body} expanded={expanded} onToggle={() => setExpanded((value) => !value)} />
           {open.length ? <p className="gi-cloud-warn">Fill in {open.join(', ')} before sending.</p> : null}
           <div className="gi-actions pb-cc-actions">
-            <button type="button" className="gi-action" onClick={() => { trackProductEvent('prepared_draft_used', { surface: 'gmail', mode: 'cloud' }); props.onUseDraft(variant.body); }}>
+            <button type="button" className="gi-action" onClick={() => props.onUseDraft(variant.body)}>
               {offerable.kind === 'follow_up' ? 'Use follow-up' : 'Use reply'}
             </button>
             {offerable.sources.length ? (

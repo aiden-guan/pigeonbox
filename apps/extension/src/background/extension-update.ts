@@ -1,5 +1,5 @@
 /**
- * "Update PigeonBox" when PigeonBox Cloud needs a newer extension.
+ * "Update PigeonBox" when the PigeonBox server needs a newer extension.
  *
  * Chrome Web Store copies ask Chrome for the update and restart into it when
  * one is ready; otherwise (review still pending, or an unpacked copy) the

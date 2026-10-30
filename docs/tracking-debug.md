@@ -11,9 +11,9 @@ Composing must not request `/open/trk_`. The pixel is added only to the outbound
 ## Setup
 
 1. Load the unpacked extension from `apps/extension/dist`.
-2. For recipient opens across devices, use a public tracker: your Convex deployment or Cloudflare Worker + Supabase. `npm run tracker` is local development only; another device cannot reach the `127.0.0.1` address.
+2. For recipient opens across devices, use a public tracker: your PigeonBox server's tracker, or a standalone tracker on Convex or Cloudflare Worker + Supabase. `npm run tracker` is local development only; another device cannot reach the `127.0.0.1` address.
 3. Open **Settings → Email tracking** (the gear in the PigeonBox workspace).
-4. Paste the tracker URL and personal API token into Settings. Get the public URL from your Convex or Cloudflare deployment; `.local/tracker.txt` contains the generated token. For local-only development, use `http://127.0.0.1:8787` on the same computer. You may place a gitignored `apps/extension/public/tracker-config.json` (`{ "trackerBaseUrl", "personalApiToken" }`) to prefill them; release packaging always strips that file. A token inside an extension is readable by anyone with the browser profile, so it only protects your own tracker.
+4. For a standalone tracker, paste the tracker URL and personal API token into Settings (a server's tracker needs no token; signing in to the server is enough). Get the public URL from your Convex or Cloudflare deployment; `.local/tracker.txt` contains the generated token. For local-only development, use `http://127.0.0.1:8787` on the same computer. You may place a gitignored `apps/extension/public/tracker-config.json` (`{ "trackerBaseUrl", "personalApiToken" }`) to prefill them; release packaging always strips that file. A token inside an extension is readable by anyone with the browser profile, so it only protects your own tracker.
 5. Save and allow Chrome's permission prompt for the tracker host. The connection line should say **Tracker healthy**, not merely that the fields are filled in.
 6. Leave **Track email opens** and **Track link clicks** on.
 
@@ -100,4 +100,4 @@ Page world is injected by InboxSDK’s own `inboxsdk__injectPageWorld` message. 
 - **Discard.** A discarded compose marks the tracker `CANCELLED`. It is not a sent email.
 - **Tracker down.** Send still goes out. The session records the failure.
 - **Id formats.** Stored Gmail ids strip a leading `#` and `msg-a:`, `msg-f:`, `thread-a:`, or `thread-f:`. The modifier key only strips `#` and `msg-a:`, matching page world.
-- **Supabase.** Apply `supabase/migrations/20260923000000_tracking_status.sql` as well as the original tracking migration. `sent_at` is nullable and `status` is `PENDING` until send.
+- **Supabase (standalone tracker).** Apply `workers/tracker/supabase/migrations/20260923000000_tracking_status.sql` as well as the original tracking migration. A PigeonBox server applies its own migrations with `npm run server:deploy`. `sent_at` is nullable and `status` is `PENDING` until send.

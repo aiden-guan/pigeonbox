@@ -2,7 +2,7 @@
   "name": "@pigeonbox/api-contract",
   "version": "0.8.4",
   "private": true,
-  "description": "Typed PigeonBox Cloud protocol: request, response and error schemas shared by the extension and the hosted API.",
+  "description": "Typed protocol between the PigeonBox extension and a PigeonBox server: request, response and error schemas.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

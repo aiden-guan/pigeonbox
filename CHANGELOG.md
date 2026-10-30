@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+PigeonBox is now fully open source and self-hosted. The server that powered PigeonBox Cloud is part of this repository, and there is no PigeonBox-run service, account or subscription.
+
+### Added
+- **Your own PigeonBox server.** The API, always-on Gmail layer, dashboard, tracker and database schema now live here (`packages/server`, `workers/api`, `workers/server-tracker`, `apps/web`, `supabase/`). Fill in `server.env` and run `npm run server:deploy` to deploy it to your own Cloudflare and Supabase accounts; the [self-hosting guide](docs/self-hosting.md) covers every step.
+- `ALLOWED_EMAILS` decides who may sign in to your server. Everyone on it gets every feature the server is configured for.
+- `npm run server:dev` runs the server on your computer with mock AI and a development sign-in, and `npm run server:smoke` checks a deployment.
+
+### Changed
+- "PigeonBox Pro" is now "your PigeonBox server". Release builds no longer include a server address; build from source to use your server.
+- A monthly AI budget per account is off unless you set one.
+
+### Removed
+- Plans, subscriptions and Stripe billing.
+- The Cloud waitlist, the usepigeonbox.com dashboard connection, and the "Sent with PigeonBox" footer.
+- Anonymous usage events and the server's product analytics.
+
 ---
 
 ## [0.8.4] — 2026-10-19

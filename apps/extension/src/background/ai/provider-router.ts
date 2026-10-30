@@ -3,9 +3,9 @@
  *
  * This module does not implement "PigeonBox Intelligence" as a separate
  * service. It chooses the `AIProvider` used by the rest of PigeonBox from the
- * run mode (Local or Cloud), settings and build capabilities:
- * on-device (WebGPU Qwen, Gemini Nano), Ollama, BYOK, the experimental ChatGPT
- * session, or PigeonBox Cloud via `@pigeonbox/cloud-client`.
+ * run mode (on this computer or on your PigeonBox server), settings and build
+ * capabilities: on-device (WebGPU Qwen, Gemini Nano), Ollama, BYOK, the
+ * experimental ChatGPT session, or the PigeonBox server via `@pigeonbox/cloud-client`.
  */
 import {
   CHATGPT_DEFAULT_MODEL,
@@ -21,7 +21,7 @@ import type { ExtensionSettings } from '@pigeonbox/shared';
 export type AIProviderRouterDeps = {
   completeChatGpt: (model: string, system: string, user: string) => ReturnType<PromptComplete>;
   completeOnDevice: (modelId: string, ...args: Parameters<PromptComplete>) => ReturnType<PromptComplete>;
-  /** Null when this build has no Cloud URL. */
+  /** Null when no PigeonBox server URL is configured. */
   cloudClient: () => PigeonBoxCloudClient | null;
   /** Experimental providers (ChatGPT web session) are excluded from release builds. */
   experimental: boolean;
@@ -31,11 +31,11 @@ export type AIProviderRouterDeps = {
  * The single place that decides which `AIProvider` serves a request.
  * Everything downstream (agent, Ask Pigeon, Write with AI, Gmail UI) only sees an
  * `AIProvider` and cannot tell Qwen, Gemini Nano, Ollama, a BYOK key or
- * PigeonBox Cloud apart.
+ * a PigeonBox server apart.
  *
- * Cloud mode never falls back to another remote provider. When Cloud cannot
- * serve a request, the caller gets a clear error and on-device heuristics keep
- * working.
+ * Server mode never falls back to another remote provider. When the server
+ * cannot serve a request, the caller gets a clear error and on-device heuristics
+ * keep working.
  */
 export function resolveAIProvider(settings: ExtensionSettings, deps: AIProviderRouterDeps): AIProvider | null {
   if (settings.runMode === 'cloud') return cloudProvider(deps.cloudClient());
@@ -74,11 +74,11 @@ export function resolveLocalProvider(settings: ExtensionSettings, deps: AIProvid
 }
 
 function cloudProvider(client: PigeonBoxCloudClient | null): AIProvider {
-  if (!client) return failingProvider(new CloudApiError({ code: 'not_configured', message: 'PigeonBox Pro is not available in this build.' }));
+  if (!client) return failingProvider(new CloudApiError({ code: 'not_configured', message: 'No PigeonBox server is configured.' }));
   return withFriendlyErrors(createCloudAIProvider(client));
 }
 
-/** Rethrow Cloud failures with wording a user can act on. The original stays as `cause`. */
+/** Rethrow server failures with wording a user can act on. The original stays as `cause`. */
 function withFriendlyErrors(provider: AIProvider): AIProvider {
   const wrap = <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
     async (...args: A): Promise<R> => {
@@ -119,10 +119,10 @@ function failingProvider(error: CloudApiError): AIProvider {
 }
 
 /**
- * Settings as the agent and the Gmail UI should see them. In Cloud mode, AI is
- * on and served by PigeonBox Cloud, whatever the saved Local AI choice is; the
- * saved Local choice is kept untouched for when the user switches back. The BYOK
- * key is blanked so no Cloud-mode code path can reach it.
+ * Settings as the agent and the Gmail UI should see them. In server mode, AI is
+ * on and served by the PigeonBox server, whatever the saved Local AI choice is;
+ * the saved Local choice is kept untouched for when the user switches back. The
+ * BYOK key is blanked so no server-mode code path can reach it.
  */
 export function effectiveSettings(settings: ExtensionSettings): ExtensionSettings {
   if (settings.runMode !== 'cloud') return settings;
@@ -130,7 +130,7 @@ export function effectiveSettings(settings: ExtensionSettings): ExtensionSetting
     ...settings,
     aiMode: 'remote',
     aiProvider: 'openai-compatible',
-    aiModel: 'PigeonBox Pro',
+    aiModel: 'PigeonBox server',
     aiEndpoint: '',
     aiApiKey: '',
   };

@@ -26,7 +26,7 @@ export function isVisibleCommand(id: string): id is CommandId {
   return IDS.has(id);
 }
 
-/** Commands that exist only with PigeonBox Cloud's always-on features; hidden otherwise. */
+/** Commands that exist only with the PigeonBox server's always-on features; hidden otherwise. */
 export const CLOUD_ONLY_COMMANDS: ReadonlySet<CommandId> = new Set<CommandId>(VISIBLE_COMMANDS.filter((item) => item.id.startsWith('cloud')).map((item) => item.id));
 
 const FEATURE: Record<string, string> = { cloud_briefings: 'cloud_automations', cloud_views: 'cloud_automations', cloud_automations: 'cloud_automations', cloud_contacts: 'cloud_relationships', cloud_documents: 'cloud_documents' };

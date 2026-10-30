@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { EmailAddressSchema, IdSchema, IsoSchema } from './common.js';
 
 /**
- * Cloud-only Google connections. PigeonBox Cloud holds the Google credentials
+ * Server-only Google connections. The PigeonBox server holds the Google credentials
  * server-side (encrypted); the extension and web app only see connection
  * status. Local mode never uses a Google API and never needs this.
  *

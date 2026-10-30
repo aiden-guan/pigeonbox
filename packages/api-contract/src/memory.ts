@@ -64,7 +64,7 @@ export const MemoryUpdateRequestSchema = MemoryIdRequestSchema.extend({
 });
 export const MemoryPurgeRequestSchema = z.object({ confirm: z.literal('forget all memories') });
 export const MemoryPurgeResponseSchema = z.object({ removed: z.number().int().nonnegative() });
-export const MemorySubjectsRequestSchema = z.object({}).default({});
+export const MemorySubjectsRequestSchema = z.object({}).default(() => ({}));
 export const MemorySubjectsResponseSchema = z.object({
   subjects: z.array(MemorySubjectSchema).max(300),
   /** True while older facts are still being merged into pages. */
@@ -75,7 +75,7 @@ export const MemorySubjectsResponseSchema = z.object({
 export const MemoryChatRequestSchema = z.object({
   message: z.string().trim().min(1).max(10_000),
   subject: MemorySubjectIdSchema.optional(),
-  history: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(2_000) })).max(8).default([]),
+  history: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(2_000) })).max(8).default(() => []),
 });
 export const MemoryChatResponseSchema = z.object({
   answer: z.string().min(1).max(2_000),

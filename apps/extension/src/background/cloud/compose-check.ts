@@ -1,7 +1,7 @@
 /**
  * Real-time Pidgy checks, worker side. The Gmail content script hands over one
  * short clause of an unsent draft; this module decides whether it may leave the
- * extension at all, and passes it to PigeonBox Cloud only when:
+ * extension at all, and passes it to the PigeonBox server only when:
  *
  * - the extension is in Cloud mode, signed in, with Cloud sync (never in Local mode);
  * - the user turned on `memory.realtimeComposeChecks` (read from Cloud, cached briefly);

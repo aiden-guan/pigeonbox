@@ -1,4 +1,3 @@
-import { trackProductEvent } from '../ui/analytics';
 import { Brand, Pigeon } from '../ui/Pigeon';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { ExtensionSettings } from '@pigeonbox/shared';
@@ -148,7 +147,6 @@ function WorkspaceContent() {
   }, []);
 
   const runAsk = useCallback(async (question: string) => {
-    trackProductEvent('ask_pigeon_used', { surface: 'sidepanel', mode: 'local' });
     setAsked(question);
     setQuery('');
     setResult(null);
@@ -224,12 +222,11 @@ function WorkspaceContent() {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') return;
       if (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="true"]')) return;
       event.preventDefault();
-      trackProductEvent('command_palette_opened', { surface: 'sidepanel', mode: cloudMode ? 'cloud' : 'local' });
       setPalette(true);
     };
     document.addEventListener('keydown', shortcut);
     return () => document.removeEventListener('keydown', shortcut);
-  }, [cloudMode, palette]);
+  }, [palette]);
   function navigate(next: 'home' | 'inbox' | 'ask' | 'cloud', section = 'overview') {
     const destination = next === 'cloud' ? 'home' : next;
     setMode(destination); setCloudSection(section);
@@ -245,7 +242,7 @@ function WorkspaceContent() {
       ...(['remind', 'archive', 'mark_respond', 'mark_waiting', 'mark_fyi'] as const).map((id) => ({ id, label: ({ remind: 'Remind me', archive: 'Archive thread', mark_respond: 'Mark Respond', mark_waiting: 'Mark Waiting', mark_fyi: 'Mark FYI' })[id], detail: context.subject, icon: 'inbox' as const, run: () => chrome.runtime.sendMessage({ type: 'WORKSPACE_THREAD_ACTION', id, threadId: context.threadId }) })),
     ] : []),
     { id: 'tracking', label: 'Tracking activity', detail: 'Sent mail, opens and clicks', icon: 'tracking', run: () => chooseInbox('sent') },
-    { id: 'settings', label: 'Settings', detail: 'Execution mode, privacy and preferences', icon: 'settings', run: () => openSettings('command_palette', cloudMode ? 'cloud' : 'local') },
+    { id: 'settings', label: 'Settings', detail: 'Execution mode, privacy and preferences', icon: 'settings', run: () => openSettings() },
     ...(['light', 'dark', 'system'] as const).filter((value) => value !== theme.appearance).map((value) => ({ id: `appearance-${value}`, label: value === 'system' ? 'Match system appearance' : `Switch to ${value} appearance`, detail: `Appearance is ${theme.appearance} now`, icon: 'settings' as const, run: () => theme.change(value) })),
     ...(cloudMode ? [
       ...(product.has('cloud_auto_drafts') ? [
@@ -299,7 +296,7 @@ function WorkspaceContent() {
   return (
     <div className="gi-app pb-panel flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden" data-embedded={window.parent !== window} data-command-open={palette} data-view={mode}>
       <header className="pb-panel-header">
-        <div className="pb-panel-identity"><Brand state={context?.drafting ? 'drafting' : context?.pending ? 'indexing' : loading ? 'working' : 'idle'} /><span className="pb-mode-label">{cloudMode ? 'Cloud' : 'Local'}</span></div>
+        <div className="pb-panel-identity"><Brand state={context?.drafting ? 'drafting' : context?.pending ? 'indexing' : loading ? 'working' : 'idle'} /><span className="pb-mode-label">{cloudMode ? 'Server' : 'Local'}</span></div>
         <div className="pb-command-anchor"><CommandLauncher open={palette} onOpen={() => setPalette(true)} />
           {palette ? <CommandPalette inline commands={commands} cloud={cloudMode} onClose={() => setPalette(false)} onAskQuery={(question) => { navigate('ask'); setPendingAsk({ id: crypto.randomUUID(), query: question }); }} /> : null}
         </div>
@@ -307,7 +304,7 @@ function WorkspaceContent() {
           <Tab active={mode === 'home'} onClick={() => navigate('home')}>Home</Tab>
           <Tab active={mode === 'inbox'} onClick={() => navigate('inbox')}>Inbox</Tab>
           <Tab active={mode === 'ask'} onClick={() => navigate('ask')}>Chat</Tab>
-        </nav><div className="pb-window-controls"><IconButton label="Open PigeonBox Settings" data-settings-entry onClick={() => openSettings('workspace_header', cloudMode ? 'cloud' : 'local')}><WorkspaceIcon name="settings" size={16} /></IconButton><button type="button" className="pb-icon-btn" aria-label={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} title={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} onClick={() => { setDisplayError(''); void requestWorkspaceDisplay(location.pathname.includes('sidepanel') ? 'float' : 'dock').catch(() => setDisplayError('Could not move the workspace. Try again.')); }}><WorkspaceIcon name="dock" size={16} /></button></div></div>
+        </nav><div className="pb-window-controls"><IconButton label="Open PigeonBox Settings" data-settings-entry onClick={() => openSettings()}><WorkspaceIcon name="settings" size={16} /></IconButton><button type="button" className="pb-icon-btn" aria-label={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} title={location.pathname.includes('sidepanel') ? 'Float in Gmail' : 'Dock to side'} onClick={() => { setDisplayError(''); void requestWorkspaceDisplay(location.pathname.includes('sidepanel') ? 'float' : 'dock').catch(() => setDisplayError('Could not move the workspace. Try again.')); }}><WorkspaceIcon name="dock" size={16} /></button></div></div>
       </header>
       {displayError ? <p className="gi-warn px-4" role="alert">{displayError}</p> : null}
       <div className="pb-panel-content" inert={palette}>
@@ -334,7 +331,7 @@ function WorkspaceContent() {
             {inboxSection === 'mail' ? <p className="pb-inbox-purpose">Mail indexed from Gmail on this computer.</p> : null}
           </main>
         </div>
-      ) : cloudMode ? (product.has('cloud_semantic_search') ? <CloudAsk key={`${product.state.cloudOrigins.join('|')}:${product.state.cloud.email}`} context={context} mailbox={mailbox?.email} pendingQuery={pendingAsk} onQueryConsumed={() => setPendingAsk(null)} capabilities={product.state.capabilities} onContextQuestion={(question) => answerThreadQuestion(question, context, product.has('cloud_mail_sync'))} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} /> : <div className="px-4"><p className="gi-warn">Cloud Ask is unavailable for this connection. Sign in or check your plan on the dashboard.</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => void chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD', section: 'cloud', setup: 'cloud' })}>Open dashboard</button></div>) : (
+      ) : cloudMode ? (product.has('cloud_semantic_search') ? <CloudAsk key={`${product.state.cloudOrigins.join('|')}:${product.state.cloud.email}`} context={context} mailbox={mailbox?.email} pendingQuery={pendingAsk} onQueryConsumed={() => setPendingAsk(null)} capabilities={product.state.capabilities} onContextQuestion={(question) => answerThreadQuestion(question, context, product.has('cloud_mail_sync'))} onOpenThread={(id, accountId) => void openThread(id, 'inbox', accountId)} /> : <div className="px-4"><p className="gi-warn">Chat on your PigeonBox server is unavailable for this account. Sign in, or ask whoever runs the server to turn it on.</p><button type="button" className="gi-btn gi-btn-ghost" onClick={() => void chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD', section: 'cloud', setup: 'cloud' })}>Open Settings</button></div>) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="pb-ask-content min-h-0 flex-1 overflow-auto">
             {context ? <ContextCard subject={context.subject} sender={context.sender} motionKey={`context:${context.threadId}`} /> : null}

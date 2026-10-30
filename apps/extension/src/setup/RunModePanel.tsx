@@ -1,4 +1,4 @@
-import { openCloudWaitlist } from '../config';
+import { SELF_HOSTING_GUIDE_URL } from '../config';
 import { useDispatchLayout } from '../ui/dispatch-motion';
 import { useState } from 'react';
 import type { ProductControls } from '../ui/product-state';
@@ -6,32 +6,33 @@ import { CloudConnections } from './CloudConnections';
 import { openCloud, openDashboard } from '../ui/cloud-features';
 
 const CLOUD_STATUS_LABEL: Record<string, string> = {
-  not_configured: 'Coming soon',
+  not_configured: 'No server configured',
   signed_out: 'Signed out',
   ready: 'Connected',
-  not_entitled: 'Subscription not active',
+  not_entitled: 'Signed in. AI is not on for this account',
   expired: 'Session ended. Sign in again',
-  unreachable: 'PigeonBox Pro is unreachable',
+  unreachable: 'Your PigeonBox server is unreachable',
   update_required: 'PigeonBox needs an update',
 };
 
 const CLOUD_NOTICE: Record<string, string> = {
-  maintenance: 'PigeonBox Pro is under maintenance. Free keeps working.',
-  degraded: 'PigeonBox Pro is running slower than usual.',
+  maintenance: 'Your PigeonBox server is under maintenance. PigeonBox on this computer keeps working.',
+  degraded: 'Your PigeonBox server is running slower than usual.',
 };
 
-/** "You're using PigeonBox 0.5.8. PigeonBox Cloud requires 0.6.0 or newer." */
+/** "You're using PigeonBox 0.5.8. Your PigeonBox server requires 0.6.0 or newer." */
 export function updateMessage(update: { required: boolean; installed: string; minimum: string | null; recommended: string | null }): string {
   const target = update.required ? update.minimum : update.recommended;
   const using = `You're using PigeonBox ${update.installed}.`;
-  if (!target) return update.required ? `${using} PigeonBox Pro needs a newer version.` : `${using} A newer version is available.`;
-  return update.required ? `${using} PigeonBox Pro requires ${target} or newer.` : `${using} Version ${target} is recommended.`;
+  if (!target) return update.required ? `${using} Your PigeonBox server needs a newer version.` : `${using} A newer version is available.`;
+  return update.required ? `${using} Your PigeonBox server requires ${target} or newer.` : `${using} Version ${target} is recommended.`;
 }
 
 /**
- * "How should PigeonBox run?" — On this computer, PigeonBox Cloud, or Advanced.
- * Choosing Cloud needs an explicit agreement about where email content goes.
- * Nothing here switches mode automatically.
+ * "How should PigeonBox run?" — On this computer, your PigeonBox server (only
+ * when one is configured), or Advanced. Choosing the server needs an explicit
+ * agreement about where email content goes. Nothing here switches mode
+ * automatically.
  */
 export function RunModePanel({
   product,
@@ -57,51 +58,57 @@ export function RunModePanel({
     <div ref={modeLayout} className="space-y-3 pb-run-mode" id="run-mode">
       <div className="flex flex-col gap-2">
         <ModeChoice
-          title="Free"
-          detail="AI runs on this computer; mail stays here or goes only to an AI provider you set up. Sign in only for hosted read receipts."
+          title="On this computer"
+          detail={
+            state.cloudAvailable
+              ? 'AI runs on this computer; mail stays here or goes only to an AI provider you set up. Sign in to your server only for its read receipts.'
+              : 'AI runs on this computer; mail stays here or goes only to an AI provider you set up.'
+          }
           active={!cloudMode}
           onClick={() => {
             setPickingCloud(false);
             if (cloudMode) void product.useLocal();
           }}
         />
-        <ModeChoice
-          title="Pro"
-          detail={
-            state.cloudAvailable
-              ? 'Keeps working while Gmail is closed. Connect Google for prepared drafts, follow-ups, briefings and calendar context.'
-              : 'Pro is on its way. Join the waitlist for always-on summaries, prepared replies and follow-ups.'
-          }
-          badge={state.cloudAvailable ? undefined : 'Join waitlist ↗'}
-          active={cloudMode}
-          // Switching to Cloud (agreement, sign-in, subscription, Google) happens on the dashboard.
-          onClick={() => state.cloudAvailable ? (cloudMode ? openDashboard('overview') : openDashboard('cloud', 'cloud')) : openCloudWaitlist()}
-        />
+        {state.cloudAvailable ? (
+          <ModeChoice
+            title="Your PigeonBox server"
+            detail="Keeps working while Gmail is closed. Connect Google for prepared drafts, follow-ups, briefings and calendar context."
+            active={cloudMode}
+            // With a dashboard that can reach this build, switching (agreement, sign-in, Google) happens there.
+            onClick={() => state.dashboardAvailable ? (cloudMode ? openDashboard('overview') : openDashboard('cloud', 'cloud')) : setPickingCloud(!cloudMode)}
+          />
+        ) : null}
         {compact ? null : (
           <ModeChoice
             title="Advanced"
-            detail="Ollama, your own API key, self-hosted tracking and Convex, experimental options."
+            detail="Ollama, your own API key, a standalone tracker or Convex, your PigeonBox server URL, experimental options."
             active={false}
             onClick={() => onAdvanced?.()}
           />
         )}
       </div>
+      {!state.cloudAvailable && !compact ? (
+        <a className="gi-text-btn text-xs" href={SELF_HOSTING_GUIDE_URL} target="_blank" rel="noreferrer">
+          Run your own server ↗
+        </a>
+      ) : null}
 
       {pickingCloud && !cloudMode && state.cloudAvailable ? (
         <div className="gi-card">
-          <div className="text-sm font-medium">Use PigeonBox Pro</div>
+          <div className="text-sm font-medium">Use your PigeonBox server</div>
           <p className="mt-1 text-xs gi-muted">
-            When PigeonBox summarizes, sorts, drafts or answers a question, the email content involved is sent over an
-            encrypted connection to PigeonBox Pro and its AI provider. Cloud stores encrypted summaries, prepared drafts and related intelligence. Retaining message excerpts requires
+            When PigeonBox summarizes, sorts, drafts or answers a question, the email content involved is sent to your
+            PigeonBox server and the AI provider it is set up with. The server stores summaries, prepared drafts and related intelligence. Retaining message excerpts requires
             a separate opt-in. Your local index and settings stay on this computer.
           </p>
           <label className="gi-consent mt-3">
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>I understand that email content is sent to PigeonBox Pro for processing.</span>
+            <span>I understand that email content is sent to my PigeonBox server for processing.</span>
           </label>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className="gi-btn" disabled={!consent || busy} onClick={() => void product.useCloud(consent)}>
-              Use PigeonBox Pro
+              Use my server
             </button>
             <button type="button" className="gi-btn gi-btn-ghost" onClick={() => setPickingCloud(false)}>
               Cancel
@@ -114,7 +121,7 @@ export function RunModePanel({
         <div className="gi-card" aria-live="polite">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-sm font-medium">PigeonBox Pro</div>
+              <div className="text-sm font-medium">Your PigeonBox server</div>
               <p className="mt-1 text-xs gi-muted">
                 {CLOUD_STATUS_LABEL[cloudStatus] ?? cloudStatus}
                 {state.cloud.email ? ` · ${state.cloud.email}` : ''}
@@ -124,7 +131,7 @@ export function RunModePanel({
           </div>
           {state.cloud.notice && CLOUD_NOTICE[state.cloud.notice] ? <p className="mt-2 text-xs gi-muted">{CLOUD_NOTICE[state.cloud.notice]}</p> : null}
           {update ? (
-            // Required: Cloud stops until the update (Local mode is unaffected). Recommended: one quiet line.
+            // Required: server mode stops until the update (Local mode is unaffected). Recommended: one quiet line.
             <p className={update.required ? 'mt-2 text-xs' : 'mt-2 text-xs gi-muted'} role={update.required ? 'status' : undefined}>
               {updateMessage(update)}{' '}
               <button type="button" className="gi-text-btn" disabled={busy} onClick={() => void product.updateExtension()}>
@@ -132,21 +139,20 @@ export function RunModePanel({
               </button>
             </p>
           ) : null}
+          {cloudStatus === 'not_entitled' ? (
+            <p className="mt-2 text-xs gi-muted">Whoever runs your PigeonBox server can turn AI on for this account.</p>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
-            {!signedIn ? (
-              <button type="button" className="gi-btn" disabled={busy} onClick={() => openDashboard('cloud', 'cloud')}>
-                Finish Cloud setup ↗
-              </button>
-            ) : null}
-            {cloudStatus === 'not_entitled' ? (
-              <button type="button" className="gi-btn" disabled={busy} onClick={() => openDashboard('cloud', 'cloud')}>
-                Subscribe ↗
-              </button>
-            ) : null}
-            {cloudStatus === 'ready' ? (
-              <button type="button" className="gi-btn gi-btn-ghost" disabled={busy} onClick={() => void product.billing('portal')}>
-                Manage billing
-              </button>
+            {!signedIn && state.cloudAvailable ? (
+              state.dashboardAvailable ? (
+                <button type="button" className="gi-btn" disabled={busy} onClick={() => openDashboard('cloud', 'cloud')}>
+                  Finish server setup ↗
+                </button>
+              ) : (
+                <button type="button" className="gi-btn" disabled={busy} onClick={() => void product.signIn()}>
+                  Sign in to your server
+                </button>
+              )
             ) : null}
             {signedIn ? (
               <button type="button" className="gi-btn gi-btn-ghost" disabled={busy} onClick={() => void product.recheck()}>
@@ -159,19 +165,19 @@ export function RunModePanel({
               </button>
             ) : null}
             <button type="button" className="gi-btn gi-btn-ghost" disabled={busy} onClick={() => void product.useLocal()}>
-              Switch to Free
+              Switch to this computer
             </button>
           </div>
           {cloudStatus === 'ready' && state.cloud.capabilities.includes('cloud_mail_sync') && !compact ? <CloudConnections /> : null}
           {state.cloudAvailable && signedIn && !compact ? (
-            // The account page's address is derived from the configured Cloud API by the worker.
+            // The account page's address is derived from the configured server by the worker.
             <button type="button" className="gi-text-btn mt-3" onClick={() => openCloud('overview')}>
-              Manage Cloud account ↗
+              Manage on your server ↗
             </button>
           ) : null}
           {cloudStatus !== 'ready' ? (
             <p className="mt-2 text-xs gi-muted">
-              Until PigeonBox Pro is connected, categories use on-device rules and nothing is sent to another AI provider.
+              Until your PigeonBox server is connected, categories use on-device rules and nothing is sent to another AI provider.
             </p>
           ) : null}
         </div>

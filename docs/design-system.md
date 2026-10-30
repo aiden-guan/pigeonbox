@@ -1,14 +1,14 @@
 # PigeonBox Correspondence
 
-Implemented October 2, 2026 across the extension and Cloud account UI. This pass integrates with the unified workspace already being implemented in the same checkout. Backend, owner identity, permissions, tracking attribution, and workspace persistence changes belong to that concurrent architecture work.
+Implemented October 2, 2026 across the extension and the server dashboard (`apps/web`, then in a separate repository). This pass integrates with the unified workspace already being implemented in the same checkout. Backend, owner identity, permissions, tracking attribution, and workspace persistence changes belong to that concurrent architecture work.
 
 ## Audit and direction
 
-The extension had several competing visual layers: legacy `gi-*` surfaces, copper/ink `pb-*` dispatch styles, Tailwind utilities, isolated Gmail shadow styles, and the Cloud account stylesheet. The popup was being retired in favor of one workspace. An isolated preview also omitted the shared entrypoint styles, so it was not a reliable representation of the shipped surfaces until corrected.
+The extension had several competing visual layers: legacy `gi-*` surfaces, copper/ink `pb-*` dispatch styles, Tailwind utilities, isolated Gmail shadow styles, and the dashboard stylesheet. The popup was being retired in favor of one workspace. An isolated preview also omitted the shared entrypoint styles, so it was not a reliable representation of the shipped surfaces until corrected.
 
 | Before | After | Why |
 | --- | --- | --- |
-| Dark defaults mixed with hardcoded light controls | Intentional light and slate dark palettes with semantic aliases | Appearance remains coherent across iframe, shadow root, settings, and Cloud |
+| Dark defaults mixed with hardcoded light controls | Intentional light and slate dark palettes with semantic aliases | Appearance remains coherent across iframe, shadow root, settings, and the dashboard |
 | Repeated brand, intelligence, summary, and detail labels | Person, subject, interpretation, date, actions | Information supplies the hierarchy |
 | Several rounded card and button treatments | 6 px controls, 8 px cards, 14 px shell; two shadow depths | Geometry communicates role |
 | Large mascot and repeated sprite motion | Approved sprite at 24–38 px in work; 48 px in welcome | Personality does not compete with reading |
@@ -28,8 +28,8 @@ The visual direction is correspondence: cool neutral surfaces, small copper acce
 - `ui/Primitives.tsx` exposes small native-element primitives: Button, IconButton, Input, Surface, Status, and ContextCard. Existing command rows, mail rows, source chips, menus, and disclosure components keep their accessible behavior and receive the shared styles. There is no second general-purpose component framework.
 - `ui/motion.ts` resolves WAAPI timings from CSS and observes actual visibility without polling. `ui/continuity.ts` transfers geometry between related views.
 - `content/shell/workspace.ts` owns the Gmail shadow shell; the existing unified React workspace renders inside its iframe. The pill and expanded shell share one DOM object and one Pidgy node.
-- `ui/appearance.tsx` provides System → Light → Dark using one extension-local preference. The Gmail host follows the same preference through the existing presentation-message bridge; it never reads trusted extension storage directly. Cloud web follows the operating-system color scheme.
-- The Cloud account UI imports an identical copy at `apps/web/public/control/product-tokens.css`. `control.css` maps its existing variables to these roles. Cloud copies are byte-identical at validation time; future token edits must update both copies.
+- `ui/appearance.tsx` provides System → Light → Dark using one extension-local preference. The Gmail host follows the same preference through the existing presentation-message bridge; it never reads trusted extension storage directly. The dashboard follows the operating-system color scheme.
+- The server dashboard imports an identical copy at `apps/web/public/control/product-tokens.css`. `control.css` maps its existing variables to these roles. The copies are byte-identical at validation time; future token edits must update both copies.
 
 This pass adds no animation dependency, remote font, canvas, WebGL surface, model request, or new backend endpoint. Gmail category chip colors and the recognizable Gmail provider mark retain their host/provider semantics.
 
@@ -112,8 +112,8 @@ Keyboard move and Shift+arrow resize, collapse/reopen, dock/float input retentio
 
 ## Validation and launch boundaries
 
-Deterministic verification covers typecheck, lint, unit tests, extension/build packaging, token contrast, compact widths, interruption, reduced motion, finite/offscreen dot lifecycle, draft transport, input preservation, commands, tasks, and synthetic Gmail SPA behavior. Cloud tests exercise the actual local web assets with the real router and disposable test data. Theme tests cover 320, 390, 900, and 1280 px Cloud widths; extension checks cover 280–680 px page widths and bounded narrow/normal Gmail layouts.
+Deterministic verification covers typecheck, lint, unit tests, extension/build packaging, token contrast, compact widths, interruption, reduced motion, finite/offscreen dot lifecycle, draft transport, input preservation, commands, tasks, and synthetic Gmail SPA behavior. Server tests exercise the actual local dashboard assets with the real router and disposable test data. Theme tests cover 320, 390, 900, and 1280 px dashboard widths; extension checks cover 280–680 px page widths and bounded narrow/normal Gmail layouts.
 
 Screenshots in `test-results/design-*.png` are disposable fixture captures, not real customer mail. Stable copies and the exact verification counts/performance results are recorded in the companion validation report.
 
-Before launch, verify the produced build in real signed-in Gmail: typing and scrolling under actual mailbox volume, reading-pane/sidebar combinations, browser zoom at 80/100/125/150%, and real recipient tracking behavior. Synthetic timing is not a production performance guarantee. The existing large InboxSDK/transformer chunks still produce bundle warnings; this design pass introduces no heavy visual renderer but does not remove those underlying dependencies. The two-repository token copy is intentionally explicit and needs a release-time sync check. No deployment, publication, push, or commit is part of this pass.
+Before launch, verify the produced build in real signed-in Gmail: typing and scrolling under actual mailbox volume, reading-pane/sidebar combinations, browser zoom at 80/100/125/150%, and real recipient tracking behavior. Synthetic timing is not a production performance guarantee. The existing large InboxSDK/transformer chunks still produce bundle warnings; this design pass introduces no heavy visual renderer but does not remove those underlying dependencies. The duplicated token copy (extension and dashboard) is intentionally explicit and needs a sync check. No deployment, publication, push, or commit is part of this pass.

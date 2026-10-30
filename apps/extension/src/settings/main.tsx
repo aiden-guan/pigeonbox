@@ -6,9 +6,10 @@ import '../ui/system.css';
 import { AiSetupApp } from './AiSetupApp';
 import { SettingsApp } from './SettingsApp';
 
-// Settings live on the PigeonBox dashboard. This page forwards there, except
-// for AI setup (`?here=ai`), which needs an extension page, and the full
-// in-extension page (`?here`), kept for development and offline use.
+// With a PigeonBox server whose dashboard can reach this build, Settings live
+// there and this page forwards to it. Otherwise (no server, the usual case) this
+// page is Settings. AI setup (`?here=ai`) always needs an extension page, and
+// `?here` keeps the in-extension page for development and offline use.
 const here = new URLSearchParams(location.search).get('here');
 
 if (here === null) {

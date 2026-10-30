@@ -2,7 +2,7 @@
   "name": "pigeonbox",
   "version": "0.8.4",
   "private": true,
-  "description": "PigeonBox: AI-powered Gmail intelligence that can run on your machine. Chrome extension, local AI, BYOK, Ollama, open tracking. No Gmail API.",
+  "description": "PigeonBox: AI for Gmail that you run yourself. Chrome extension with local AI, plus an optional self-hosted server (Cloudflare Workers + Supabase) for always-on features and tracking.",
   "license": "MIT",
   "workspaces": [
     "apps/*",
@@ -20,7 +20,7 @@
     "build": "npm run build -w @pigeonbox/shared && npm run build -w @pigeonbox/api-contract && npm run build -w @pigeonbox/gmail && npm run build -w @pigeonbox/mailbox && npm run build -w @pigeonbox/ai && npm run build -w @pigeonbox/cloud-client && npm run build -w @pigeonbox/core && npm run build -w @pigeonbox/search && npm run build -w @pigeonbox/agent && npm run build -w @pigeonbox/tracking && npm run build -w @pigeonbox/extension && npm run build -w @pigeonbox/tracker",
     "test": "vitest run && node --test scripts/lib/*.test.mjs",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --pretty false && tsc --noEmit -p convex/tsconfig.json",
+    "typecheck": "tsc -b --pretty false && tsc --noEmit -p convex/tsconfig.json && tsc -p packages/server/tsconfig.json && tsc -p packages/server/tsconfig.test.json",
     "lint": "eslint \"packages/**/*.{ts,tsx}\" \"apps/**/*.{ts,tsx}\" \"workers/**/*.{ts,tsx}\" --max-warnings 0",
     "verify": "node scripts/verify.mjs",
     "package": "node scripts/package-extension.mjs",
@@ -29,13 +29,22 @@
     "version:set": "node scripts/check-versions.mjs --set",
     "open": "node scripts/open.mjs",
     "tracker": "npm run dev -w @pigeonbox/tracker",
+    "server:dev": "npm run dev -w @pigeonbox/api-worker",
+    "server:dev:tracker": "npm run dev -w @pigeonbox/server-tracker",
+    "server:deploy": "node scripts/server/deploy.mjs",
+    "server:smoke": "tsx scripts/server/smoke.mjs",
+    "server:eval": "node scripts/server/live-eval.mjs",
     "verify:tracking": "node scripts/verify-tracking.mjs",
     "convex:dev": "convex dev",
     "convex:deploy": "convex deploy",
     "clean": "rimraf packages/*/dist apps/*/dist workers/*/dist release coverage .tsbuildinfo",
-    "test:browser": "node scripts/build-browser-fixture.mjs && playwright test"
+    "test:browser": "node scripts/build-browser-fixture.mjs && playwright test",
+    "test:server-browser": "playwright test -c playwright.server.config.ts"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261019.1",
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-pgvector": "^0.0.9",
     "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.5",
     "@typescript-eslint/eslint-plugin": "^8.72.0",
@@ -45,8 +54,10 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^30.1.3",
     "rimraf": "^6.0.1",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "wrangler": "^4.151.1"
   },
   "engines": {
     "node": ">=24.15.0"

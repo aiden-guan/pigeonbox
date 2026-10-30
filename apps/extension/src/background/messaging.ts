@@ -14,7 +14,6 @@ const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   'WORKSPACE_PRESENTATION',
   'SET_WORKSPACE_CONTEXT',
   'OPEN_WORKSPACE_COMMANDS',
-  'PRODUCT_EVENT',
   'GET_PUBLIC_SETTINGS',
   'GET_THREAD_INTEL',
   'GET_THREAD_INTEL_MANY',
@@ -56,7 +55,7 @@ const CONTENT_SCRIPT_MESSAGES: ReadonlySet<string> = new Set([
   'OPEN_SPLIT',
   'COMMAND',
   'GMAIL_EVENT',
-  // Read-only PigeonBox Cloud thread state for the thread card and chips. Decisions stay in extension pages.
+  // Read-only PigeonBox server thread state for the thread card and chips. Decisions stay in extension pages.
   'CLOUD_THREAD_INTEL',
   'CLOUD_THREAD_CONTEXT',
   // Real-time Pidgy checks: one bounded clause of the draft being written. The worker checks

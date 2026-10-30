@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.1",
-    "@inboxsdk/core": "^2.2.30",
+    "@inboxsdk/core": "^2.2.32",
     "@pigeonbox/agent": "*",
     "@pigeonbox/ai": "*",
     "@pigeonbox/api-contract": "*",
@@ -21,7 +21,7 @@
     "@pigeonbox/search": "*",
     "@pigeonbox/shared": "*",
     "@pigeonbox/tracking": "*",
-    "dexie": "^4.0.11",
+    "dexie": "^4.4.7",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zod": "^4.6.7"

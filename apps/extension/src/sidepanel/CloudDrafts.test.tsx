@@ -16,7 +16,6 @@ vi.mock('./cloud-api', () => ({
   },
   cloudCall: async () => ({ ok: false, code: 'not_found', reason: 'Not configured.' }),
 }));
-vi.mock('../ui/analytics', () => ({ trackProductEvent: () => undefined }));
 
 const { DraftReview } = await import('./DraftReview');
 const { DraftsView } = await import('./DraftsView');

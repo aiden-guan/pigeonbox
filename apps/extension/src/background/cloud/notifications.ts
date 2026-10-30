@@ -1,4 +1,4 @@
-/** Desktop notifications for PigeonBox Cloud events (approvals, follow-ups, mentions). */
+/** Desktop notifications for PigeonBox server events (approvals, follow-ups, mentions). */
 import type { PigeonBoxCloudClient } from '@pigeonbox/cloud-client';
 
 export const NOTIFICATION_ALARM = 'cloud_notifications';

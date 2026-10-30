@@ -2,7 +2,7 @@
  * Remote client configuration, worker side (schema: @pigeonbox/api-contract
  * client-config.ts).
  *
- * - Cloud mode only. Local mode never asks PigeonBox Cloud for anything, so it
+ * - Cloud mode only. Local mode never asks the PigeonBox server for anything, so it
  *   always runs with the built-in defaults.
  * - Cached with the server's TTL. When a refresh fails the last known good
  *   config stays in force for up to MAX_STALE_MS, then the defaults return.

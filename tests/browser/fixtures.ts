@@ -281,7 +281,7 @@ export const test = base.extend<{ app: App }>({
       }
       const def = Object.entries(ROUTES).find(([, value]) => value.path === route && value.method === request.method)?.[0] as RouteName | undefined;
       let data: unknown;
-      if (route === '/v1/capabilities') data = { plan: 'cloud', capabilities };
+      if (route === '/v1/capabilities') data = { capabilities };
       else if (def === 'memorySubjects') data = { subjects: memories.length ? [{ ...memorySubject, summary: null, factCount: memories.length, lastConfirmedAt: at }] : [], organizing: false };
       else if (def === 'memoryList') data = { memories: body.query ? memories.filter(item => item.text.toLowerCase().includes(String(body.query).toLowerCase())) : memories, nextCursor: null };
       else if (def === 'memoryUpdate') { const item = memories.find(item => item.id === body.memoryId)!; Object.assign(item, { text: body.text, corrected: true }); data = { memory: item }; }
@@ -517,9 +517,6 @@ export const test = base.extend<{ app: App }>({
       recordVideo: process.env.PIGEONBOX_MOTION_QA ? { dir: 'test-results/dispatch-videos', size: { width: 1280, height: 900 } } : undefined,
     });
     closeContext = context;
-    // Local release builds open the published origin. Keep its dashboard synthetic
-    // while exercising Chrome's real externally_connectable boundary and HELLO.
-    await context.route('https://usepigeonbox.com/dashboard**', (route) => route.fulfill({ contentType: 'text/html', body: dashboardFixture }));
     const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
     const id = worker.url().split('/')[2];
     await context.route('https://mail.google.com/**', (route) =>

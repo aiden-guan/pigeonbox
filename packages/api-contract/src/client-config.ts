@@ -3,7 +3,7 @@ import { ComposeCheckKindSchema } from './compose.js';
 
 /**
  * Remote client configuration: non-secret tuning the extension can take from
- * PigeonBox Cloud without a Chrome Web Store update.
+ * its PigeonBox server without an extension update.
  *
  * Safety rules, enforced by this module rather than by convention:
  * - Every field is allowlisted and typed. Numbers have hard bounds; a value out

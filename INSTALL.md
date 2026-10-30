@@ -51,7 +51,7 @@ Success means `apps/extension/dist/manifest.json` exists. If setup fails, show t
 
 Convex is the default because it provides the public endpoint and durable database in one service. Do not ask the user to choose among providers unless they request an alternative. If they specifically want a different provider, use:
 
-- **Cloudflare Worker + Supabase** — Cloudflare serves the public HTTPS tracking endpoint and Supabase Postgres stores events durably: [docs/self-hosting.md](docs/self-hosting.md).
+- **Cloudflare Worker + Supabase** — Cloudflare serves the public HTTPS tracking endpoint and Supabase Postgres stores events durably: [docs/tracker-cloudflare.md](docs/tracker-cloudflare.md).
 
 If the user asked for Cloudflare + Supabase before installation, use `npm run setup -- --open` in step 3, then follow that guide. If they decline Convex because they prefer Cloudflare + Supabase, continue from that guide without rerunning the Convex setup.
 
@@ -75,11 +75,29 @@ Chrome does not allow programs to install unpacked extensions, so the user must 
 - **Ollama for stronger local models:** see https://ollama.com; PigeonBox uses `http://localhost:11434`.
 - **Updating later:** `git pull && npm run setup`, then click the reload icon on the PigeonBox card in `chrome://extensions`.
 
+## 7. Optional: deploy the user's own PigeonBox server
+
+Skip this unless the user asks for server features: AI that runs on their server, always-on Gmail (background sync, prepared drafts, follow-ups, briefings), per-account tracking without a separate tracker, team features or MCP. Everything above works without it. A server they run also replaces the Convex tracker for tracking.
+
+First explain what it needs and ask for explicit approval before signing in to Cloudflare or creating/updating cloud resources: a Cloudflare account (two Workers; the Workers Paid plan is recommended for always-on Gmail), a Supabase project, an OpenAI-compatible AI endpoint with an API key, and a Google Cloud OAuth client for sign-in (plus a Pub/Sub topic for always-on Gmail). Usage is billed to their own accounts, and everyone on `ALLOWED_EMAILS` uses their AI key. Wait for their answer.
+
+If approved:
+
+1. Run `npm run server:deploy` once. It creates a gitignored `server.env` from `server.env.example` and stops.
+2. Ask the user to fill in `server.env` themselves in an editor, following [docs/self-hosting.md](docs/self-hosting.md). It holds the Supabase service-role key, the database password, the AI key and the Google OAuth client secret: do not ask them to paste these into chat and do not print the file. `ALLOWED_EMAILS` should list only the addresses they want to allow.
+3. Have the user run `npx wrangler login` and complete the Cloudflare sign-in in their browser.
+4. Run `npm run server:deploy -- --dry-run` to validate the settings and bundle both Workers locally, then `npm run server:deploy`. It applies the Supabase migrations, deploys both Workers with their secrets, keeps generated secrets in `.local/server-secrets.json`, writes the server URLs into `apps/extension/.env.local`, rebuilds the extension and runs read-only smoke checks.
+5. Relay the manual steps the deploy prints (for example Supabase Auth redirect settings when `SUPABASE_ACCESS_TOKEN` is not set). Then the user reloads PigeonBox in `chrome://extensions`, opens Gmail, chooses **Your PigeonBox server**, and signs in with an allowed address.
+6. Tell the user to back up `.local/server-secrets.json` somewhere private: without it, the mail data the server stores cannot be read.
+
+If anything fails, show the last ~30 lines of output and consult [docs/self-hosting.md](docs/self-hosting.md) before retrying. To update the server later: `git pull && npm run server:deploy`.
+
 ## Rules
 
 - Never reveal email content or tokens from `.env` and `.local/` in chat, Git, logs, or to PigeonBox. Do not transfer whole local config files. The setup script passes the generated token to Convex from a private local file; do not print it or send it to the user in chat.
 - Do not run the public tracker setup without the user's explicit approval. If they approved in chat, pass `--yes`; otherwise let the interactive setup prompt them. If they decline, leave the local extension setup complete and explain how to run `npm run setup:tracker -- --open` later (or add `--yes` after they approve in chat).
 - Never modify the user's Chrome profile or settings directly.
-- Do not sign the user up for PigeonBox Cloud; on-device AI should remain the default.
+- Do not deploy a PigeonBox server unless the user asks for one; on-device AI should remain the default.
+- Never print or transmit `server.env` or `.local/server-secrets.json`, and never commit them.
 - "On this computer" selects local AI behavior; it does not configure email tracking.
 - Never recommend the localhost or memory-only tracker for real recipient-open tracking.

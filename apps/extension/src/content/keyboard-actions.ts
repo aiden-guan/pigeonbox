@@ -15,7 +15,6 @@ export type ShortcutDeps = {
   toast: (message: string) => void;
   openSnippets: (target: Element | null) => Promise<boolean>;
   openSendLater: (target: Element | null) => Promise<boolean>;
-  count?: (id: ShortcutId) => void;
 };
 
 const CURSOR_ATTR = 'data-pb-cursor';
@@ -92,7 +91,6 @@ async function toolbar(key: SelectorKey, missing: string): Promise<void> {
 }
 
 export async function performShortcut(id: ShortcutId, event: KeyboardEvent, deps: ShortcutDeps): Promise<void> {
-  deps.count?.(id);
   const go = GO_TO_HASH[id];
   if (go) {
     location.hash = go;

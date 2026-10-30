@@ -1,10 +1,8 @@
 import { useAppearance, AppearanceButton } from '../ui/appearance';
-import { AnalyticsPreference } from './AnalyticsPreference';
 import { Section, Toggle, Field } from './SettingsComponents';
 import { CloudPreferences } from './CloudPreferences';
 import { SnippetSettings } from './SnippetSettings';
-import { openCloud, openDashboard } from '../ui/cloud-features';
-import { trackProductEvent } from '../ui/analytics';
+import { openCloud } from '../ui/cloud-features';
 import { Brand, Pigeon } from '../ui/Pigeon';
 import { useCallback, useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS, getProviderRequiredOrigin, type ExtensionSettings, type ThreadCategory } from '@pigeonbox/shared';
@@ -15,7 +13,7 @@ import { RunModePanel } from '../setup/RunModePanel';
 import { Orb } from '../ui/Orb';
 import { reducedMotion } from '../ui/dispatch-motion';
 import { useProductState } from '../ui/product-state';
-import { DEV_REBUILD_URL } from '../config';
+import { BUILD_CLOUD_API_URL, DEV_REBUILD_URL, SELF_HOSTING_GUIDE_URL } from '../config';
 import { RebuildFailedError, requestExtensionReload } from '../reload-extension';
 import {
   checkLatestRelease,
@@ -30,7 +28,7 @@ const AI_DESTINATION: Record<string, string> = {
   this_device: 'Runs on this computer. Mail is not sent to an AI provider.',
   your_provider: 'The email content a request needs is sent to the provider you configured.',
   chatgpt_web: 'The email content a request needs is sent to ChatGPT through your signed-in session.',
-  pigeonbox_cloud: 'Email content is processed by PigeonBox Pro.',
+  pigeonbox_cloud: 'Email content is processed by your PigeonBox server.',
 };
 
 const CATEGORIES: ThreadCategory[] = ['RESPOND', 'WAITING', 'FYI', 'NOTIFICATIONS', 'PROMOTIONS', 'NEWS'];
@@ -59,10 +57,10 @@ export function SettingsApp() {
   const [reloadError, setReloadError] = useState<string | null>(null);
   const product = useProductState();
   const cloudMode = product.state.runMode === 'cloud';
-  // Cloud account controls need a configured Cloud backend, not just a stored mode.
+  // Server account controls need a configured server URL, not just a stored mode.
   const cloudActive = cloudMode && product.state.cloudAvailable;
   const cloudSync = cloudActive && product.has('cloud_mail_sync');
-  // Free uses the PigeonBox-hosted tracker unless local-only is on or this build has no PigeonBox service.
+  // On this computer, tracking uses the server's tracker unless local-only is on or no server is configured.
   const hostedTracking = cloudMode || (!settings.localOnly && product.state.cloudAvailable);
   const accountEmail = product.state.cloud.email;
   const sections: Array<[string, string]> = [
@@ -71,7 +69,7 @@ export function SettingsApp() {
     ['Inbox', 'inbox'],
     ['Tracking', 'tracking'],
     ['Snippets', 'snippets'],
-    ...(cloudSync ? [['Pro / Sync', 'cloud'] as [string, string]] : []),
+    ...(cloudSync ? [['Server / Sync', 'cloud'] as [string, string]] : []),
     ['Personalization', 'personalization'],
     ['Privacy & data', 'privacy'],
     ['Updates', 'updates'],
@@ -305,14 +303,6 @@ export function SettingsApp() {
         <Toggle label="Organize inbox automatically" checked={settings.autoClassify} onChange={(on) => update('autoClassify', on)} />
         <Toggle label="Email tracking" checked={settings.trackingEnabled} onChange={(on) => update('trackingEnabled', on)} />
         <Toggle label="Desktop alerts" checked={settings.desktopNotifications} onChange={(on) => update('desktopNotifications', on)} />
-        {cloudMode ? null : (
-          <p className="gi-muted text-xs">
-            On Free, new emails end with “Sent with PigeonBox”. Delete it from any email before sending, or{' '}
-            <button type="button" className="gi-text-btn" onClick={() => { trackProductEvent('upgrade_clicked', { surface: 'settings' }); openDashboard('cloud', 'cloud'); }}>
-              upgrade to Pro
-            </button>{' '}to remove it.
-          </p>
-        )}
         <Toggle label="Keyboard shortcuts (press ? in Gmail to see them)" checked={settings.keyboardShortcuts} onChange={(on) => update('keyboardShortcuts', on)} />
       </Section>
 
@@ -329,14 +319,14 @@ export function SettingsApp() {
         {cloudMode ? (
           <p className="gi-muted text-xs">
             {product.has('cloud_tracking')
-              ? 'PigeonBox hosts your tracker. Your self-hosted tracker settings are kept for local-only use on Free.'
-              : 'Hosted tracking is not active for this PigeonBox account.'}
+              ? 'Your PigeonBox server records opens and clicks on mail you send. A standalone tracker you set up before is kept for local-only use on this computer.'
+              : 'Your PigeonBox server isn’t offering tracking for this account, so mail you send isn’t tracked.'}
           </p>
         ) : (
           <>
             {product.state.cloudAvailable ? (
               <Toggle
-                label="Local-only (use no PigeonBox servers)"
+                label="Local-only (don’t use your PigeonBox server)"
                 checked={settings.localOnly}
                 onChange={(on) => {
                   setSettings((current) => ({ ...current, localOnly: on }));
@@ -350,13 +340,13 @@ export function SettingsApp() {
             {hostedTracking ? (
               <>
                 <p className="gi-muted text-xs">
-                  PigeonBox hosts your tracker, so opens and clicks from any device count with no setup. It stores only the subject, addresses, link addresses and open times, never the email body. Turn on local-only to use a tracker you host yourself, or none.
+                  Your PigeonBox server records opens and clicks, so they count from any device with no extra setup. It stores only the subject, addresses, link addresses and open times, never the email body. Turn on local-only to use a standalone tracker instead, or none.
                 </p>
                 {accountEmail ? (
                   <p className="text-xs">Signed in as {accountEmail}</p>
                 ) : (
-                  <button type="button" className="gi-btn" disabled={product.busy} onClick={() => { trackProductEvent('hosted_tracking_signin', { surface: 'settings' }); void product.signIn().then(() => checkTracker(settings)); }}>
-                    Sign in to turn on tracking
+                  <button type="button" className="gi-btn" disabled={product.busy} onClick={() => { void product.signIn().then(() => checkTracker(settings)); }}>
+                    Sign in to your server to turn on tracking
                   </button>
                 )}
                 {product.error ? <p className="gi-danger text-xs">{product.error}</p> : null}
@@ -395,13 +385,13 @@ export function SettingsApp() {
           Connection: {trackerHealth ? trackerHealthLabel(trackerHealth) : <span className="gi-orb-line"><Orb size={12} />Checking…</span>}
         </p>
         {hostedTracking && trackerHealth === 'no_permission' && product.state.cloudOrigins.length ? (
-          // The hosted tracker's address can change (for example to a custom domain); Chrome needs a grant for the new one.
+          // The server tracker's address can change (for example to a custom domain); Chrome needs a grant for the new one.
           <button
             type="button"
             className="gi-text-btn"
             onClick={() => chrome.permissions.request({ origins: product.state.cloudOrigins }, () => checkTracker(settings))}
           >
-            Allow access to the PigeonBox tracker
+            Allow access to your server’s tracker
           </button>
         ) : null}
         <p className="gi-muted text-xs">
@@ -411,7 +401,7 @@ export function SettingsApp() {
 
       <Section title="Snippets" id="snippets"><SnippetSettings /></Section>
 
-      {cloudSync ? <Section title="Pro / Sync" id="cloud"><CloudPreferences capabilities={product.state.capabilities} /></Section> : null}
+      {cloudSync ? <Section title="Server / Sync" id="cloud"><CloudPreferences capabilities={product.state.capabilities} /></Section> : null}
       <Section title="Personalization" id="personalization">
         <ProfileFields voice={settings.voiceProfile} onChange={(voiceProfile) => update('voiceProfile', voiceProfile)} />
         <Field label="Greeting">
@@ -426,12 +416,14 @@ export function SettingsApp() {
         <dl className="pb-settings-data">
           <dt>On this computer</dt><dd>Your mail index, settings, drafts and downloaded models stay in this browser.</dd>
           <dt>AI provider</dt><dd>Only when you set one up, the email content a request needs is sent to that provider.</dd>
-          <dt>PigeonBox Pro</dt><dd>Only on Pro. Mail is processed by PigeonBox Pro, which stores encrypted derived intelligence; keeping excerpts is a separate opt-in.</dd>
-          <dt>Tracking</dt><dd>Opens and clicks are recorded by the tracker you configure{cloudActive ? ', or by PigeonBox when hosted tracking is active' : ''}.</dd>
+          {product.state.cloudAvailable ? (
+            <><dt>Your PigeonBox server</dt><dd>Only when PigeonBox runs on your server. Mail is processed there, and the server stores derived intelligence; keeping excerpts is a separate opt-in.</dd></>
+          ) : null}
+          <dt>Tracking</dt><dd>Opens and clicks are recorded by the tracker you configure{product.state.cloudAvailable ? ', or by your PigeonBox server when it tracks for you' : ''}.</dd>
+          <dt>Usage data</dt><dd>PigeonBox sends no product analytics. Diagnostics stay on this computer until you copy them.</dd>
         </dl>
-        <AnalyticsPreference />
-        {cloudActive ? <button className="gi-text-btn" type="button" onClick={() => openCloud('privacy')}>Manage Pro data and retention ↗</button> : null}
-        <button className="gi-btn gi-btn-ghost" type="button" onClick={() => { if (window.confirm('Clear the mail index on this computer? Pro data and your settings are unaffected.')) chrome.runtime.sendMessage({ type: 'CLEAR_INDEX' }); }}>Clear local mail index</button>
+        {cloudActive ? <button className="gi-text-btn" type="button" onClick={() => openCloud('privacy')}>Manage server data and retention ↗</button> : null}
+        <button className="gi-btn gi-btn-ghost" type="button" onClick={() => { if (window.confirm('Clear the mail index on this computer? Data on your PigeonBox server and your settings are unaffected.')) chrome.runtime.sendMessage({ type: 'CLEAR_INDEX' }); }}>Clear local mail index</button>
       </Section>
 
       <Section title="Updates" id="updates">
@@ -442,7 +434,7 @@ export function SettingsApp() {
         ) : (
           <>
             <p className="gi-muted text-xs">
-              Update checks work in Local and Cloud. The request sends no email or settings data to GitHub; GitHub can see your IP address.
+              Update checks work on this computer and with your server. The request sends no email or settings data to GitHub; GitHub can see your IP address.
             </p>
             <Toggle
               label="Check GitHub automatically (once a day)"
@@ -493,16 +485,17 @@ export function SettingsApp() {
           <p className="gi-muted text-xs">
             Provider endpoints, tokens, index controls, and diagnostics.
           </p>
-          {DEV_REBUILD_URL ? <Field label="PigeonBox Pro API URL (development)">
+          <Field label="PigeonBox server URL">
             <input
               className="gi-field"
               value={settings.cloudApiUrl}
-              placeholder="Blank uses this build's default"
+              placeholder={BUILD_CLOUD_API_URL || 'https://your-pigeonbox-server.example'}
               onChange={(event) => update('cloudApiUrl', event.target.value)}
             />
-          </Field> : null}
+          </Field>
           <p className="gi-muted text-xs">
-            Self-hosting guides for Convex and Cloudflare Worker + Supabase are in the PigeonBox repository under docs/.
+            Blank uses {BUILD_CLOUD_API_URL ? 'the server this build was made with' : 'no server'}. To run your own PigeonBox server, or a standalone tracker on Convex or Cloudflare Worker + Supabase, see the{' '}
+            <a className="gi-text-btn" href={SELF_HOSTING_GUIDE_URL} target="_blank" rel="noreferrer">self-hosting guide ↗</a>.
           </p>
           <Field label="AI endpoint">
             <input className="gi-field" value={settings.aiEndpoint} onChange={(event) => update('aiEndpoint', event.target.value)} />

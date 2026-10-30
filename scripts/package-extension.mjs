@@ -3,7 +3,7 @@
  * Build and package the extension for the Chrome Web Store and GitHub Releases.
  *
  *   npm run package                 release build, validate, write release/PigeonBox-vX.Y.Z.zip + .sha256
- *   Both Local and optional Cloud modes ship in this one ZIP; fresh installs start in Local.
+ *   The ZIP carries no server address; source builds point at your server (npm run server:deploy).
  *   npm run package -- --skip-build --from <dir> validate and package an existing release build
  *   npm run package -- --out <dir>  write artifacts somewhere else
  *
@@ -22,7 +22,6 @@ import { releaseBuildEnv, validateReleaseConfig } from './lib/release-config.mjs
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
-if (args.includes('--cloud')) console.warn('--cloud is no longer needed: the standard ZIP includes both Local and Cloud.');
 const skipBuild = args.includes('--skip-build');
 const outIndex = args.indexOf('--out');
 const fromIndex = args.indexOf('--from');
