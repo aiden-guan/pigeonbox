@@ -12,7 +12,7 @@
     "@pigeonbox/server": "*"
   },
   "devDependencies": {
-    "pdfjs-dist": "6.3.289"
+    "pdfjs-dist": "6.5.438"
   },
   "license": "MIT"
 }
