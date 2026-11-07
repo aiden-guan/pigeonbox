@@ -224,7 +224,6 @@ See [manual verification](docs/VERIFICATION.md), [capture instructions](assets/r
 
 - **Gmail changes:** SDK and DOM integration need maintenance when Gmail changes its interface. Local mode uses the web page rather than requesting Gmail API scopes.
 - **Google verification:** the always-on Gmail layer uses restricted Gmail scopes. A personal server works with an unverified Google app (with Google's warning and a 100-user cap); offering it to the public needs Google's verification. See [self-hosting](docs/self-hosting.md#always-on-gmail).
-- **Wide inbox layout:** At widths of 600 CSS pixels or more, an older inbox grid rule can compress the current list and brief into a narrow column. The feature captures use a 480-pixel panel; the wide Home capture uses a different view.
 - **Coverage:** Local search covers ingested mail. Snippets, partial threads, and full threads carry different evidence; an answer cannot safely imply full-mailbox coverage.
 - **Models:** On-device availability depends on browser APIs, model downloads, memory, and hardware. Generated summaries and replies need review.
 - **Actions:** Generated text can be placed in Gmail for review. Scheduled sends, enabled rules, and server approval flows have their own authorization paths; this project does not claim that every action is manual.
