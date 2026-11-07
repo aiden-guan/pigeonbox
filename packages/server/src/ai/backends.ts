@@ -457,17 +457,17 @@ export function chatCompletionBody(model: string, request: ChatRequest, options:
   const body: Record<string, unknown> = {
     model,
     messages: request.messages.map(wireMessage),
-    reasoning_effort: request.reasoningEffort,
+    ...(!/^(?:openai\/)?gpt-4(?:[.o-]|$)/i.test(model) ? { reasoning_effort: request.reasoningEffort } : {}),
     service_tier: request.serviceTier === 'flex' ? 'flex' : 'default',
   };
   if (options.cacheKey) body.prompt_cache_key = options.cacheKey;
-  if (request.reasoningEffort === 'none') body.temperature = 0.2;
+  if (request.reasoningEffort === 'none' || !('reasoning_effort' in body)) body.temperature = 0.2;
   if (request.stream) {
     body.stream = true;
     // Usage arrives in a final chunk, so metering stays exact.
     body.stream_options = { include_usage: true };
   }
-  if (request.maxTokens) body.max_completion_tokens = request.maxTokens + REASONING_HEADROOM[request.reasoningEffort];
+  if (request.maxTokens) body.max_completion_tokens = request.maxTokens + ('reasoning_effort' in body ? REASONING_HEADROOM[request.reasoningEffort] : 0);
   if (request.responseFormat?.type === 'json_object') body.response_format = { type: 'json_object' };
   if (request.responseFormat?.type === 'json_schema') {
     body.response_format = { type: 'json_schema', json_schema: { name: request.responseFormat.name, strict: true, schema: request.responseFormat.schema } };

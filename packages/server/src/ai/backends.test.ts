@@ -433,6 +433,14 @@ describe('processing tier', () => {
     expect(processingTierFor({ interactive: false, override: 'standard' }, 'flex')).toBe('standard');
   });
 
+  it.each(['gpt-4.1-mini', 'gpt-4o-mini', 'openai/gpt-4.1-mini'])('supports the non-reasoning setup model %s', (model) => {
+    const body = chatCompletionBody(model, { ...chat, reasoningEffort: 'low', maxTokens: 500 });
+    expect(body).not.toHaveProperty('reasoning_effort');
+    expect(body.max_completion_tokens).toBe(500);
+    expect(body.temperature).toBe(0.2);
+    expect(body.model).toBe(model);
+  });
+
   it('always states service_tier: flex for Flex, default for Standard', () => {
     const base = { messages: chat.messages, reasoningEffort: 'low' as const };
     expect(chatCompletionBody('m', { ...base, serviceTier: 'flex' }).service_tier).toBe('flex');

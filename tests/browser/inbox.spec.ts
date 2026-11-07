@@ -42,3 +42,19 @@ test('View engagement reveals visible details inside the selected email at side-
   expect(await page.locator('.pb-panel').evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/inbox-engagement-320.png' });
 });
+
+
+test('Inbox controls and messages use the available width in wide workspaces', async ({ app }) => {
+  const page = await app.page('workspace');
+  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Inbox', exact: true }).click();
+  for (const width of [480, 700, 1100]) {
+    await page.setViewportSize({ width, height: 900 });
+    const inbox = page.locator('.pb-inbox');
+    const bounds = await inbox.boundingBox();
+    const controls = await page.getByRole('group', { name: 'Inbox views' }).boundingBox();
+    const category = await page.getByLabel('Inbox category').boundingBox();
+    expect(controls!.width).toBeGreaterThan(bounds!.width * 0.8);
+    expect(category!.y).toBeGreaterThanOrEqual(controls!.y + controls!.height);
+    expect(await inbox.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  }
+});

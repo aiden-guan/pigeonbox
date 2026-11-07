@@ -19,6 +19,12 @@ PigeonBox is now fully open source and self-hosted. The server that powered Pige
 - "PigeonBox Pro" is now "your PigeonBox server". Release builds no longer include a server address; build from source to use your server.
 - A monthly AI budget per account is off unless you set one.
 
+### Fixed
+- Self-hosted deployment validates the full production configuration and bundles both Workers before applying database migrations. A failed post-deploy smoke check now fails the command.
+- Deployment stops if a recorded server has lost its encryption secrets; it also configures sign-in redirects for extra extension IDs and accepts comments in `server.env`.
+- The example GPT-4.1 mini model no longer receives unsupported reasoning parameters.
+- Inbox controls and messages retain the full workspace width above 600 pixels.
+
 ### Removed
 - Plans, subscriptions and Stripe billing.
 - The Cloud waitlist, the usepigeonbox.com dashboard connection, and the "Sent with PigeonBox" footer.

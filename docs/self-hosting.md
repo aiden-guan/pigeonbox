@@ -35,7 +35,7 @@ The code is `packages/server`, deployed as the two Workers. The database schema 
 - A [Cloudflare](https://dash.cloudflare.com/sign-up) account. Log in once from this checkout: `npx wrangler login`.
 - A [Supabase](https://supabase.com/dashboard) project.
 - A [Google Cloud](https://console.cloud.google.com/) project for Google sign-in (and, optionally, Gmail access).
-- An API key for an OpenAI-compatible chat and embeddings endpoint (OpenAI, or a compatible gateway).
+- An API key for an OpenAI-compatible Chat Completions and embeddings endpoint (OpenAI, or a compatible gateway). The chat model must support tool calls and structured JSON output. The example uses GPT-4.1 mini; it is sent without reasoning-specific parameters. Other providers and models need their own live checks.
 
 ## 1. Create the Supabase project
 
@@ -60,7 +60,7 @@ PigeonBox signs you in with Google through Supabase Auth.
 cp server.env.example server.env
 ```
 
-Fill in the required values in `server.env`, plus `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Every setting is described in [server.env.example](../server.env.example). `server.env` is gitignored.
+Fill in the required values in `server.env`, plus `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Every setting is described in [server.env.example](../server.env.example). `server.env` is gitignored. Use `NAME=value` lines; single or double quotes and comments after a space are supported. Duplicate settings are rejected.
 
 Optionally, add a Supabase personal access token (`SUPABASE_ACCESS_TOKEN`, from **Account → Access Tokens**). The deploy script then configures Supabase Auth for you. Without it, the script prints the two settings to make by hand.
 
@@ -72,13 +72,15 @@ npm run server:deploy
 
 The script:
 
-1. generates the server's encryption key, salts and job secret into `.local/server-secrets.json` (once; **back this file up**, because without it the mail data your server stores can't be decrypted),
+1. generates the server's encryption key, salts and job secret into `.local/server-secrets.json` once; **back this file up** because stored mail data needs the same key on every update,
 2. gives your unpacked extension a stable ID (a key in `apps/extension/.env.local`) so the server can allow it to sign in,
-3. applies `supabase/migrations` to your database and creates the tracked-PDF bucket if you set one,
-4. deploys `pigeonbox-tracker` and `pigeonbox-api` to your `workers.dev` subdomain, with their secrets,
-5. configures Supabase Auth's redirect URLs and Google provider (with `SUPABASE_ACCESS_TOKEN`) or tells you what to set,
-6. writes the server's addresses into `apps/extension/.env.local` and rebuilds the extension,
-7. runs `npm run server:smoke` against the deployment.
+3. validates both Workers with the production configuration loader, builds the shared packages and dashboard assets, and bundles both Workers **before changing your database or deployment**,
+4. applies `supabase/migrations` to your database and creates the tracked-PDF bucket if you set one,
+5. deploys `pigeonbox-tracker` and `pigeonbox-api` to your `workers.dev` subdomain, with their secrets,
+6. configures Supabase Auth's redirect URLs for your primary and extra extension IDs and enables Google sign-in (with `SUPABASE_ACCESS_TOKEN`), or tells you what to set,
+7. writes the server's addresses into `apps/extension/.env.local`, rebuilds the extension, and checks the deployment with `npm run server:smoke`.
+
+If a preflight build or configuration check fails, no remote changes are made. If the final smoke check fails, the command exits with an error and keeps the deployed addresses in `.local/server.json` so you can diagnose the deployment with `npm run server:smoke`. A passing unauthenticated smoke check covers reachability, protocol, version and dashboard routing; finish the sign-in steps below to verify your account and provider.
 
 To check `server.env` and bundle both Workers without deploying anything, run `npm run server:deploy -- --dry-run`.
 
@@ -137,11 +139,14 @@ npm install
 npm run server:deploy
 ```
 
+Keep `server.env`, `.local/server-secrets.json` and `apps/extension/.env.local` when updating or moving to another computer. If a previous deployment is recorded but its secret file is missing or incomplete, deploy stops instead of replacing the encryption key. Restore the file from your backup.
+
 Deploying applies new migrations, redeploys both Workers and rebuilds the extension. Reload PigeonBox in `chrome://extensions` afterwards.
 
 ## Backups and secrets
 
 - `.local/server-secrets.json` holds the key that encrypts stored mail data, Google credentials and drafts. Keep an offline copy. To rotate it, see [server operations](server/operations.md).
+- Before applying updates to an existing database, take a database backup and review new migrations. The migration that removes the former subscription service deletes its billing and waitlist tables; export those records first if you need them. Mail and tracking data are retained.
 - `server.env` holds your Supabase service key and AI key. It never leaves your computer except as Worker secrets.
 - Supabase backs up the database on its own schedule; see your project's **Database → Backups**.
 

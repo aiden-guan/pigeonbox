@@ -35,28 +35,32 @@ const PASSTHROUGH_VARS = [
   'MAX_MAIL_ACCOUNTS', 'SYNC_BACKFILL_DAYS', 'DOCUMENT_MAX_BYTES', 'SEQUENCES_ENABLED', 'SEQUENCE_DAILY_LIMIT', 'WEB_SEARCH_PROVIDER',
   'MCP_OAUTH_ENABLED', 'COMPOSE_NOTICE_POLICY', 'CLIENT_CONFIG', 'CLOUD_ROLLOUT',
 ];
-const REQUIRED = ['ALLOWED_EMAILS', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'DATABASE_URL', 'CLOUD_AI_BASE_URL', 'CLOUD_AI_API_KEY', 'CLOUD_AI_PRIMARY_MODEL'];
+const REQUIRED = ['ALLOWED_EMAILS', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'DATABASE_URL', 'CLOUD_AI_BASE_URL', 'CLOUD_AI_API_KEY', 'CLOUD_AI_PRIMARY_MODEL', 'CLOUD_AI_EMBED_MODEL'];
 const PUBSUB = ['GOOGLE_PUBSUB_TOPIC', 'GOOGLE_PUBSUB_SERVICE_ACCOUNT'];
 
 function fail(message) {
-  console.error(`\n${message}\n`);
-  process.exit(1);
+  throw new Error(message);
 }
 
 function step(message) {
   console.log(`\n→ ${message}`);
 }
 
-function parseEnv(text) {
+export function parseEnv(text) {
   const values = {};
-  for (const line of text.split('\n')) {
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq === -1) continue;
-    let value = trimmed.slice(eq + 1).trim();
-    if (/^(['"]).*\1$/.test(value)) value = value.slice(1, -1);
-    values[trimmed.slice(0, eq).trim()] = value;
+    const match = trimmed.match(/^(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) fail(`Invalid setting on line ${index + 1}; use NAME=value.`);
+    let value = match[2];
+    if (/^['"]/.test(value)) {
+      const quoted = value.match(/^(['"])(.*?)\1\s*(?:#.*)?$/);
+      if (!quoted) fail(`Unclosed quoted setting on line ${index + 1}.`);
+      value = quoted[2];
+    } else value = value.replace(/\s+#.*$/, '').trim();
+    if (Object.hasOwn(values, match[1])) fail(`Duplicate setting ${match[1]} on line ${index + 1}.`);
+    values[match[1]] = value;
   }
   return values;
 }
@@ -68,15 +72,16 @@ function writePrivate(path, text) {
 }
 
 /** Runs a command, echoing its output while keeping a copy, with stdin left to the person (wrangler may prompt). */
-function run(command, args, { capture = false } = {}) {
+function run(command, args, { capture = false, input } = {}) {
   return new Promise((resolvePromise) => {
-    const child = spawn(command, args, { cwd: root, stdio: ['inherit', capture ? 'pipe' : 'inherit', 'inherit'], shell: process.platform === 'win32' });
+    const child = spawn(command, args, { cwd: root, stdio: [input === undefined ? 'inherit' : 'pipe', capture ? 'pipe' : 'inherit', 'inherit'], shell: process.platform === 'win32' });
+    if (input !== undefined) { child.stdin.on('error', () => {}); child.stdin.end(input); }
     let output = '';
     child.stdout?.on('data', (chunk) => {
       output += chunk;
       process.stdout.write(chunk);
     });
-    child.on('error', (error) => fail(`${command} could not be started: ${error.message}`));
+    child.on('error', () => resolvePromise({ code: 1, output: `${command} could not be started.` }));
     child.on('close', (code) => resolvePromise({ code: code ?? 1, output }));
   });
 }
@@ -84,14 +89,15 @@ function run(command, args, { capture = false } = {}) {
 const npx = (args, options) => run(process.platform === 'win32' ? 'npx.cmd' : 'npx', args, options);
 const npm = (args, options) => run(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, options);
 
-function httpsOrigin(name, value) {
+export function httpsOrigin(name, value) {
   let url;
   try {
     url = new URL(value);
   } catch {
     fail(`${name} in server.env is not a URL.`);
   }
-  if (url.protocol !== 'https:') fail(`${name} in server.env must start with https://`);
+  if (url.protocol !== 'https:' || url.username || url.password) fail(`${name} in server.env must be an HTTPS URL without credentials.`);
+  if (['API_URL', 'TRACKER_URL', 'SUPABASE_URL'].includes(name) && (url.pathname !== '/' || url.search || url.hash)) fail(`${name} in server.env must be an origin without a path, query or fragment.`);
   return url.origin;
 }
 
@@ -106,11 +112,22 @@ function loadServerEnv() {
     fail('Created server.env from server.env.example. Fill it in (docs/self-hosting.md lists where each value comes from), then run `npm run server:deploy` again.');
   }
   const env = parseEnv(readFileSync(envPath, 'utf8'));
+  return validateServerEnv(env);
+}
+
+export function validateServerEnv(env) {
   const missing = REQUIRED.filter((key) => !env[key] || /YOUR-|^replace-/.test(env[key]));
   if (missing.length) fail(`server.env is missing: ${missing.join(', ')}. See docs/self-hosting.md.`);
   httpsOrigin('SUPABASE_URL', env.SUPABASE_URL);
   httpsOrigin('CLOUD_AI_BASE_URL', env.CLOUD_AI_BASE_URL);
   if (!/^postgres(ql)?:\/\//.test(env.DATABASE_URL)) fail('DATABASE_URL in server.env must be a postgres:// connection string (Supabase → Connect → Transaction pooler).');
+  if (env.API_URL) httpsOrigin('API_URL', env.API_URL);
+  if (env.TRACKER_URL) httpsOrigin('TRACKER_URL', env.TRACKER_URL);
+  for (const name of ['WORKERS_PAID', 'TRACKER_QUEUE']) {
+    if (env[name] && !['true', 'false'].includes(env[name])) fail(`${name} must be true or false.`);
+  }
+  if (env.EXTRA_EXTENSION_IDS?.split(',').some((id) => !/^[a-p]{32}$/.test(id.trim()))) fail('EXTRA_EXTENSION_IDS must contain 32-letter extension IDs.');
+  if (env.ALLOWED_EMAILS === 'you@example.com') fail('Replace you@example.com in ALLOWED_EMAILS with your own address.');
   const pubsub = PUBSUB.filter((key) => env[key]);
   if (pubsub.length && pubsub.length !== PUBSUB.length) fail(`Always-on Gmail needs both ${PUBSUB.join(' and ')}, or neither.`);
   if (pubsub.length && !(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET)) fail('Always-on Gmail needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET too.');
@@ -118,15 +135,19 @@ function loadServerEnv() {
 }
 
 /** Generated once and reused: changing DATA_ENCRYPTION_KEYS would make stored data unreadable. */
-function loadSecrets() {
-  const existing = existsSync(secretsPath) ? JSON.parse(readFileSync(secretsPath, 'utf8')) : {};
+export function loadSecrets(secretFile = secretsPath, deploymentFile = statePath, persist = !dryRun) {
+  if (!existsSync(secretFile) && existsSync(deploymentFile)) fail('Server secrets are missing for an existing deployment. Restore .local/server-secrets.json from backup; generating a new key would make stored data unreadable.');
+  const existing = existsSync(secretFile) ? JSON.parse(readFileSync(secretFile, 'utf8')) : {};
+  if (existsSync(secretFile) && ['DATA_ENCRYPTION_KEYS', 'IP_HASH_SALT', 'INTERNAL_JOB_SECRET'].some((key) => !existing[key])) fail('Server secrets are incomplete. Restore .local/server-secrets.json from backup before deploying.');
   const secrets = {
     DATA_ENCRYPTION_KEYS: existing.DATA_ENCRYPTION_KEYS ?? `k1:${randomBytes(32).toString('base64')}`,
     IP_HASH_SALT: existing.IP_HASH_SALT ?? randomBytes(32).toString('base64url'),
     INTERNAL_JOB_SECRET: existing.INTERNAL_JOB_SECRET ?? randomBytes(32).toString('base64url'),
   };
-  if (!existing.DATA_ENCRYPTION_KEYS) console.log(`Generated server secrets in ${secretsPath}. Back this file up: without it, stored mail data cannot be decrypted.`);
-  if (!dryRun) writePrivate(secretsPath, `${JSON.stringify(secrets, null, 2)}\n`);
+  if (!existing.DATA_ENCRYPTION_KEYS) console.log(persist
+    ? `Generated server secrets in ${secretFile}. Back this file up: without it, stored mail data cannot be decrypted.`
+    : 'Using temporary server secrets for validation; no keys will be saved.');
+  if (persist) writePrivate(secretFile, `${JSON.stringify(secrets, null, 2)}\n`);
   return secrets;
 }
 
@@ -199,8 +220,7 @@ function limits(env) {
   return env.WORKERS_PAID === 'true' ? '\n[limits]\ncpu_ms = 30_000\nsubrequests = 10_000\n' : '';
 }
 
-function apiConfig(env, names, urls, extension, commit) {
-  const alwaysOn = PUBSUB.every((key) => env[key]);
+export function apiConfig(env, names, urls, extension, commit) {
   return `${common(names.api, '../../workers/api/src/index.ts')}${limits(env)}
 # The dashboard (apps/web). API routes always reach the Worker.
 [assets]
@@ -214,7 +234,13 @@ not_found_handling = "404-page"
 crons = ["* * * * *"]
 ${env.HYPERDRIVE_ID ? `\n[[hyperdrive]]\nbinding = "HYPERDRIVE"\nid = ${toml(env.HYPERDRIVE_ID)}\n` : ''}
 [vars]
-${vars({
+${vars(apiVars(env, urls, extension, commit))}
+`;
+}
+
+export function apiVars(env, urls, extension, commit) {
+  const alwaysOn = PUBSUB.every((key) => env[key]);
+  return {
   ENVIRONMENT: 'production',
   SERVICE_VERSION: version,
   SERVICE_COMMIT: commit,
@@ -239,11 +265,10 @@ ${vars({
     GOOGLE_PUBSUB_SERVICE_ACCOUNT: env.GOOGLE_PUBSUB_SERVICE_ACCOUNT,
   } : {}),
   ...Object.fromEntries(PASSTHROUGH_VARS.map((key) => [key, env[key]])),
-})}
-`;
+  };
 }
 
-function apiSecrets(env, secrets) {
+export function apiSecrets(env, secrets) {
   const alwaysOn = PUBSUB.every((key) => env[key]);
   return Object.fromEntries(Object.entries({
     SUPABASE_ANON_KEY: env.SUPABASE_ANON_KEY,
@@ -258,7 +283,7 @@ function apiSecrets(env, secrets) {
   }).filter(([, value]) => value));
 }
 
-function trackerConfig(env, names, commit) {
+export function trackerConfig(env, names, commit) {
   const queue = env.TRACKER_QUEUE === 'true';
   return `${common(names.tracker, '../../workers/server-tracker/src/index.ts')}
 [vars]
@@ -287,7 +312,7 @@ max_concurrency = 5
 ` : ''}`;
 }
 
-function trackerSecrets(env, secrets) {
+export function trackerSecrets(env, secrets) {
   return Object.fromEntries(Object.entries({
     SUPABASE_ANON_KEY: env.SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -300,11 +325,6 @@ function trackerSecrets(env, secrets) {
 async function deployWorker(label, configText, secrets) {
   const config = join(wranglerDir, `${label}.toml`);
   writePrivate(config, configText);
-  if (dryRun) {
-    const { code } = await npx(['wrangler', 'deploy', '--config', config, '--dry-run', '--outdir', join(wranglerDir, `${label}-bundle`)]);
-    if (code !== 0) fail(`Bundling the ${label} Worker failed.`);
-    return null;
-  }
   const secretsFile = join(wranglerDir, `${label}.secrets.json`);
   writePrivate(secretsFile, JSON.stringify(secrets));
   try {
@@ -373,8 +393,13 @@ async function ensureDocumentsBucket(env) {
  * Sign-in goes through Supabase Auth with Google. With SUPABASE_ACCESS_TOKEN set,
  * point Auth at this server and the extension; otherwise print the two settings.
  */
+export function authRedirects(env, urls, extension) {
+  const ids = [extension, ...(env.EXTRA_EXTENSION_IDS || '').split(',').map((id) => id.trim()).filter(Boolean)];
+  return [...new Set(ids.map((id) => `https://${id}.chromiumapp.org/**`)), `${urls.api}/**`];
+}
+
 async function configureAuth(env, urls, extension) {
-  const redirects = [`https://${extension}.chromiumapp.org/**`, `${urls.api}/**`];
+  const redirects = authRedirects(env, urls, extension);
   const ref = new URL(env.SUPABASE_URL).hostname.split('.')[0];
   if (!env.SUPABASE_ACCESS_TOKEN) {
     return [
@@ -408,6 +433,35 @@ async function main() {
   const names = { api: `${prefix}-api`, tracker: `${prefix}-tracker`, queue: `${prefix}-tracking-events` };
   const commit = (await run('git', ['rev-parse', 'HEAD'], { capture: true })).output.trim().match(/^[a-f0-9]{40}$/)?.[0];
 
+  // Validate and compile everything before touching a database or deploying a Worker.
+  const previewUrls = {
+    api: env.API_URL || `https://${names.api}.${state.subdomain || 'your-subdomain'}.workers.dev`,
+    tracker: env.TRACKER_URL || `https://${names.tracker}.${state.subdomain || 'your-subdomain'}.workers.dev`,
+  };
+  step('Validating the production configuration');
+  const validation = await npx(['tsx', 'scripts/server/validate-config.mts'], { input: JSON.stringify({
+    api: { ...apiVars(env, previewUrls, extension, commit), ...apiSecrets(env, secrets), DATABASE_URL: env.DATABASE_URL },
+    tracker: { ENVIRONMENT: 'production', AUTH_PROVIDER: 'supabase', DATA_STORE: 'supabase', SUPABASE_URL: env.SUPABASE_URL, ALLOWED_EMAILS: env.ALLOWED_EMAILS, ...trackerSecrets(env, secrets) },
+  }) });
+  if (validation.code !== 0) fail('Production configuration is invalid. Fix the settings above before deploying.');
+
+  step('Building the shared packages the Workers bundle');
+  const shared = ['packages/shared', 'packages/api-contract', 'packages/ai', 'packages/cloud-client', 'packages/tracking', 'workers/tracker'];
+  if ((await npx(['tsc', '-b', ...shared])).code !== 0) fail('The TypeScript build failed. Fix the errors above and deploy again.');
+
+  if ((await npm(['run', 'assets', '-w', '@pigeonbox/api-worker'])).code !== 0) fail('Copying the dashboard and PDF viewer assets failed.');
+  for (const [label, config] of [
+    ['tracker', trackerConfig(env, names, commit)], ['api', apiConfig(env, names, previewUrls, extension, commit)],
+  ]) {
+    const configFile = join(wranglerDir, `${label}.toml`);
+    writePrivate(configFile, config);
+    if ((await npx(['wrangler', 'deploy', '--config', configFile, '--dry-run', '--outdir', join(wranglerDir, `${label}-bundle`)])).code !== 0) fail(`Bundling the ${label} Worker failed. Nothing was deployed.`);
+  }
+  if (dryRun) {
+    console.log(`\nDry run finished. Generated Worker configs and bundles are in ${wranglerDir}. Nothing was deployed.`);
+    return;
+  }
+
   if (!dryRun) {
     step('Checking your Cloudflare login');
     const { code, output } = await npx(['wrangler', 'whoami'], { capture: true });
@@ -420,17 +474,15 @@ async function main() {
     if (env.TRACKER_QUEUE === 'true') {
       step('Creating the tracking event queues');
       for (const queue of [names.queue, `${names.queue}-dead`]) {
-        const { output } = await npx(['wrangler', 'queues', 'list'], { capture: true });
-        if (!output.includes(queue)) await npx(['wrangler', 'queues', 'create', queue]);
+        const { code, output } = await npx(['wrangler', 'queues', 'list'], { capture: true });
+        if (code !== 0) fail('Could not list Cloudflare queues.');
+        if (!new RegExp(`(?<![a-z0-9-])${queue}(?![a-z0-9-])`).test(output) && (await npx(['wrangler', 'queues', 'create', queue])).code !== 0) fail(`Could not create queue ${queue}.`);
       }
     }
   }
 
-  step('Building the shared packages the Workers bundle');
-  const shared = ['packages/shared', 'packages/api-contract', 'packages/ai', 'packages/cloud-client', 'packages/tracking', 'workers/tracker'];
-  if ((await npx(['tsc', '-b', ...shared])).code !== 0) fail('The TypeScript build failed. Fix the errors above and deploy again.');
 
-  step(`${dryRun ? 'Bundling' : 'Deploying'} the tracker Worker (${names.tracker})`);
+  step(`Deploying the tracker Worker (${names.tracker})`);
   const trackerUrl = env.TRACKER_URL ? httpsOrigin('TRACKER_URL', env.TRACKER_URL) : null;
   const deployedTracker = await deployWorker('tracker', trackerConfig(env, names, commit), trackerSecrets(env, secrets));
   const subdomain = deployedTracker?.match(/^https:\/\/[a-z0-9-]+\.([a-z0-9-]+)\.workers\.dev$/)?.[1] ?? state.subdomain ?? (dryRun ? 'your-subdomain' : null);
@@ -440,14 +492,8 @@ async function main() {
     tracker: trackerUrl ?? `https://${names.tracker}.${subdomain}.workers.dev`,
   };
 
-  step(`${dryRun ? 'Bundling' : 'Deploying'} the API Worker (${names.api}) at ${urls.api}`);
-  if ((await npm(['run', 'assets', '-w', '@pigeonbox/api-worker'])).code !== 0) fail('Copying the PDF viewer assets failed.');
+  step(`Deploying the API Worker (${names.api}) at ${urls.api}`);
   await deployWorker('api', apiConfig(env, names, urls, extension, commit), apiSecrets(env, secrets));
-
-  if (dryRun) {
-    console.log(`\nDry run finished. Generated Worker configs and bundles are in ${wranglerDir}. Nothing was deployed.`);
-    return;
-  }
 
   step('Configuring sign-in');
   const manual = await configureAuth(env, urls, extension);
@@ -459,7 +505,7 @@ async function main() {
   if ((await npm(['run', 'build'])).code !== 0) fail('The extension build failed. Fix the error above, then run `npm run build`.');
 
   step('Checking the deployment');
-  await npx(['tsx', 'scripts/server/smoke.mjs']);
+  if ((await npx(['tsx', 'scripts/server/smoke.mjs'])).code !== 0) fail('Workers were deployed, but verification failed. Review the checks above before using the server.');
 
   const alwaysOn = PUBSUB.every((key) => env[key]);
   console.log(`
@@ -476,4 +522,6 @@ Next:
 `);
 }
 
-await main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => { console.error(`\n${error.message}\n`); process.exitCode = 1; });
+}
