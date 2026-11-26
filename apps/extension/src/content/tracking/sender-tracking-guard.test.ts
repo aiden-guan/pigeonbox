@@ -216,6 +216,30 @@ describe('sender drafting a reply inside their own tracked thread', () => {
     expect(extractTrackingIdFromMessageBody(document.querySelector('.a3s')!, BASE)).toBe('trk_own');
     expect(onPixelRender.mock.calls).toEqual([['trk_own', false]]);
   });
+
+  it('uses an opaque Gmail pixel only in the exact tracked message body', () => {
+    const pixel = (id: string) => `<img id="${id}" src="${PROXY}/${id}" width="1" height="1" alt="">`;
+    document.body.innerHTML = `<div role="main">
+      <div data-legacy-message-id="#msg-f:abcd"><div class="a3s">Sent ${pixel('owned')} <blockquote>${pixel('quoted')}</blockquote></div></div>
+      <div data-legacy-message-id="abce"><div class="a3s">Received ${pixel('received')}</div></div>
+      <div data-legacy-message-id="abcf"><div class="a3s">Ambiguous ${pixel('first')} ${pixel('second')}</div></div>
+    </div>`;
+    const onPixelRender = vi.fn();
+    guard = installSenderTrackingGuard({
+      getTrackerBases: () => BASE,
+      getOwnedTrackingIds: () => new Set(['trk_own', 'trk_another']),
+      getTrackingIdForMessage: (id) => ({ abcd: 'trk_own', abcf: 'trk_another' })[id as 'abcd' | 'abcf'],
+      resolveLink: vi.fn(async () => null),
+      onPixelRender,
+    });
+    guard.refresh();
+    expect(onPixelRender.mock.calls).toEqual([['trk_own', false]]);
+    expect([...guard.conversationIds()]).toEqual(['trk_own']);
+    expect(document.querySelector('#owned')?.getAttribute('src')).toMatch(/^data:image/);
+    for (const id of ['quoted', 'received', 'first', 'second']) {
+      expect(document.getElementById(id)?.getAttribute('src')).toBe(`${PROXY}/${id}`);
+    }
+  });
 });
 
 describe('Gmail draft saves upload the trimmed quote with the sender pixel', () => {

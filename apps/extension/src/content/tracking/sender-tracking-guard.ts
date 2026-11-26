@@ -1,5 +1,5 @@
 import { findMain, findMessageBodies } from '@pigeonbox/gmail';
-import { extractTrackingIdFromCandidateUrl, type TrackerBase } from '@pigeonbox/tracking';
+import { extractTrackingIdFromCandidateUrl, normalizeGmailId, type TrackerBase } from '@pigeonbox/tracking';
 
 const EMPTY_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const QUOTE = 'blockquote, .gmail_quote, .gmail_quote_container, .gmail_extra';
@@ -17,6 +17,16 @@ function pixelIdIn(attr: typeof PIXEL_ATTRS[number], raw: string, bases: Tracker
     if (id) return id;
   }
   return null;
+}
+
+function opaqueGmailPixelUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' && /^ci\d+\.googleusercontent\.com$/.test(url.hostname)
+      && /^\/(meips|proxy)\//.test(url.pathname) && !url.hash && !url.search;
+  } catch {
+    return false;
+  }
 }
 
 /** Only configured trackers, including Gmail's outbound-link wrapper. */
@@ -67,6 +77,7 @@ function safeDestination(raw: string | null): string | null {
 export function installSenderTrackingGuard(opts: {
   getTrackerBases: () => TrackerBase | null | undefined;
   getOwnedTrackingIds: () => ReadonlySet<string>;
+  getTrackingIdForMessage?: (gmailMessageId: string) => string | undefined;
   resolveLink: (origin: string, clickId: string) => Promise<string | null>;
   onPixelRender: (trackingId: string, quoted: boolean, observedAt?: number) => void;
   /** Test seam; defaults to the page's PerformanceObserver. */
@@ -76,6 +87,7 @@ export function installSenderTrackingGuard(opts: {
   const requests = new Map<string, Promise<string | null>>();
   const protectedLinks = new WeakMap<HTMLAnchorElement, { href: string; destination: Promise<string | null>; resolved?: string }>();
   const draftRenders = new WeakMap<HTMLImageElement, string>();
+  const opaquePixels = new WeakMap<HTMLImageElement, string>();
   /** Owned pixels shown in the open conversation at the last refresh. */
   let conversationIds = new Set<string>();
   let lastSaveStartedAt: number | null = null;
@@ -173,12 +185,27 @@ export function installSenderTrackingGuard(opts: {
     const shown = new Set<string>();
     for (const body of bodies) {
       if (body.closest('[contenteditable="true"], [role="dialog"], [data-gi-ui]')) continue;
+      const message = body.closest('[data-legacy-message-id], [data-message-id]');
+      const messageId = normalizeGmailId(message?.getAttribute('data-legacy-message-id') || message?.getAttribute('data-message-id'));
+      const exactId = messageId && opts.getTrackingIdForMessage?.(messageId);
+      // Gmail can omit the original URL from its proxy wrapper. Require a single
+      // pixel-shaped image in the exact tracked message before assigning it.
+      const opaque = exactId && owned.has(exactId)
+        ? [...body.querySelectorAll<HTMLImageElement>('img[width="1"][height="1"][alt=""]')].filter((image) =>
+          !image.closest(`${QUOTE}, [contenteditable="true"], [role="dialog"], [data-gi-ui]`)
+          && (['src', 'data-src'] as const).some((attr) => opaqueGmailPixelUrl(image.getAttribute(attr) || '')))
+        : [];
+      const opaqueImage = opaque.length === 1 ? opaque[0] : null;
       for (const image of body.querySelectorAll<HTMLImageElement>('img[src], img[data-src], img[srcset]')) {
         if (image.closest('[contenteditable="true"], [role="dialog"], [data-gi-ui]')) continue;
         let id: string | null = null;
         for (const attr of PIXEL_ATTRS) {
           const raw = image.getAttribute(attr);
-          const candidate = raw ? pixelIdIn(attr, raw, bases) : null;
+          let candidate = raw ? pixelIdIn(attr, raw, bases) : null;
+          if (!candidate && exactId && image === opaqueImage && raw && attr !== 'srcset' && opaqueGmailPixelUrl(raw)) {
+            candidate = exactId;
+            opaquePixels.set(image, exactId);
+          }
           if (!candidate || !owned.has(candidate)) continue;
           shown.add(candidate);
           image.setAttribute('data-pb-self-pixel-src', raw!);
@@ -192,7 +219,7 @@ export function installSenderTrackingGuard(opts: {
       }
       // Pixels neutralized on an earlier pass still identify this conversation's messages.
       for (const image of body.querySelectorAll<HTMLImageElement>('img[data-pb-self-pixel-src]')) {
-        const candidate = pixelIdIn('src', image.getAttribute('data-pb-self-pixel-src') || '', bases);
+        const candidate = opaquePixels.get(image) ?? pixelIdIn('src', image.getAttribute('data-pb-self-pixel-src') || '', bases);
         if (candidate && owned.has(candidate)) shown.add(candidate);
       }
       for (const anchor of body.querySelectorAll<HTMLAnchorElement>('a[href]')) {

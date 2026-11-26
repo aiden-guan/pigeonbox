@@ -238,6 +238,10 @@ async function boot(): Promise<void> {
   await refreshSettings();
   senderTrackingGuard = installSenderTrackingGuard({
     getOwnedTrackingIds: () => new Set(cachedTrackedEmails.map((email) => email.trackingId)),
+    getTrackingIdForMessage: (gmailMessageId) => {
+      const matches = cachedTrackedEmails.filter((email) => email.sentAt && normalizeGmailId(email.gmailMessageId) === gmailMessageId);
+      return matches.length === 1 ? matches[0]?.trackingId : undefined;
+    },
     getTrackerBases: () => settings.trackingEnabled ? (settings.trackerUrls?.length ? settings.trackerUrls : settings.trackerBaseUrl) : null,
     resolveLink: async (origin, clickId) => {
       const result = await send<{ destination?: string }>({ type: 'RESOLVE_SENDER_TRACKING_LINK', origin, clickId });
@@ -285,6 +289,10 @@ async function boot(): Promise<void> {
     },
   });
 
+  // Start loading sender ownership without waiting for InboxSDK or Gmail's adapter.
+  void send<{ emails?: TrackedEmailSummary[] }>({ type: 'GET_TRACKED_EMAILS' }).then((res) => {
+    if (Array.isArray(res?.emails)) updateCachedEmails(res.emails);
+  });
   const sdk = await tryLoadInboxSdk();
   if (sdk) {
     const bound = adapter.bindInboxSdk(sdk);
@@ -349,9 +357,6 @@ async function boot(): Promise<void> {
       }
     });
   }
-  void send<{ emails?: TrackedEmailSummary[] }>({ type: 'GET_TRACKED_EMAILS' }).then((res) => {
-    if (Array.isArray(res?.emails)) updateCachedEmails(res.emails);
-  });
   setupCommandPalette();
   const pullTracking = () => {
     if (document.visibilityState === 'hidden') return;

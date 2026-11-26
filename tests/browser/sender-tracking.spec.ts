@@ -5,6 +5,52 @@ import { resetMemoryStore } from '../../workers/tracker/src/store';
 const PROXY_UA = 'Mozilla/5.0 (Windows NT 5.1; rv:11.0) Gecko Firefox/11.0 (via ggpht.com GoogleImageProxy)';
 const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 
+test('opening an older sent message with an opaque Gmail pixel never raises an open alert', async ({ app }) => {
+  resetMemoryStore();
+  const env = { PERSONAL_API_TOKEN: 'synthetic-tracker-only' };
+  const call = (path: string, init: RequestInit = {}) => tracker.fetch(new Request(`${app.api.baseUrl}${path}`, init), env);
+  const authed = (path: string, init: RequestInit = {}) => call(path, { ...init, headers: { Authorization: `Bearer ${env.PERSONAL_API_TOKEN}`, 'Content-Type': 'application/json' } });
+  app.api.forward = (request) => tracker.fetch(request, env);
+  const old = new Date(Date.now() - 3_600_000).toISOString();
+  const { tracking_id: trackingId } = await (await authed('/api/emails', {
+    method: 'POST',
+    body: JSON.stringify({ subject: 'Pricing', sender: 'owner@fixture.test', recipients: ['maya@fixture.test'], gmail_thread_id: 'abc123', gmail_message_id: 'abcd' }),
+  })).json() as { tracking_id: string };
+  await authed(`/api/emails/${trackingId}`, { method: 'PATCH', body: JSON.stringify({ status: 'SENT', sent_at: old }) });
+  const readEmail = async () => (await (await authed(`/api/emails/${trackingId}`)).json()) as { open_count: number };
+
+  const setup = await app.page('workspace');
+  await setup.evaluate(async (baseUrl) => {
+    const current = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...current.settings, trackingEnabled: true, desktopNotifications: true, localOnly: true, trackerBaseUrl: baseUrl, personalApiToken: 'synthetic-tracker-only' } });
+    await chrome.runtime.sendMessage({ type: 'TRACKING_POLL' });
+  }, app.api.baseUrl);
+
+  // The proxy reaches the tracker before Gmail mounts the message and only
+  // leaves its opaque image URL in the rendered body.
+  const proxy = 'https://ci3.googleusercontent.com/meips/opaque-sender-pixel=s0-d-e1-ft';
+  await app.context.route(proxy, (route) => route.fulfill({ contentType: 'image/gif', body: GIF }));
+  await app.context.route('https://mail.google.com/**', async (route) => {
+    await call(`/open/${trackingId}`, { headers: { 'User-Agent': PROXY_UA } });
+    expect((await readEmail()).open_count).toBe(1);
+    await route.fulfill({ contentType: 'text/html', body: `<html><body><div role="main" data-thread-perm-id="abc123"><h2 class="hP">Pricing</h2><div data-legacy-message-id="abcd"><div class="a3s">The scope is attached.<img id="opaque-pixel" src="${proxy}" width="1" height="1" alt=""></div></div></div></body></html>` });
+  });
+  await app.gmail();
+  await expect.poll(() => app.api.calls.some((entry) => entry.route.endsWith('/self-view'))).toBe(true);
+  await expect.poll(async () => (await readEmail()).open_count).toBe(0);
+  const alertIds = () => setup.evaluate(async () => Object.keys(await chrome.notifications.getAll()));
+  await setup.evaluate(() => chrome.runtime.sendMessage({ type: 'TRACKING_POLL' }));
+  expect(await alertIds()).toEqual([]);
+
+  // A separate recipient fetch for the same email can still reach the desktop.
+  await call(`/open/${trackingId}`, { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/130 Safari/537.36', 'CF-Connecting-IP': '192.0.2.20' } });
+  expect((await readEmail()).open_count).toBe(1);
+  await expect.poll(async () => {
+    await setup.evaluate(() => chrome.runtime.sendMessage({ type: 'TRACKING_POLL' }));
+    return (await alertIds()).length;
+  }).toBe(1);
+});
+
 test('a sender drafting a reply in their own tracked thread for over a minute never adds a recipient open', async ({ app }) => {
   test.setTimeout(180_000);
   resetMemoryStore();
